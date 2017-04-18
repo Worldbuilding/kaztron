@@ -11,6 +11,7 @@ welcomechannel = ""
 dicechannel = ""
 testchannel = ""
 authorID = ""
+showcase = ""
 
 data = {}
 
@@ -26,11 +27,12 @@ def data_import():
         dicechannel = d["DiceChannel"]
         testchannel = d["TestChannel"]
         authorID = d["AuthorID"]
+        showcase = d["ShowcaseChannel"]
     with open("dict.json") as json_data:
         d = json.load(json_data)
         filterdelete = d["delete"]
         filterwarn = d["warn"]
-    return token, modteam, filterdelete, filterwarn, warnchannel, deletechannel, warnalternative, welcomechannel, dicechannel, testchannel, authorID
+    return token, modteam, filterdelete, filterwarn, warnchannel, deletechannel, warnalternative, welcomechannel, dicechannel, testchannel, authorID, showcase
 
 def data_assemble(delete,warn):
     data = {"delete" : delete,"warn" : warn}

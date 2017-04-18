@@ -6,27 +6,30 @@ from discord.ext import commands
 import random
 import config
 import wordfilter
+import showcaser
 
 ## In the loving memory of Venntron ##
 
 client = commands.Bot(command_prefix='.', description='This an automated bot for r/worldbuilding discord server', pm_help= True)
 Client = discord.Client()
-version = "v1.1.2"
+version = "v1.1.2.2f"
 Changelog = "```" \
             "Changelog: \n" \
             "-Reworked filtering, now has basic regex features. ( Thanks Laogeobunny! ) \n" \
-            "-Added regex functions and known bugs to the instruction manual. \n" \
+            "-Beta release of world spotlight function. \n" \
+            "-Added new functions and known bugs to the instruction manual. \n" \
             "```"
 Info = "**INSTRUCTION MANUAL**\n" \
        "<https://tinyurl.com/KazTron>"
 
 ##init##
-config.token, config.modteam, config.filterdelete, config.filterwarn, config.warnchannel, config.deletechannel, config.warnalternative, config.welcomechannel, config.dicechannel, config.testchannel, config.authorID = config.data_import()
+config.token, config.modteam, config.filterdelete, config.filterwarn, config.warnchannel, config.deletechannel, config.warnalternative, config.welcomechannel, config.dicechannel, config.testchannel, config.authorID, config.showcase = config.data_import()
 
 filterdelete = config.filterdelete
 filterwarn = config.filterwarn
 warnCHID = config.warnchannel
 deleteChannel = discord.Object(id=config.deletechannel)
+showcaseChannel = discord.Object(id=config.showcase)
 
 
 
@@ -97,6 +100,56 @@ async def on_message(message):
         else:
             pass
     await client.process_commands(message)
+
+
+## world spotlight, rolls for a user submitted world from the spreadsheet etc ##
+@client.command(pass_context = True, description = "Mod only command for world spotlight")
+async def spotlight(ctx):
+    if checkmod(config.modteam, ctx.message) == True:
+        commandraw = str(ctx.message.content)
+        command = commandraw[11:]
+
+        if command == "roll":
+            global lucky
+            lucky = showcaser.roll()
+            user = discord.User(id=lucky[0])
+            message = "**Spotlight Canditate:** {0.mention}\n" \
+                      "```\n" \
+                      "Project Name: {1} \n" \
+                      "Project Genre: {2} \n" \
+                      "Main Premise: {3} \n" \
+                      "``` \n" \
+                      "**Link to user's project:** <{4}>"
+            await client.say(message.format(user, lucky[1], lucky[2], lucky[3], lucky[4]))
+
+        elif command == "current":
+            if lucky:
+                user = discord.User(id=lucky[0])
+                message = "**Current Canditate:** {0.mention}\n" \
+                          "```\n" \
+                          "Project Name: {1} \n" \
+                          "Project Genre: {2} \n" \
+                          "Main Premise: {3} \n" \
+                          "```\n" \
+                          "**Link to user's project:** <{4}>"
+                await client.say(message.format(user, lucky[1], lucky[2], lucky[3], lucky[4]))
+            else:
+                await client.say("Currently no canditate for world showcasing.")
+
+        elif command == "showcase":
+            if lucky:
+                user = discord.User(id=lucky[0])
+                message = "Today's lucky name is {0.mention}! Here is a bit about their world: \n" \
+                          "**Project Name:** {1} \n" \
+                          "**Project Genre:** {2} \n" \
+                          "**Main Premise:** {3} \n" \
+                          "**Link to user's project:** <{4}>"
+                await client.send_message(showcaseChannel,message.format(user, lucky[1], lucky[2], lucky[3], lucky[4]))
+            else:
+                await client.say("No user world to showcase!")
+
+        else:
+            await client.say("Command not recognized.")
 
 @client.command(pass_context = True, description= "Admin only command, adds/removes strings to/from filter list. Commands are ad, rd, aw, rw and l, you can contact me anytime to make sense of the commands.")
 async def filter(ctx):
