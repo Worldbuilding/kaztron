@@ -60,7 +60,7 @@ def main():
                               discoveryServiceUrl=discoveryUrl)
 
     spreadsheetId = '1LjQaWJlFHwG1KSWqVq6T2U9OWqnLrkhcU9TIosU7-cc'
-    rangeName = 'Main!A2:F'
+    rangeName = 'Main!A2:G'
     result = service.spreadsheets().values().get(
         spreadsheetId=spreadsheetId, range=rangeName).execute()
     values = result.get('values', [])
@@ -76,6 +76,11 @@ def main():
 def roll():
     list = main()
     choice = random.choice(list)
-    while choice[5] != "Yes":
+    while choice[5] != "Yes" or choice[6] == "Yes":
         choice = random.choice(list)
+    return choice
+
+def choose(num):
+    list = main()
+    choice = list[num]
     return choice

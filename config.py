@@ -6,7 +6,7 @@ filterdelete = []
 filterwarn = []
 warnchannel = ""
 deletechannel = ""
-warnalternative = ""
+outputchannel = ""
 welcomechannel = ""
 dicechannel = ""
 testchannel = ""
@@ -21,8 +21,7 @@ def data_import():
         token = d["token"]
         modteam = d["modteam"]
         warnchannel = d["WarnChannel"]
-        deletechannel = d["DeleteChannel"]
-        warnalternative = d["WarnAlternative"]
+        outputchannel = d["OutputChannel"]
         welcomechannel = d["WelcomeChannel"]
         dicechannel = d["DiceChannel"]
         testchannel = d["TestChannel"]
@@ -32,7 +31,7 @@ def data_import():
         d = json.load(json_data)
         filterdelete = d["delete"]
         filterwarn = d["warn"]
-    return token, modteam, filterdelete, filterwarn, warnchannel, deletechannel, warnalternative, welcomechannel, dicechannel, testchannel, authorID, showcase
+    return token, modteam, filterdelete, filterwarn, warnchannel, outputchannel, welcomechannel, dicechannel, testchannel, authorID, showcase
 
 def data_assemble(delete,warn):
     data = {"delete" : delete,"warn" : warn}
@@ -48,5 +47,9 @@ def dict_dump(delete,warn):
 
 def refresh_dict(delete,warn):
     dict_dump(delete,warn)
-    token, modteam, filterdelete, filterwarn = data_import()
+    with open("dict.json") as json_data:
+        d = json.load(json_data)
+        filterdelete = d["delete"]
+        filterwarn = d["warn"]
+    json_data.close()
     return filterdelete,filterwarn
