@@ -14,11 +14,8 @@ import showcaser
 
 client = commands.Bot(command_prefix='.', description='This an automated bot for r/worldbuilding discord server', pm_help= True)
 Client = discord.Client()
-version = "v1.1.6"
-Changelog = "-General QoL improvements for the filter command. \n" \
-            "-KazTron now outputs fresh joins to #bot-output. ( Bye bye mee6! :P) \n" \
-            "-Facelift for certain outputs. \n" \
-            "-Getting even closer to the new update! \n"
+version = "v1.2"
+Changelog = "-Reworked spotlight command to work with the new system. \n"
 manual = "https://github.com/Kazandaki/KazTron/wiki"
 github = "https://github.com/Kazandaki/KazTron"
 roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
@@ -152,85 +149,147 @@ async def spotlight(ctx):
 
                         list_nu = int(command[7:])-2
 
-                        if list_nu < 1:
-
-                            await client.say("List starts with number 3.")
-
-                        else:
+                        try:
                             lucky = showcaser.choose(list_nu)
+                        except:
+                            client.say("Error getting applicant from the list")
 
-                            user = discord.User(id=lucky[0])
+                        user = discord.User(id=lucky[2])
 
-                            usercolor = 0x80AAFF
-                            em = discord.Embed(color=usercolor)
-                            em.set_author(name=lucky[1])
-                            em.add_field(name="Author", value=user.mention, inline=True)
-                            em.add_field(name="Genre", value=lucky[2], inline=True)
-                            em.add_field(name="Premise", value=lucky[3], inline=True)
-                            if lucky[4] != "":
-                                em.add_field(name="Link to Project", value="[Click Here](%s)" % lucky[4], inline=True)
-                            else:
-                                pass
-                            await client.say(embed=em)
+                        usercolor = 0x80AAFF
+
+                        em = discord.Embed(color=usercolor)
+
+                        em.add_field(name="Author", value=user.mention, inline=False)
+                        em.add_field(name="Project Description", value=lucky[11], inline=False)
+
+                        if lucky[8] != "n/a":
+                            em.add_field(
+                                name="Are there any mature or controversial issues that you explore or discuss in your world?",
+                                value=lucky[8], inline=False)
+                        else:
+                            pass
+
+                        em.add_field(name="Keywords", value=lucky[5], inline=False)
+
+                        if lucky[14] != "":
+                            em.add_field(name="Project Art", value="[Click Here](%s)" % lucky[14], inline=True)
+                        else:
+                            pass
+
+                        if lucky[15] != "":
+                            em.add_field(name="Additional Content", value="[Click Here](%s)" % lucky[15], inline=True)
+                        else:
+                            pass
+
+                        await client.say(embed=em)
 
                     except:
                         pass
 
                 elif command == "roll":
+
                     lucky = showcaser.roll()
-                    user = discord.User(id=lucky[0])
+
+                    user = discord.User(id=lucky[2])
 
                     usercolor = 0x80AAFF
+
                     em = discord.Embed(color=usercolor)
-                    em.set_author(name=lucky[1])
-                    em.add_field(name="Author", value=user.mention, inline=True)
-                    em.add_field(name="Genre", value=lucky[2], inline=True)
-                    em.add_field(name="Premise", value=lucky[3], inline=True)
-                    if lucky[4] != "":
-                        em.add_field(name="Link to Project", value="[Click Here](%s)" % lucky[4], inline=True)
+
+                    em.add_field(name="Author", value=user.mention, inline=False)
+                    em.add_field(name="Project Description", value=lucky[11], inline=False)
+
+                    if lucky[8] != "n/a":
+                        em.add_field(
+                            name="Are there any mature or controversial issues that you explore or discuss in your world?",
+                            value=lucky[8], inline=False)
                     else:
                         pass
+
+                    em.add_field(name="Keywords", value=lucky[5], inline=False)
+
+                    if lucky[14] != "":
+                        em.add_field(name="Project Art", value="[Click Here](%s)" % lucky[14], inline=True)
+                    else:
+                        pass
+
+                    if lucky[15] != "":
+                        em.add_field(name="Additional Content", value="[Click Here](%s)" % lucky[15], inline=True)
+                    else:
+                        pass
+
                     await client.say(embed=em)
 
 
                 elif command == "current":
                     if lucky:
-                        user = discord.User(id=lucky[0])
+                        user = discord.User(id=lucky[2])
 
                         usercolor = 0x80AAFF
+
                         em = discord.Embed(color=usercolor)
-                        em.set_author(name=lucky[1])
-                        em.add_field(name="Author", value=user.mention, inline=True)
-                        em.add_field(name="Genre", value=lucky[2], inline=True)
-                        em.add_field(name="Premise", value=lucky[3], inline=True)
-                        if lucky[4] != "":
-                            em.add_field(name="Link to Project", value="[Click Here](%s)" % lucky[4], inline=True)
+
+                        em.add_field(name="Author", value=user.mention, inline=False)
+                        em.add_field(name="Project Description", value=lucky[11], inline=False)
+
+                        if lucky[8] != "n/a":
+                            em.add_field(
+                                name="Are there any mature or controversial issues that you explore or discuss in your world?",
+                                value=lucky[8], inline=False)
                         else:
                             pass
-                        await client.say(embed=em)
 
+                        em.add_field(name="Keywords", value=lucky[5], inline=False)
+
+                        if lucky[14] != "":
+                            em.add_field(name="Project Art", value="[Click Here](%s)" % lucky[14], inline=True)
+                        else:
+                            pass
+
+                        if lucky[15] != "":
+                            em.add_field(name="Additional Content", value="[Click Here](%s)" % lucky[15], inline=True)
+                        else:
+                            pass
+
+                        await client.say(embed=em)
                     else:
                         await client.say("Currently no candidate for world showcasing.")
 
                 elif command == "showcase":
                     if lucky:
 
-                        user = discord.User(id=lucky[0])
+                        user = discord.User(id=lucky[2])
 
                         usercolor = 0x80AAFF
+
                         em = discord.Embed(color=usercolor)
-                        em.set_author(name=lucky[1])
-                        em.add_field(name="Author", value=user.mention, inline=True)
-                        em.add_field(name="Genre", value=lucky[2], inline=True)
-                        em.add_field(name="Premise", value=lucky[3], inline=True)
-                        if lucky[4] != "":
-                            em.add_field(name="Link to Project", value="[Click Here](%s)" % lucky[4], inline=True)
+
+                        em.add_field(name="Author", value=user.mention, inline=False)
+                        em.add_field(name="Project Description", value=lucky[11], inline=False)
+
+                        if lucky[8] != "n/a":
+                            em.add_field(
+                                name="Are there any mature or controversial issues that you explore or discuss in your world?",
+                                value=lucky[8], inline=False)
                         else:
                             pass
 
-                        message = "Here is the next spotlight host ({0.mention}) and a bit about their project:"
+                        em.add_field(name="Keywords", value=lucky[5], inline=False)
 
-                        await client.send_message(showcaseChannel,message.format(user))
+                        if lucky[14] != "":
+                            em.add_field(name="Project Art", value="[Click Here](%s)" % lucky[14], inline=True)
+                        else:
+                            pass
+
+                        if lucky[15] != "":
+                            em.add_field(name="Additional Content", value="[Click Here](%s)" % lucky[15], inline=True)
+                        else:
+                            pass
+
+                        message = "Here is the next spotlight host and a bit about their project:"
+
+                        await client.send_message(showcaseChannel,message)
                         await client.send_message(showcaseChannel,embed=em)
 
                     else:
