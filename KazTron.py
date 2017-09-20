@@ -14,8 +14,8 @@ import showcaser
 
 client = commands.Bot(command_prefix='.', description='This an automated bot for r/worldbuilding discord server', pm_help= True)
 Client = discord.Client()
-version = "v1.2"
-Changelog = "-Reworked spotlight command to work with the new system. \n"
+version = "v1.2.1"
+Changelog = "-Bug fixes and minor changes to the spotlight command. \n"
 manual = "https://github.com/Kazandaki/KazTron/wiki"
 github = "https://github.com/Kazandaki/KazTron"
 roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
@@ -149,10 +149,7 @@ async def spotlight(ctx):
 
                         list_nu = int(command[7:])-2
 
-                        try:
-                            lucky = showcaser.choose(list_nu)
-                        except:
-                            client.say("Error getting applicant from the list")
+                        lucky = showcaser.choose(list_nu)
 
                         user = discord.User(id=lucky[2])
 
@@ -161,6 +158,7 @@ async def spotlight(ctx):
                         em = discord.Embed(color=usercolor)
 
                         em.add_field(name="Author", value=user.mention, inline=False)
+                        em.add_field(name="Project Name", value=lucky[4], inline=False)
                         em.add_field(name="Project Description", value=lucky[11], inline=False)
 
                         if lucky[8] != "n/a":
@@ -172,12 +170,12 @@ async def spotlight(ctx):
 
                         em.add_field(name="Keywords", value=lucky[5], inline=False)
 
-                        if lucky[14] != "":
+                        if lucky[14] and lucky[14].lower() != "n/a":
                             em.add_field(name="Project Art", value="[Click Here](%s)" % lucky[14], inline=True)
                         else:
                             pass
 
-                        if lucky[15] != "":
+                        if lucky[15] and lucky[14].lower() != "n/a":
                             em.add_field(name="Additional Content", value="[Click Here](%s)" % lucky[15], inline=True)
                         else:
                             pass
@@ -185,7 +183,8 @@ async def spotlight(ctx):
                         await client.say(embed=em)
 
                     except:
-                        pass
+                        await client.say("Error choosing a specific candidate. "
+                                         "The list number might be out of range or the message might be exceeding the character limit (2000).")
 
                 elif command == "roll":
 
@@ -198,6 +197,7 @@ async def spotlight(ctx):
                     em = discord.Embed(color=usercolor)
 
                     em.add_field(name="Author", value=user.mention, inline=False)
+                    em.add_field(name="Project Name", value=lucky[4], inline=False)
                     em.add_field(name="Project Description", value=lucky[11], inline=False)
 
                     if lucky[8] != "n/a":
@@ -231,6 +231,7 @@ async def spotlight(ctx):
                         em = discord.Embed(color=usercolor)
 
                         em.add_field(name="Author", value=user.mention, inline=False)
+                        em.add_field(name="Project Name", value=lucky[4], inline=False)
                         em.add_field(name="Project Description", value=lucky[11], inline=False)
 
                         if lucky[8] != "n/a":
@@ -266,6 +267,7 @@ async def spotlight(ctx):
                         em = discord.Embed(color=usercolor)
 
                         em.add_field(name="Author", value=user.mention, inline=False)
+                        em.add_field(name="Project Name", value=lucky[4], inline=False)
                         em.add_field(name="Project Description", value=lucky[11], inline=False)
 
                         if lucky[8] != "n/a":
