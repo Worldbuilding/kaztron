@@ -175,7 +175,7 @@ async def spotlight(ctx):
                         else:
                             pass
 
-                        if lucky[15] and lucky[14].lower() != "n/a":
+                        if lucky[15] and lucky[15].lower() != "n/a":
                             em.add_field(name="Additional Content", value="[Click Here](%s)" % lucky[15], inline=True)
                         else:
                             pass
