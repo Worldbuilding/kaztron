@@ -7,5 +7,7 @@
   "DiceChannel":"Channel ID here",
   "TestChannel":"Channel ID here",
   "AuthorID" : "Bot master user ID here",
-  "ShowcaseChannel" : "Channel ID here"
+  "ShowcaseChannel" : "Channel ID here",
+  "LogLevel" : "INFO",
+  "LogFile" : "kaztron.log"
 }
