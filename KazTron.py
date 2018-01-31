@@ -14,8 +14,8 @@ import showcaser
 
 client = commands.Bot(command_prefix='.', description='This an automated bot for r/worldbuilding discord server', pm_help= True)
 Client = discord.Client()
-version = "v1.2.1"
-Changelog = "-Bug fixes and minor changes to the spotlight command. \n"
+version = "v1.2.4"
+Changelog = "- .wb command tweaked"
 manual = "https://github.com/Kazandaki/KazTron/wiki"
 github = "https://github.com/Kazandaki/KazTron"
 roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
@@ -36,7 +36,7 @@ showcaseChannel = discord.Object(id=config.showcase)
 
 @client.event
 async def on_ready():
-    await client.change_presence(game=discord.Game(name='with the fate of humanity'))
+    await client.change_presence(game=discord.Game(name='Ew people'))
     print('\n')
     print('Logged in as')
     print(client.user.name)
@@ -279,12 +279,12 @@ async def spotlight(ctx):
 
                         em.add_field(name="Keywords", value=lucky[5], inline=False)
 
-                        if lucky[14] != "":
+                        if lucky[14] and lucky[14].lower() != "n/a":
                             em.add_field(name="Project Art", value="[Click Here](%s)" % lucky[14], inline=True)
                         else:
                             pass
 
-                        if lucky[15] != "":
+                        if lucky[15] and lucky[15].lower() != "n/a":
                             em.add_field(name="Additional Content", value="[Click Here](%s)" % lucky[15], inline=True)
                         else:
                             pass
@@ -533,17 +533,61 @@ async def on_member_join(member):
 async def on_voice_state_update(before, after):
     try:
         server = after.server
-        if (str(after.voice_channel) == "#voice"):
-            await client.add_roles(after,discord.utils.get(server.roles, name='in voice'))
+        VoiceList = ["voice", "Patricians", "Wild West"]
+        if (str(after.voice_channel) in VoiceList):
+            await client.add_roles(after,discord.utils.get(server.roles, name='in_voice'))
             print("Given 'in voice' role to %s \n" % str(after))
         elif after.voice_channel == None:
-            await client.remove_roles(after,discord.utils.get(server.roles, name='in voice'))
+            await client.remove_roles(after,discord.utils.get(server.roles, name='in_voice'))
             print("Taken 'in voice' role from %s \n" % str(after))
         else:
             pass
     except:
         print("Error K800")
 
+@client.command(pass_context = True, description="Mod only command, posts image")
+async def wb(ctx):
+    try:
+        wbImages = ["https://cdn.discordapp.com/attachments/221333052629057536/376535932003811328/image.jpg",
+                   "https://imgur.com/Dajz8Re",
+                   "https://cdn.discordapp.com/attachments/221333052629057536/380517117759324161/worldbuilding_2.jpg",
+                   "https://cdn.discordapp.com/attachments/221333052629057536/380520533529198594/unknown.png",
+                   "https://i.gyazo.com/99ec60315371d5f4b62fc31175bb08fa.png",
+                    "https://cdn.discordapp.com/attachments/193833682203705345/380536568365973504/please_talk_about_worldbuilding.jpg",
+                    "https://cdn.discordapp.com/attachments/221333052629057536/386627117271613442/Talk_About_Worldbuilding.jpg"]
+
+        authors = ["Teeteegone",
+                   "Urmille",
+                   "Yazuki",
+                   "Shagomir",
+                   "ProkhorVLG",
+                   "Caba111",
+                   "Yazuki"]
+
+        if (len(ctx.message.content) == 5):
+            chosenImage = (int(ctx.message.content[4:])) - 1
+
+            await client.say(wbImages[chosenImage])
+            await client.delete_message(ctx.message)
+            out = "Artist Credit: ", authors[chosenImage]
+            await client.say(out)
+
+        elif checkmod(config.modteam,ctx.message) == True:
+            #pick a random number and set it to print
+            rand = random.randint(0,len(wbImages))
+
+            #print to chat
+            await client.say(wbImages[rand])
+            await client.delete_message(ctx.message)
+            out = ("Artist Credit: ", authors[rand])
+            await client.say(out)
+
+            #if user isn't a mod    
+        else:
+            await client.say("This command is only available for mods and admins.")
+    except:
+        print("Error K900")
+    
 loop = asyncio.get_event_loop()
 
 ## init client ##
