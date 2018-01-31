@@ -27,9 +27,10 @@ import showcaser
 __version__ = "1.2.5"
 
 changelog = "- Improved logging facilities, internal refactors for reliability and code cleanliness.\n"
-manual = "https://github.com/Kazandaki/KazTron/wiki"
-github = "https://github.com/Kazandaki/KazTron"
-roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
+url_manual = "https://github.com/Kazandaki/KazTron/wiki"
+url_github = "https://github.com/Kazandaki/KazTron"
+url_roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
+url_spotlight= "https://docs.google.com/spreadsheets/d/1YSwx6AJFfOEzIwTAeb71YXEeM0l34mUt6OvyhxTwQis/edit?usp=sharing"
 
 #
 # init
@@ -659,9 +660,14 @@ async def info(ctx):
     em = discord.Embed(color=usercolor)
     em.set_author(name="KazTron %s" % __version__)
     em.add_field(name="Changelog", value=changelog, inline=False)
-    em.add_field(name="Instruction Manual", value="[Click Here](%s)"%manual, inline=True)
-    em.add_field(name="GitHub Page", value="[Click Here](%s)"%github, inline=True)
-    em.add_field(name="Development Roadmap", value="[Click Here](%s)"%roadmap, inline=True)
+    em.add_field(name="Instruction Manual",
+        value="[Click Here]({})".format(url_manual), inline=True)
+    em.add_field(name="GitHub Page",
+        value="[Click Here]({})".format(url_github), inline=True)
+    em.add_field(name="Development Roadmap",
+        value="[Click Here]({})".format(url_roadmap), inline=True)
+    em.add_field(name="Spotlight Applications",
+        value="[Click Here]({})".format(url_spotlight), inline=True)
     await client.say(embed=em)
 
 
