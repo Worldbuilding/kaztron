@@ -20,6 +20,8 @@ dicechannel = ""
 testchannel = ""
 authorID = ""
 showcase = ""
+showcase_spreadsheet_id = ""
+showcase_spreadsheet_range = ""
 loglevel = DEFAULTS['LogLevel']
 logfile = DEFAULTS['LogFile']
 
@@ -33,7 +35,9 @@ def data_import():
     # pls refactor me. end the pain.
     global token, modteam, filterdelete, filterwarn, warnchannel, \
            outputchannel, welcomechannel, ruleschannel, dicechannel, \
-           testchannel, authorID, showcase, loglevel, logfile
+           testchannel, authorID, showcase, \
+           showcase_spreadsheet_id, showcase_spreadsheet_range, \
+           loglevel, logfile
 
     log_level_map = {
         'CRITICAL' : logging.CRITICAL,
@@ -58,6 +62,8 @@ def data_import():
     testchannel = config_data["TestChannel"]
     authorID = config_data["AuthorID"]
     showcase = config_data["ShowcaseChannel"]
+    showcase_spreadsheet_id = config_data["ShowcaseSpreadsheetId"]
+    showcase_spreadsheet_range = config_data["ShowcaseSpreadsheetRange"]
 
     loglevel = log_level_map.get(config_data["LogLevel"].upper(), DEFAULTS['LogLevel'])
     logfile = config_data["LogFile"] if config_data["LogFile"] else DEFAULTS['LogFile']

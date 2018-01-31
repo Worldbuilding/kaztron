@@ -1,4 +1,5 @@
 {
+  "name": "KazTronExampleBot",
   "token": "Bot token here",
   "modteam": ["Moderator role 1", "Moderator role 2", "etc."],
   "WarnChannel":"Channel ID here",
@@ -9,6 +10,8 @@
   "TestChannel":"Channel ID here",
   "AuthorID" : "Bot master user ID here",
   "ShowcaseChannel" : "Channel ID here",
+  "ShowcaseSpreadsheetId": "Google Sheets ID",
+  "ShowcaseSpreadsheetRange": "Form Responses 1!A2:Q",
   "LogLevel" : "INFO",
   "LogFile" : "kaztron.log"
 }

@@ -13,6 +13,8 @@ from oauth2client.client import UnknownClientSecretsFlowError # for export - don
 from oauth2client.clientsecrets import InvalidClientSecretsError # for export - don't clean up
 from oauth2client.file import Storage
 
+import config
+
 logger = logging.getLogger('kaztron.showcaser')
 
 try:
@@ -25,7 +27,6 @@ except ImportError:
 # at ~/.credentials/sheets.googleapis.com-python-quickstart.json
 SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = 'client_secret.json'
-APPLICATION_NAME = 'KazTron'
 
 def get_credentials():
     """Gets valid user credentials from storage.
@@ -47,7 +48,7 @@ def get_credentials():
     credentials = store.get()
     if not credentials or credentials.invalid:
         flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = APPLICATION_NAME
+        flow.user_agent = config.name
         if flags:
             credentials = tools.run_flow(flow, store, flags)
         else: # Needed only for compatibility with Python 2.6
@@ -65,11 +66,9 @@ def main():
     service = discovery.build('sheets', 'v4', http=http,
                               discoveryServiceUrl=discoveryUrl)
 
-    # TODO: Why isn't this in the config??? - Lao
-    spreadsheetId = 'Spreadsheet ID here'
-    rangeName = 'Range Here'
     result = service.spreadsheets().values().get(
-        spreadsheetId=spreadsheetId, range=rangeName).execute()
+        spreadsheetId=config.showcase_spreadsheet_id,
+        range=config.showcase_spreadsheet_range).execute()
     values = result.get('values', [])
 
     if not values:

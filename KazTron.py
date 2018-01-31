@@ -120,6 +120,7 @@ def mod_only():
     """
     def predicate(ctx):
         if check_role(config.modteam, ctx.message):
+            logger.info("Validated {!s} as moderator".format(ctx.message.author))
             return True
         else:
             raise ModOnlyError("Only moderators may use this command.")
@@ -146,7 +147,7 @@ def tb_log_str(exception) -> str:
     """
     Format an exception as a full traceback.
     """
-    return "\n".join(traceback.format_exception(None, exception, exception.__traceback__))
+    return "".join(traceback.format_exception(None, exception, exception.__traceback__))
 
 
 #
@@ -487,7 +488,8 @@ async def spotlight_on_error(exc, ctx):
         root_exc = exc.__cause__ if exc.__cause__ is not None else exc
 
         if isinstance(root_exc, showcaser.Error): # any Google API errors
-            clogger.exception("Google API error while processing command: {}".format(cmd_string))
+            clogger.exception("Google API error while processing command: {}\n\n{}"
+                .format(cmd_string, tb_log_str(root_exc)))
             await client.send_message(ctx.message.channel,
                 "An error occurred while communicating with the Google API. "
                 "See bot output for details.")
@@ -500,7 +502,8 @@ async def spotlight_on_error(exc, ctx):
         elif isinstance(root_exc,
                 (showcaser.UnknownClientSecretsFlowError, showcaser.InvalidClientSecretsError)
                 ): # Auth credentials file errors
-            clogger.exception("Problem with Google API credentials file: {}".format(cmd_string))
+            clogger.error("Problem with Google API credentials file: {}\n\n{}"
+                .format(cmd_string, tb_log_str(root_exc)))
             await client.send_message(ctx.message.channel,
                 "Problem with the stored Google API credentials. "
                 "See bot output for details.")
