@@ -219,16 +219,24 @@ async def on_command_error(exc, ctx, force=False):
             .format(ctx.command.name, exc.retry_after))
 
     elif isinstance(exc, commands.CommandInvokeError):
-        if isinstance(exc.__cause__, KeyboardInterrupt):
+        root_exc = exc.__cause__ if exc.__cause__ is not None else exc
+        if isinstance(root_exc, KeyboardInterrupt):
             logger.warn("Interrupted by user (SIGINT)")
             raise
+        elif isinstance(root_exc, discord.HTTPException): # API errors
+            err_msg = 'While executing {c}\n\nDiscord API error {e!s}'\
+                .format(c=cmd_string, e=root_exc)
+            clogger.error(err_msg + "\n\n{}".format(tb_log_str(root_exc)))
+            await client.send_message(outputChannel,
+                "[ERROR] " + err_msg + "\n\nSee log for details")
+        else:
+            clogger.error("An error occurred while processing the command: {}\n\n{}"
+                .format(cmd_string, tb_log_str(root_exc)))
+            await client.send_message(outputChannel,
+                "[ERROR] While executing {}\n\n{}\n\nSee logs for details"
+                .format(cmd_string, exc_log_str(root_exc)))
 
-        root_exc = exc.__cause__ if exc.__cause__ is not None else exc
-        clogger.error("An error occurred while processing the command: {}\n\n{}"
-            .format(cmd_string, tb_log_str(root_exc)))
-        await client.send_message(outputChannel,
-            "[ERROR] While executing {}\n\n{}\n\nSee logs for details"
-            .format(cmd_string, exc_log_str(root_exc)))
+        # In all cases (except if return early/re-raise)
         await client.send_message(ctx.message.channel,
             "An error occurred! Details have been logged. Let a mod know so we can investigate.")
 
@@ -810,17 +818,21 @@ async def find(ctx):
     clogger.info("find(): user lookup: {}={!s}".format(command, user))
     await client.say("ID {} is user {}".format(command, user.mention))
 
-## Welcomes a newly joined member on #Worldbuilding and outputs on the output channel##
+
 @client.event
 async def on_member_join(member):
+    """
+    On member join, welcome the member and log their join to the output channel.
+    """
     channel = discord.Object(id=config.welcomechannel)
-    output_channel = discord.Object(id=outputChannel)
+    rules_channel = client.get_channel(id=config.ruleschannel)
     server = member.server
-    fmt = 'Welcome {0.mention} to {1.name}! Please read the server rules at #welcome-rules-etc'
+    fmt = 'Welcome {0.mention} to {1.name}! Please read the server rules at {2}'
     out_fmt = "{0.mention} has joined the server."
     clogger.info("New user welcomed: %s \n" % str(member))
-    await client.send_message(channel, fmt.format(member, server))
-    await client.send_message(output_channel, out_fmt.format(member))
+    await client.send_message(channel, fmt.format(member, server,
+        rules_channel.mention if rules_channel else "#welcome-rules-etc"))
+    await client.send_message(outputChannel, out_fmt.format(member))
 
 ## Assigns "in voice" role to members who join #voice voice channel ##
 @client.event

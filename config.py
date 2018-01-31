@@ -15,6 +15,7 @@ warnchannel = ""
 deletechannel = ""
 outputchannel = ""
 welcomechannel = ""
+ruleschannel = ""
 dicechannel = ""
 testchannel = ""
 authorID = ""
@@ -31,8 +32,8 @@ def data_import():
     """
     # pls refactor me. end the pain.
     global token, modteam, filterdelete, filterwarn, warnchannel, \
-           outputchannel, welcomechannel, dicechannel, testchannel, authorID, \
-           showcase, loglevel, logfile
+           outputchannel, welcomechannel, ruleschannel, dicechannel, \
+           testchannel, authorID, showcase, loglevel, logfile
 
     log_level_map = {
         'CRITICAL' : logging.CRITICAL,
@@ -52,6 +53,7 @@ def data_import():
     warnchannel = config_data["WarnChannel"]
     outputchannel = config_data["OutputChannel"]
     welcomechannel = config_data["WelcomeChannel"]
+    ruleschannel = config_data["RulesChannel"]
     dicechannel = config_data["DiceChannel"]
     testchannel = config_data["TestChannel"]
     authorID = config_data["AuthorID"]
