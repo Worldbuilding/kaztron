@@ -1,6 +1,6 @@
 {
   "token": "Bot token here",
-  "modteam": ["Moderator role names as a list here"],
+  "modteam": ["Moderator role 1", "Moderator role 2", "etc."],
   "WarnChannel":"Channel ID here",
   "OutputChannel":"Channel ID here",
   "WelcomeChannel":"Channel ID here",

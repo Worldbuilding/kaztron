@@ -8,3 +8,4 @@ requests==2.5.0
 rsa==3.4.2
 six==1.11.0
 uritemplate==3.0.0
+discord.py==0.16.12
