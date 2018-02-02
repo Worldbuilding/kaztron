@@ -1,0 +1,31 @@
+{
+  "discord": {
+    "mod_roles": ["Admin", "Moderators", "Bot"],
+    "playing": "with the fate of humanity",
+    "bot_owner_id" : "83037467598393344",
+    "token": "MzYwNDkxNjMxMzk4NDg2MDE2.DKWXhA.G-QFNQ9LsF8M3WFsWYq3hrYKFXU",
+    "channel_output": "333622116513742850",
+    "channel_test": "333622077389144064"
+  },
+  "core": {
+    "name": "KazTronTest",
+    "log_level": "DEBUG",
+    "log_file": "kaztron.log"
+  },
+  "showcase": {
+    "channel": "333622218246586369",
+    "audience_role": "Spotlight Audience",
+    "spreadsheet_id": "1YSwx6AJFfOEzIwTAeb71YXEeM0l34mUt6OvyhxTwQis",
+    "spreadsheet_range": "Form Responses 1!A2:Q"
+  },
+  "welcome": {
+    "channel_welcome": "333618861028933632",
+    "channel_rules": "408373827106504725"
+  },
+  "filter": {
+    "channel_warning": "333622139502460938"
+  },
+  "dice": {
+    "channel_dice": "333622218246586369"
+  }
+}

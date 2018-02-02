@@ -1,32 +1,32 @@
-
-from __future__ import print_function
-import httplib2
+import logging
 import os
 import random
-import logging
 
+import httplib2
 from googleapiclient import discovery
-from googleapiclient.errors import *
-from oauth2client import client
-from oauth2client import tools
-from oauth2client.client import UnknownClientSecretsFlowError # for export - don't clean up
-from oauth2client.clientsecrets import InvalidClientSecretsError # for export - don't clean up
+from oauth2client import client, tools
 from oauth2client.file import Storage
 
-import config
+from kaztron.config import get_kaztron_config
 
 logger = logging.getLogger('kaztron.showcaser')
 
 try:
     import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
 except ImportError:
+    argparse = None
+
+if argparse:
+    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+else:
     flags = None
+
 
 # If modifying these scopes, delete your previously saved credentials
 # at ~/.credentials/sheets.googleapis.com-python-quickstart.json
 SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = 'client_secret.json'
+
 
 def get_credentials():
     """Gets valid user credentials from storage.
@@ -51,20 +51,22 @@ def get_credentials():
         flow.user_agent = config.get("core", "name")
         if flags:
             credentials = tools.run_flow(flow, store, flags)
-        else: # Needed only for compatibility with Python 2.6
+        else:  # Needed only for compatibility with Python 2.6
             credentials = tools.run(flow, store)
         logger.info('Storing credentials to ' + credential_path)
     return credentials
 
-def main():
-    list = []
 
+def main():
+    rows = []
+
+    config = get_kaztron_config()
     credentials = get_credentials()
     http = credentials.authorize(httplib2.Http())
-    discoveryUrl = ('https://sheets.googleapis.com/$discovery/rest?'
+    discovery_url = ('https://sheets.googleapis.com/$discovery/rest?'
                     'version=v4')
     service = discovery.build('sheets', 'v4', http=http,
-                              discoveryServiceUrl=discoveryUrl)
+                              discoveryServiceUrl=discovery_url)
 
     result = service.spreadsheets().values().get(
         spreadsheetId=config.get("showcase", "spreadsheet_id"),
@@ -75,18 +77,20 @@ def main():
         logger.warn('No data found in showcaser spreadsheet.')
     else:
         for row in values:
-            list.append(row)
+            rows.append(row)
 
-    return list
+    return rows
+
 
 def roll():
-    list = main()
-    choice = random.choice(list)
+    rows = main()
+    choice = random.choice(rows)
     while choice[16] != "Yes":
-        choice = random.choice(list)
+        choice = random.choice(rows)
     return choice
 
+
 def choose(num):
-    list = main()
-    choice = list[num]
+    rows = main()
+    choice = rows[num]
     return choice
