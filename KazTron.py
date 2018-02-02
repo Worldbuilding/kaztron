@@ -12,7 +12,7 @@ import time
 import discord
 from discord.ext import commands
 
-import config
+from config import make_kaztron_config, make_filter_config, log_level
 import wordfilter
 import showcaser
 
@@ -24,23 +24,35 @@ import showcaser
 # Application data
 #
 
-__version__ = "1.2.5"
+__version__ = "1.2.6"
 
-changelog = "- Improved logging facilities, internal refactors for reliability and code cleanliness.\n"
+changelog = "- Internal architectural improvements: configuration handling\n"
 url_manual = "https://github.com/Kazandaki/KazTron/wiki"
 url_github = "https://github.com/Kazandaki/KazTron"
 url_roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
 url_spotlight= "https://docs.google.com/spreadsheets/d/1YSwx6AJFfOEzIwTAeb71YXEeM0l34mUt6OvyhxTwQis/edit?usp=sharing"
+
+cfg_defaults = {
+    "discord": {
+        "mod_roles": ["Admin", "Moderator", "Bot"]
+    },
+        "core": {
+        "name": "UnnamedBot",
+        "log_level": "INFO",
+        "log_file": "kaztron.log"
+    }
+}
 
 #
 # init
 #
 
 def setup_logging(logger, config):
-    logger.setLevel(config.loglevel)
+    cfg_level = config.get("core", "log_level", converter=log_level)
+    logger.setLevel(cfg_level)
 
     # File handler
-    fh = logging.FileHandler(config.logfile)
+    fh = logging.FileHandler(config.get("core", "log_file"))
     fh_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s [in %(pathname)s:%(lineno)d]')
     fh.setFormatter(fh_formatter)
     logger.addHandler(fh)
@@ -48,25 +60,25 @@ def setup_logging(logger, config):
     # Console handler - fixed log level
     ch = logging.StreamHandler()
     ch_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s')
-    ch.setLevel(max(config.loglevel, logging.INFO)) # never below INFO - avoid cluttering console
+    ch.setLevel(max(cfg_level, logging.INFO)) # never below INFO - avoid cluttering console
     ch.setFormatter(ch_formatter)
     logger.addHandler(ch)
 
 client = commands.Bot(command_prefix='.',
-                      description='This an automated bot for r/worldbuilding discord server',
+                      description='This an automated bot for the /r/worldbuilding discord server',
                       pm_help=True)
 Client = discord.Client()
 
 # load configuration
 try:
-    config.data_import()
+    config = make_kaztron_config(cfg_defaults)
 except OSError as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
 
-warnCHID = config.warnchannel
-showcaseChannel = discord.Object(id=config.showcase)
-outputChannel = discord.Object(id=config.outputchannel)
+dest_output = discord.Object(id=config.get('discord', 'channel_output'))
+dest_showcase = discord.Object(id=config.get('showcase', 'channel'))
+id_warn_channel = config.get('filter', 'channel_warning')
 
 # setup logging
 setup_logging(logging.getLogger(), config) # setup the root logger
@@ -75,7 +87,7 @@ clogger = logging.getLogger('kaztron.cmd')
 
 # load filter dictionary data
 try:
-    config.dict_import()
+    filter_cfg = make_filter_config()
 except OSError as e:
     logger.error(str(e))
     sys.exit(1)
@@ -119,7 +131,7 @@ def mod_only():
     From a given context, check if a command was sent by a mod/admin.
     """
     def predicate(ctx):
-        if check_role(config.modteam, ctx.message):
+        if check_role(config.get("discord", "mod_roles", []), ctx.message):
             logger.info("Validated {!s} as moderator".format(ctx.message.author))
             return True
         else:
@@ -158,6 +170,10 @@ def tb_log_str(exception) -> str:
 async def on_ready():
     logger.debug("on_ready")
 
+    playing = config.get('discord', 'playing', default="")
+    if playing:
+        await client.change_presence(game=discord.Game(name=playing))
+
     startup_info = (
         "Logged in as {} (id:{})".format(client.user.name, client.user.id),
         "KazTron version {}".format(__version__),
@@ -183,7 +199,7 @@ async def on_error(event, *args, **kwargs):
         ', '.join(repr(arg) for arg in args),
         ', '.join(key + '=' + repr(value) for key, value in kwargs.items()))
     logger.exception(log_msg)
-    await client.send_message(outputChannel,
+    await client.send_message(dest_output,
         "[ERROR] {} - see logs for details".format(exc_log_str(exc_info[1])))
 
     try:
@@ -228,12 +244,12 @@ async def on_command_error(exc, ctx, force=False):
             err_msg = 'While executing {c}\n\nDiscord API error {e!s}'\
                 .format(c=cmd_string, e=root_exc)
             clogger.error(err_msg + "\n\n{}".format(tb_log_str(root_exc)))
-            await client.send_message(outputChannel,
+            await client.send_message(dest_output,
                 "[ERROR] " + err_msg + "\n\nSee log for details")
         else:
             clogger.error("An error occurred while processing the command: {}\n\n{}"
                 .format(cmd_string, tb_log_str(root_exc)))
-            await client.send_message(outputChannel,
+            await client.send_message(dest_output,
                 "[ERROR] While executing {}\n\n{}\n\nSee logs for details"
                 .format(cmd_string, exc_log_str(root_exc)))
 
@@ -250,7 +266,7 @@ async def on_command_error(exc, ctx, force=False):
     elif isinstance(exc, ModOnlyError):
         err_msg = "Unauthorised user for this command (not a moderator): {!r}".format(cmd_string)
         clogger.warn(err_msg)
-        await client.send_message(outputChannel, '[WARNING] ' + err_msg)
+        await client.send_message(dest_output, '[WARNING] ' + err_msg)
         await client.send_message(ctx.message.channel,
             "Only mods can use that command.")
 
@@ -303,7 +319,7 @@ async def on_command_error(exc, ctx, force=False):
         clogger.exception("Unknown exception occurred")
         await client.send_message(ctx.message.channel,
             "An error occurred! Details have been logged. Let a mod know so we can investigate.")
-        await client.send_message(outputChannel,
+        await client.send_message(dest_output,
             "[ERROR] Unknown error while trying to process command {}\nError: {!s}\n\nSee logs for details".format(cmd_string, exc))
 
 
@@ -313,7 +329,7 @@ async def on_command_error(exc, ctx, force=False):
 async def request(ctx):
     clogger.debug("request(): {}".format(message_log_str(ctx.message)))
     author = ctx.message.author
-    bot_author = discord.User(id=config.authorID)
+    bot_author = discord.User(id=config.get("discord", "bot_owner_id", -1))
     message = "Feature request from {!s}: {!s}".format(
         ctx.message.author,
         str(ctx.message.content).split(' ', 1)[1])
@@ -325,23 +341,26 @@ async def request(ctx):
 @mod_only()
 async def switch(ctx):
     """
-    Switch the bot's message filter warning channel between warnchannel
-    and the general outputchannel (from config).
+    Switch the bot's message filter warning channel between the warning channel
+    and the general output channel (from config).
     """
     clogger.debug("switch()")
-    global warnCHID
-    if warnCHID == config.warnchannel:
-        new_channel_id = config.outputchannel
+    global id_warn_channel
+    output_channel_id = config.get("discord", "channel_output")
+    cfg_warn_channel_id = config.get("filter", "channel_warning")
+
+    if id_warn_channel == cfg_warn_channel_id:
+        new_channel_id = output_channel_id
     else:
-        new_channel_id = config.warnchannel
+        new_channel_id = cfg_warn_channel_id
 
     new_channel = client.get_channel(new_channel_id)
     if new_channel is not None:
-        warnCHID = new_channel_id
+        id_warn_channel = new_channel_id
         clogger.info("switch(): Changed filter warning channel to #{}".format(new_channel.name))
         await client.say("Changed the filter warning channel to {}".format(new_channel.mention))
     else:
-        msg = 'Cannot change filter warning channel. Target channel {:d} does not exist.".format(new_channel_id)'
+        msg = 'Cannot change filter warning channel. Target channel id {} does not exist.'.format(new_channel_id)
         clogger.error("switch(): " + msg)
         await client.say("Error: " + msg)
 
@@ -350,13 +369,13 @@ async def on_message(message):
     """
     Message handler. Check all non-mod messages for filtered words.
     """
-    if not check_role(config.modteam, message): # don't check mod messages
+    if not check_role(config.get("discord", "mod_roles", []), message): # don't check mod messages
         # way too verbose
         # clogger.debug("on_message(): checking for filtered words")
 
         message_string = str(message.content)
 
-        if wordfilter.filter_func(config.filterdelete,message_string) == True:
+        if wordfilter.filter_func(filter_cfg.get("filter", "delete"), message_string) == True:
             clogger.info("Found filter match (auto-delete) in {}".format(message_log_str(message)))
             clogger.debug("Deleting message")
             await client.delete_message(message)
@@ -371,9 +390,9 @@ async def on_message(message):
             # TODO: show rule matched
             em.add_field(name="Content", value=message_string, inline=True)
 
-            await client.send_message(discord.Object(id=warnCHID), embed=em)
+            await client.send_message(discord.Object(id=id_warn_channel), embed=em)
 
-        elif wordfilter.filter_func(config.filterwarn,message_string) == True:
+        elif wordfilter.filter_func(filter_cfg.get("filter", "warn"), message_string) == True:
 
             clogger.info("Found filter match (auto-warn) in {}".format(message_log_str(message)))
             clogger.debug("Preparing and sending warning")
@@ -387,7 +406,7 @@ async def on_message(message):
             # TODO: show rule matched
             em.add_field(name="Content", value=message_string, inline=True)
 
-            await client.send_message(discord.Object(id=warnCHID), embed=em)
+            await client.send_message(discord.Object(id=id_warn_channel), embed=em)
 
     await client.process_commands(message)
 
@@ -419,8 +438,10 @@ async def spotlight(ctx):
     if command == "join":
         clogger.debug("spotlight(): audience role request from {!s}".format(ctx.message.author))
         server = ctx.message.server
-        if discord.utils.get(ctx.message.server.roles, name='Spotlight Audience') in ctx.message.author.roles:
-            await client.remove_roles(ctx.message.author, discord.utils.get(server.roles, name='Spotlight Audience'))
+        audience_role_name = config.get("showcase", "audience_role")
+        audience_role = discord.utils.get(server.roles, name=audience_role_name)
+        if audience_role in ctx.message.author.roles:
+            await client.remove_roles(ctx.message.author, audience_role)
             await client.delete_message(ctx.message)
             await client.send_message(ctx.message.author,
                 "You are no longer part of the world spotlight audience. You will not be pinged "
@@ -428,7 +449,7 @@ async def spotlight(ctx):
                 "again.")
             clogger.info("spotlight(): removed audience role from {!s}".format(ctx.message.author))
         else:
-            await client.add_roles(ctx.message.author, discord.utils.get(server.roles, name='Spotlight Audience'))
+            await client.add_roles(ctx.message.author, audience_role)
             await client.delete_message(ctx.message)
             await client.send_message(ctx.message.author,
                 "You are now a part of the world spotlight audience. You can be mass pinged by the "
@@ -436,7 +457,7 @@ async def spotlight(ctx):
                 "spotlight). You can use the same command to leave the audience.")
             clogger.info("spotlight(): gave audience role to {!s}".format(ctx.message.author))
 
-    elif check_role(config.modteam, ctx.message):
+    elif check_role(config.get("discord", "mod_roles", []), ctx.message):
         if command[:6] == "choose":
             clogger.debug("spotlight(): choose")
             row_index = int(command[7:])-2
@@ -465,8 +486,8 @@ async def spotlight(ctx):
         elif command == "showcase":
             clogger.debug("spotlight(): showcase")
             if lucky:
-                await client.send_message(showcaseChannel, "**Next spotlight host!**")
-                await send_spotlight_info(showcaseChannel, lucky)
+                await client.send_message(dest_showcase, "**Next spotlight host!**")
+                await send_spotlight_info(dest_showcase, lucky)
             else:
                 clogger.warn("spotlight(): showcase: No spotlight currently selected.")
                 await client.say("No spotlight currently selected.")
@@ -478,7 +499,7 @@ async def spotlight(ctx):
         err_msg = "Non-mod tried to use mod-only spotlight command: {}".format(message_log_str(ctx.message))
         clogger.warn(err_msg)
         await client.send_message(ctx.message.channel, "You're not allowed to use that command.")
-        await client.send_message(outputChannel, "[WARNING] " + err_msg)
+        await client.send_message(dest_output, "[WARNING] " + err_msg)
 
 
 @spotlight.error
@@ -493,7 +514,7 @@ async def spotlight_on_error(exc, ctx):
             await client.send_message(ctx.message.channel,
                 "An error occurred while communicating with the Google API. "
                 "See bot output for details.")
-            await client.send_message(outputChannel,
+            await client.send_message(dest_output,
                 ("[ERROR] An error occurred while communicating with the Google API.\n"
                 "Original command: {}\n{}\n\nSee logs for details")
                 .format(cmd_string, exc_log_str(root_exc)))
@@ -507,13 +528,13 @@ async def spotlight_on_error(exc, ctx):
             await client.send_message(ctx.message.channel,
                 "Problem with the stored Google API credentials. "
                 "See bot output for details.")
-            await client.send_message(outputChannel,
+            await client.send_message(dest_output,
                 ("[ERROR] Problem with Google API credentials file.\n"
                  "Original command: {}\n{}\n\nSee logs for details")
                 .format(cmd_string, exc_log_str(root_exc)))
 
         else:
-            on_command_error(exc, ctx, force=True) # Other errors can bubble up
+            await on_command_error(exc, ctx, force=True) # Other errors can bubble up
     else:
         on_command_error(exc, ctx, force=True)
 
@@ -559,7 +580,7 @@ async def send_spotlight_info(destination: discord.Object, spotlight_data: [str]
         clogger.error("Error sending spotlight info ({}): {}".format(cmd_string, e.text))
         await client.send_message(ctx.message.channel,
             "Error sending spotlight info: {}".format(e.text))
-        await client.send_message(outputChannel,
+        await client.send_message(dest_output,
             ("[ERROR] Error sending spotlight info.\n"
              "Original command: {}\nDiscord API error: {}\n\n"
              "See logs for details").format(cmd_string, e.text))
@@ -586,8 +607,8 @@ async def filter(ctx):
     command = commandraw[8:]
 
     if command.startswith("ad "):
-        config.filterdelete.append(command[3:])
-        config.dict_write()
+        filter_cfg.get("filter", "delete").append(command[3:])
+        filter_cfg.write()
 
         reply_msg = "Added `{}` to the auto-delete list.".format(command[3:])
         clogger.info('filter(): ad: ' + reply_msg)
@@ -596,8 +617,9 @@ async def filter(ctx):
     elif command.startswith("rd "):
         try:
             del_index = int(command[3:]) - 1
-            del_value = config.filterdelete[del_index]
-            del config.filterdelete[del_index]
+            delete_list = filter_cfg.get("filter", "delete") # not a copy - can modify directly
+            del_value = delete_list[del_index]
+            del delete_list[del_index]
 
         except IndexError:
             err_msg = "Index out of range: {:d}".format(del_index+1)
@@ -606,15 +628,15 @@ async def filter(ctx):
             return
 
         else: # no exceptions
-            config.dict_write()
+            filter_cfg.write()
 
             reply_msg = "Removed `{}` from the auto-delete list.".format(del_value)
             clogger.info('filter(): rd: ' + reply_msg)
             await client.say(reply_msg)
 
     elif command.startswith("aw "):
-        config.filterwarn.append(command[3:])
-        config.dict_write()
+        filter_cfg.get("filter", "warn").append(command[3:])
+        filter_cfg.write()
 
         reply_msg = "Added `{}` to the auto-warn list.".format(command[3:])
         clogger.info('filter(): aw: ' + reply_msg)
@@ -623,8 +645,9 @@ async def filter(ctx):
     elif command.startswith("rw "):
         try:
             del_index = int(command[3:]) - 1
-            del_value = config.filterwarn[del_index]
-            del config.filterwarn[del_index]
+            warn_list = filter_cfg.get("filter", "warn") # not a copy - can modify directly
+            del_value = warn_list[del_index]
+            del warn_list[del_index]
 
         except IndexError:
             err_msg = "Index out of range: {:d}".format(del_index+1)
@@ -633,7 +656,7 @@ async def filter(ctx):
             return
 
         else: # no exceptions
-            config.dict_write()
+            filter_cfg.write()
 
             reply_msg = "Removed `{}` from the auto-warn list.".format(del_value)
             clogger.info('filter(): rw: ' + reply_msg)
@@ -641,16 +664,18 @@ async def filter(ctx):
 
     elif command == "list warn":
         clogger.debug("filter(): listing auto-warn")
-        if config.filterwarn:
-            list_str = format_list(config.filterwarn)
+        filter_warn = filter_cfg.get("filter", "warn", default=[])
+        if filter_warn:
+            list_str = format_list(filter_warn)
         else:
             list_str = '```Empty```'
         await client.say("**Auto-warn filter**\n\n" + list_str)
 
     elif command == "list delete":
         clogger.debug("filter(): listing auto-delete")
-        if config.filterdelete:
-            list_str = format_list(config.filterdelete)
+        filter_del = filter_cfg.get("filter", "delete", default=[])
+        if filter_del:
+            list_str = format_list(filter_del)
         else:
             list_str = '```Empty```'
         await client.say("**Auto-delete filter**\n\n" + list_str)
@@ -693,12 +718,12 @@ async def rolls(ctx, dice : str):
         Example: `.rolls 3d6` rolls three six-sided dice.
     """
     clogger.info("rolls(): {}".format(message_log_str(ctx.message)))
-    dice_channel = client.get_channel(id=config.dicechannel)
+    dice_channel = client.get_channel(id=config.get("dice", "channel_dice"))
 
     if ctx.message.channel in [
             dice_channel,
-            client.get_channel(id=config.testchannel),
-            client.get_channel(id=config.warnchannel)
+            client.get_channel(id=config.get("discord", "channel_test")),
+            client.get_channel(id=config.get("discord", "channel_output"))
     ]:
         try:
             rolls, limit = map(int, dice.split('d'))
@@ -733,12 +758,12 @@ async def rolls(ctx, dice : str):
 @client.command(pass_context=True, description = "Rolls FATE dice.")
 async def rollf(ctx):
     clogger.info("rollf(): {}".format(message_log_str(ctx.message)))
-    dice_channel = client.get_channel(id=config.dicechannel)
+    dice_channel = client.get_channel(id=config.get("dice", "channel_dice"))
 
     if ctx.message.channel in [
             dice_channel,
-            client.get_channel(id=config.testchannel),
-            client.get_channel(id=config.warnchannel)
+            client.get_channel(id=config.get("discord", "channel_test")),
+            client.get_channel(id=config.get("discord", "channel_output"))
     ]:
         dice = [-1,-1,0,0,1,1]
         str_map = {-1: '-', 0: '0', 1: '+'}
@@ -761,18 +786,24 @@ async def up(ctx):
     clogger.info("up(): {}".format(message_log_str(ctx.message)))
     server = ctx.message.server
     if discord.utils.get(ctx.message.server.roles, name='Senior Moderators') in ctx.message.author.roles:
-        await client.add_roles(ctx.message.author,discord.utils.get(server.roles, name='Distinguish-SrM'))
+        distinguish_role = discord.utils.get(server.roles, name='Distinguish-SrM')
+        if distinguish_role is None:
+            raise ValueError("Role 'Distinguish-SrM' not found")
+        await client.add_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Gave {} distinguish (SrM) role".format(ctx.message.author))
     elif discord.utils.get(ctx.message.server.roles, name='Moderators') in ctx.message.author.roles:
-        await client.add_roles(ctx.message.author,discord.utils.get(server.roles, name='Distinguish-Mod'))
+        distinguish_role = discord.utils.get(server.roles, name='Distinguish-Mod')
+        if distinguish_role is None:
+            raise ValueError("Role 'Distinguish-Mod' not found")
+        await client.add_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Gave {} distinguish (Mod) role".format(ctx.message.author))
     else:
         err_msg = "up(): user roles not recognised: {}".format(message_log_str(ctx.message))
         clogger.warn(err_msg)
         await client.say("That command is only available to mods and admins.")
-        await client.send_message(outputChannel, "[WARNING] " + err_msg)
+        await client.send_message(dest_output, "[WARNING] " + err_msg)
 
 
 @client.command(pass_context=True,
@@ -782,30 +813,41 @@ async def down(ctx):
     clogger.info("down(): {}".format(message_log_str(ctx.message)))
     server = ctx.message.server
     if discord.utils.get(ctx.message.server.roles, name='Senior Moderators') in ctx.message.author.roles:
-        await client.remove_roles(ctx.message.author, discord.utils.get(server.roles, name='Distinguish-SrM'))
+        distinguish_role = discord.utils.get(server.roles, name='Distinguish-SrM')
+        if distinguish_role is None:
+            raise ValueError("Role 'Distinguish-SrM' not found")
+        await client.remove_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Removed {} distinguish (SrM) role".format(ctx.message.author))
     elif discord.utils.get(ctx.message.server.roles, name='Moderators') in ctx.message.author.roles:
-        await client.remove_roles(ctx.message.author, discord.utils.get(server.roles, name='Distinguish-Mod'))
+        distinguish_role = discord.utils.get(server.roles, name='Distinguish-Mod')
+        if distinguish_role is None:
+            raise ValueError("Role 'Distinguish-Mod' not found")
+        await client.remove_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Removed {} distinguish (Mod) role".format(ctx.message.author))
     else:
         err_msg = "down(): user roles not recognised: {}".format(message_log_str(ctx.message))
         clogger.warn(err_msg)
         await client.say("That command is only available to mods and admins.")
-        await client.send_message(outputChannel, "[WARNING] " + err_msg)
+        await client.send_message(dest_output, "[WARNING] " + err_msg)
 
 
 @client.command(pass_context=True, description="Gives a user the 'tabletop' role on demand. If the user already has the role, takes it away.")
 async def rp(ctx):
     clogger.info("rp(): {}".format(message_log_str(ctx.message)))
     server = ctx.message.server
-    if discord.utils.get(ctx.message.server.roles, name='tabletop') in ctx.message.author.roles:
-        await client.remove_roles(ctx.message.author, discord.utils.get(server.roles, name='tabletop'))
+    # TODO: generalise role-giving into its own utility function
+    # TODO: parametrize this?
+    tabletop_role = discord.utils.get(server.roles, name='tabletop')
+    if tabletop_role is None:
+        raise ValueError("Role 'tabletop' not found")
+    if tabletop_role in ctx.message.author.roles:
+        await client.remove_roles(ctx.message.author, tabletop_role)
         await client.say("Thou hast been revok'd the 'tabletop' role.")
         clogger.info("up(): Removed tabletop role from user {}".format(ctx.message.author))
     else:
-        await client.add_roles(ctx.message.author, discord.utils.get(server.roles, name='tabletop'))
+        await client.add_roles(ctx.message.author, tabletop_role)
         await client.say("I bestow upon thee the 'tabletop' role.")
         clogger.info("up(): Gave tabletop role to user {}".format(ctx.message.author))
 
@@ -827,15 +869,15 @@ async def on_member_join(member):
     """
     On member join, welcome the member and log their join to the output channel.
     """
-    channel = discord.Object(id=config.welcomechannel)
-    rules_channel = client.get_channel(id=config.ruleschannel)
+    channel = discord.Object(id=config.get("welcome", "channel_welcome"))
+    rules_channel = client.get_channel(id=config.get("welcome", "channel_rules"))
     server = member.server
     fmt = 'Welcome {0.mention} to {1.name}! Please read the server rules at {2}'
     out_fmt = "{0.mention} has joined the server."
     clogger.info("New user welcomed: %s \n" % str(member))
     await client.send_message(channel, fmt.format(member, server,
         rules_channel.mention if rules_channel else "#welcome-rules-etc"))
-    await client.send_message(outputChannel, out_fmt.format(member))
+    await client.send_message(dest_output, out_fmt.format(member))
 
 ## Assigns "in voice" role to members who join #voice voice channel ##
 @client.event
@@ -892,7 +934,7 @@ async def wb(ctx, index:int=None):
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(client.login(config.token))
+        loop.run_until_complete(client.login(config.get("discord", "token")))
         loop.run_until_complete(client.connect())
     except KeyboardInterrupt:
         logger.info("Interrupted by user")

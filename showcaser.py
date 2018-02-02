@@ -48,7 +48,7 @@ def get_credentials():
     credentials = store.get()
     if not credentials or credentials.invalid:
         flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = config.name
+        flow.user_agent = config.get("core", "name")
         if flags:
             credentials = tools.run_flow(flow, store, flags)
         else: # Needed only for compatibility with Python 2.6
@@ -67,8 +67,8 @@ def main():
                               discoveryServiceUrl=discoveryUrl)
 
     result = service.spreadsheets().values().get(
-        spreadsheetId=config.showcase_spreadsheet_id,
-        range=config.showcase_spreadsheet_range).execute()
+        spreadsheetId=config.get("showcase", "spreadsheet_id"),
+        range=config.get("showcase", "spreadsheet_range")).execute()
     values = result.get('values', [])
 
     if not values:
