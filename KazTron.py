@@ -26,7 +26,9 @@ import showcaser
 
 __version__ = "1.2.6"
 
-changelog = "- Internal architectural improvements: configuration handling\n"
+changelog = "- Improved logging facilities\n"\
+            "- Internal refactor for reliability and code cleanliness.\n"\
+            "- Internal architectural improvements: configuration handling\n"
 url_manual = "https://github.com/Kazandaki/KazTron/wiki"
 url_github = "https://github.com/Kazandaki/KazTron"
 url_roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
