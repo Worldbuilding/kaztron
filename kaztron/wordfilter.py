@@ -1,6 +1,6 @@
 # coding=utf8
 
-## Thanks writing this for me, Laogeobunny! ##
+# Thanks writing this for me, Laogeobunny!
 
 import re
 import typing
@@ -86,8 +86,9 @@ class WordFilter:
                 return match_obj.group(0)
         return None
 
-def filter_func(rules,message):
-    if rules != []:
+
+def filter_func(rules, message):
+    if rules:
         wf = WordFilter()
         wf.load_rules(rules)
         match = wf.check_message(message)

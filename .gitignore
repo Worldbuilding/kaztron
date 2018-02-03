@@ -1,6 +1,7 @@
 # Project-specific files
 config.json
 dict.json
+state.json
 client_secret.json
 *.sublime-*
 

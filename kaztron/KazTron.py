@@ -8,19 +8,19 @@ import discord
 from discord.ext import commands
 
 from kaztron import showcaser, wordfilter
-from kaztron.config import get_kaztron_config, get_filter_config
+from kaztron.config import get_kaztron_config
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.utils.checks import mod_only
-from kaztron.utils.discord import check_role
-from kaztron.utils.strings import message_log_str, exc_log_str, tb_log_str
+from kaztron.utils.discord import check_role, get_named_role
+from kaztron.utils.logging import setup_logging, message_log_str, exc_log_str, tb_log_str
+# In the loving memory of my time as a moderator of r/worldbuilding network
+# To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
+# (Assuming this is from Kazandaki -- Laogeodritt)
+from kaztron.utils.strings import format_list
 
 #
 # Application data
 #
-
-# In the loving memory of my time as a moderator of r/worldbuilding network
-# To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
-# (Assuming this is from Kazandaki -- Laogeodritt)
 
 __version__ = "1.2.6"
 
@@ -61,38 +61,13 @@ except OSError as e:
 
 dest_output = discord.Object(id=config.get('discord', 'channel_output'))
 dest_showcase = discord.Object(id=config.get('showcase', 'channel'))
-id_warn_channel = config.get('filter', 'channel_warning')
 lucky = None  # Ugh, fix this.
 
 
 # setup logging
-def setup_logging(logger, config):
-    from kaztron.config import log_level
-    cfg_level = config.get("core", "log_level", converter=log_level)
-    logger.setLevel(cfg_level)
-
-    # File handler
-    fh = logging.FileHandler(config.get("core", "log_file"))
-    fh_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s [in %(pathname)s:%(lineno)d]')
-    fh.setFormatter(fh_formatter)
-    logger.addHandler(fh)
-
-    # Console handler - fixed log level
-    ch = logging.StreamHandler()
-    ch_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s')
-    ch.setLevel(max(cfg_level, logging.INFO))  # never below INFO - avoid cluttering console
-    ch.setFormatter(ch_formatter)
-    logger.addHandler(ch)
 setup_logging(logging.getLogger(), config)  # setup the root logger
 logger = logging.getLogger('kaztron')
 clogger = logging.getLogger('kaztron.cmd')
-
-# load filter dictionary data
-try:
-    filter_cfg = get_filter_config()
-except OSError as e:
-    logger.error(str(e))
-    sys.exit(1)
 
 
 #
@@ -271,83 +246,6 @@ async def request(ctx):
     await client.say("I forwarded your request.")
 
 
-@client.command(pass_context=True, description="[MOD ONLY] Changes bot output channel.")
-@mod_only()
-async def switch(ctx):
-    """
-    Switch the bot's message filter warning channel between the warning channel
-    and the general output channel (from config).
-    """
-    clogger.debug("switch()")
-    global id_warn_channel
-    output_channel_id = config.get("discord", "channel_output")
-    cfg_warn_channel_id = config.get("filter", "channel_warning")
-
-    if id_warn_channel == cfg_warn_channel_id:
-        new_channel_id = output_channel_id
-    else:
-        new_channel_id = cfg_warn_channel_id
-
-    new_channel = client.get_channel(new_channel_id)
-    if new_channel is not None:
-        id_warn_channel = new_channel_id
-        clogger.info("switch(): Changed filter warning channel to #{}".format(new_channel.name))
-        await client.say("Changed the filter warning channel to {}".format(new_channel.mention))
-    else:
-        msg = 'Cannot change filter warning channel. Target channel id {} does not exist.'.format(new_channel_id)
-        clogger.error("switch(): " + msg)
-        await client.say("Error: " + msg)
-
-
-@client.event
-async def on_message(message):
-    """
-    Message handler. Check all non-mod messages for filtered words.
-    """
-
-    is_mod = check_role(config.get("discord", "mod_roles", []), message)
-    is_pm = isinstance(message, discord.PrivateChannel)
-    if not is_mod and not is_pm:
-        # way too verbose
-        # clogger.debug("on_message(): checking for filtered words")
-
-        message_string = str(message.content)
-
-        if wordfilter.filter_func(filter_cfg.get("filter", "delete"), message_string):
-            clogger.info("Found filter match (auto-delete) in {}".format(message_log_str(message)))
-            clogger.debug("Deleting message")
-            await client.delete_message(message)
-
-            clogger.debug("Preparing and sending warning")
-            usercolor = 0xff8080
-            em = discord.Embed(color=usercolor)
-            em.set_author(name="Auto-Delete Filter Trigger")
-            em.add_field(name="User", value=message.author.mention, inline=True)
-            em.add_field(name="Channel", value=message.channel.mention, inline=True)
-            em.add_field(name="Timestamp", value=message.timestamp, inline=True)
-            # TODO: show rule matched
-            em.add_field(name="Content", value=message_string, inline=True)
-
-            await client.send_message(discord.Object(id=id_warn_channel), embed=em)
-
-        elif wordfilter.filter_func(filter_cfg.get("filter", "warn"), message_string):
-            clogger.info("Found filter match (auto-warn) in {}".format(message_log_str(message)))
-            clogger.debug("Preparing and sending warning")
-
-            usercolor = 0xffbf80
-            em = discord.Embed(color=usercolor)
-            em.set_author(name="Auto-Warn Filter Trigger")
-            em.add_field(name="User", value=message.author.mention, inline=True)
-            em.add_field(name="Channel", value=message.channel.mention, inline=True)
-            em.add_field(name="Timestamp", value=message.timestamp, inline=True)
-            # TODO: show rule matched
-            em.add_field(name="Content", value=message_string, inline=True)
-
-            await client.send_message(discord.Object(id=id_warn_channel), embed=em)
-
-    await client.process_commands(message)
-
-
 # TODO: extract this into its own module, fix the poorly designed 'lucky' global/non-persisted state
 @client.command(pass_context=True, description="World spotlight control.")
 async def spotlight(ctx):
@@ -374,9 +272,7 @@ async def spotlight(ctx):
     # TODO: properly tokenize the arguments... I think discord.py is supposed to already tokenize though? Look into this, look into Context.args
     if command == "join":
         clogger.debug("spotlight(): audience role request from {!s}".format(ctx.message.author))
-        server = ctx.message.server
-        audience_role_name = config.get("showcase", "audience_role")
-        audience_role = discord.utils.get(server.roles, name=audience_role_name)
+        audience_role = get_named_role(ctx.server, config.get("showcase", "audience_role"))
         if audience_role in ctx.message.author.roles:
             await client.remove_roles(ctx.message.author, audience_role)
             await client.delete_message(ctx.message)
@@ -523,108 +419,6 @@ async def send_spotlight_info(destination: discord.Object, spotlight_data: [str]
     await client.send_message(destination, embed=em)
 
 
-def format_list(list_) -> str:
-    """
-    Format a list as a string for display over Discord, with indices starting from 1.
-    """
-    fmt = "{0: >3d}. {1:s}"
-    text_bits = ["```"]
-    text_bits.extend(fmt.format(i+1, item) for i, item in enumerate(list_))
-    text_bits.append("```")
-    return '\n'.join(text_bits)
-
-
-@client.command(name='filter', pass_context=True,
-    description="[MOD ONLY] Adds/removes strings to/from filter list. Commands are ad, rd, aw, rw "
-    "and l, you can contact me anytime to make sense of the commands.")
-@mod_only()
-async def msg_filter(ctx):
-    # TODO: add support for just "list" for listing both at once
-    clogger.debug("filter(): {}".format(message_log_str(ctx.message)))
-    commandraw = str(ctx.message.content)
-    command = commandraw[8:]
-
-    if command.startswith("ad "):
-        filter_cfg.get("filter", "delete").append(command[3:])
-        filter_cfg.write()
-
-        reply_msg = "Added `{}` to the auto-delete list.".format(command[3:])
-        clogger.info('filter(): ad: ' + reply_msg)
-        await client.say(reply_msg)
-
-    elif command.startswith("rd "):
-        del_index = int(command[3:]) - 1
-        try:
-            delete_list = filter_cfg.get("filter", "delete")  # not a copy - can modify directly
-            del_value = delete_list[del_index]
-            del delete_list[del_index]
-
-        except IndexError:
-            err_msg = "Index out of range: {:d}".format(del_index + 1)
-            clogger.error("filter(): rd: " + err_msg)
-            await client.say(err_msg)
-            return
-
-        else:  # no exceptions
-            filter_cfg.write()
-
-            reply_msg = "Removed `{}` from the auto-delete list.".format(del_value)
-            clogger.info('filter(): rd: ' + reply_msg)
-            await client.say(reply_msg)
-
-    elif command.startswith("aw "):
-        filter_cfg.get("filter", "warn").append(command[3:])
-        filter_cfg.write()
-
-        reply_msg = "Added `{}` to the auto-warn list.".format(command[3:])
-        clogger.info('filter(): aw: ' + reply_msg)
-        await client.say(reply_msg)
-
-    elif command.startswith("rw "):
-        del_index = int(command[3:]) - 1
-        try:
-            warn_list = filter_cfg.get("filter", "warn")  # not a copy - can modify directly
-            del_value = warn_list[del_index]
-            del warn_list[del_index]
-
-        except IndexError:
-            err_msg = "Index out of range: {:d}".format(del_index + 1)
-            clogger.error("filter(): rw: " + err_msg)
-            await client.say(err_msg)
-            return
-
-        else:  # no exceptions
-            filter_cfg.write()
-
-            reply_msg = "Removed `{}` from the auto-warn list.".format(del_value)
-            clogger.info('filter(): rw: ' + reply_msg)
-            await client.say(reply_msg)
-
-    elif command == "list warn":
-        clogger.debug("filter(): listing auto-warn")
-        filter_warn = filter_cfg.get("filter", "warn", default=[])
-        if filter_warn:
-            list_str = format_list(filter_warn)
-        else:
-            list_str = '```Empty```'
-        await client.say("**Auto-warn filter**\n\n" + list_str)
-
-    elif command == "list delete":
-        clogger.debug("filter(): listing auto-delete")
-        filter_del = filter_cfg.get("filter", "delete", default=[])
-        if filter_del:
-            list_str = format_list(filter_del)
-        else:
-            list_str = '```Empty```'
-        await client.say("**Auto-delete filter**\n\n" + list_str)
-
-    else:
-        clogger.debug("filter(): invalid subcommand: {}".format(message_log_str(ctx.message)))
-        await client.say(
-            "filter: invalid subcommand. Recognised subcommands are "
-            "`ad`, `rd`, `aw`, `rw`, `list delete`, `list warn`.")
-
-
 @client.command(pass_context=True,
     description="[MOD ONLY] Provide bot info. Useful for testing but responsivity too.")
 @mod_only()
@@ -721,18 +515,14 @@ async def rollf(ctx):
 @mod_only()
 async def up(ctx):
     clogger.info("up(): {}".format(message_log_str(ctx.message)))
-    server = ctx.message.server
+    # TODO: parametrize
     if discord.utils.get(ctx.message.server.roles, name='Senior Moderators') in ctx.message.author.roles:
-        distinguish_role = discord.utils.get(server.roles, name='Distinguish-SrM')
-        if distinguish_role is None:
-            raise ValueError("Role 'Distinguish-SrM' not found")
+        distinguish_role = get_named_role(ctx.server, 'Distinguish-SrM')
         await client.add_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Gave {} distinguish (SrM) role".format(ctx.message.author))
     elif discord.utils.get(ctx.message.server.roles, name='Moderators') in ctx.message.author.roles:
-        distinguish_role = discord.utils.get(server.roles, name='Distinguish-Mod')
-        if distinguish_role is None:
-            raise ValueError("Role 'Distinguish-Mod' not found")
+        distinguish_role = get_named_role(ctx.server, 'Distinguish-Mod')
         await client.add_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Gave {} distinguish (Mod) role".format(ctx.message.author))
@@ -747,19 +537,15 @@ async def up(ctx):
     description="Remove a mod/admin's 'Distinguish' role (usually remove their colored name).")
 @mod_only()
 async def down(ctx):
+    # TODO: DRY with .up?
     clogger.info("down(): {}".format(message_log_str(ctx.message)))
-    server = ctx.message.server
     if discord.utils.get(ctx.message.server.roles, name='Senior Moderators') in ctx.message.author.roles:
-        distinguish_role = discord.utils.get(server.roles, name='Distinguish-SrM')
-        if distinguish_role is None:
-            raise ValueError("Role 'Distinguish-SrM' not found")
+        distinguish_role = get_named_role(ctx.server, 'Distinguish-SrM')
         await client.remove_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Removed {} distinguish (SrM) role".format(ctx.message.author))
     elif discord.utils.get(ctx.message.server.roles, name='Moderators') in ctx.message.author.roles:
-        distinguish_role = discord.utils.get(server.roles, name='Distinguish-Mod')
-        if distinguish_role is None:
-            raise ValueError("Role 'Distinguish-Mod' not found")
+        distinguish_role = get_named_role(ctx.server, 'Distinguish-Mod')
         await client.remove_roles(ctx.message.author, distinguish_role)
         await client.delete_message(ctx.message)
         clogger.info("up(): Removed {} distinguish (Mod) role".format(ctx.message.author))
@@ -775,12 +561,9 @@ async def down(ctx):
                             "If the user already has the role, takes it away.")
 async def rp(ctx):
     clogger.info("rp(): {}".format(message_log_str(ctx.message)))
-    server = ctx.message.server
     # TODO: generalise role-giving into its own utility function
     # TODO: parametrize this?
-    tabletop_role = discord.utils.get(server.roles, name='tabletop')
-    if tabletop_role is None:
-        raise ValueError("Role 'tabletop' not found")
+    tabletop_role = get_named_role(ctx.server, 'tabletop')
     if tabletop_role in ctx.message.author.roles:
         await client.remove_roles(ctx.message.author, tabletop_role)
         await client.say("Thou hast been revok'd the 'tabletop' role.")
@@ -801,22 +584,6 @@ async def find(ctx):
     user = discord.User(id=command)
     clogger.info("find(): user lookup: {}={!s}".format(command, user))
     await client.say("ID {} is user {}".format(command, user.mention))
-
-
-@client.event
-async def on_member_join(member):
-    """
-    On member join, welcome the member and log their join to the output channel.
-    """
-    channel = discord.Object(id=config.get("welcome", "channel_welcome"))
-    rules_channel = client.get_channel(id=config.get("welcome", "channel_rules"))
-    server = member.server
-    fmt = 'Welcome {0.mention} to {1.name}! Please read the server rules at {2}'
-    out_fmt = "{0.mention} has joined the server."
-    clogger.info("New user welcomed: %s \n" % str(member))
-    await client.send_message(channel, fmt.format(member, server,
-        rules_channel.mention if rules_channel else "#welcome-rules-etc"))
-    await client.send_message(dest_output, out_fmt.format(member))
 
 
 @client.event

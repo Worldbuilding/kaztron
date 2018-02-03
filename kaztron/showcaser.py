@@ -44,6 +44,7 @@ def get_credentials():
     credential_path = os.path.join(credential_dir,
                                    'sheets.googleapis.com-python-quickstart.json')
 
+    config = get_kaztron_config()
     store = Storage(credential_path)
     credentials = store.get()
     if not credentials or credentials.invalid:

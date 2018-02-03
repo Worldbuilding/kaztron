@@ -9,6 +9,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
+    "extensions": ["welcome", "wordfilter"],
     "log_level": "INFO",
     "log_file": "kaztron.log"
   },

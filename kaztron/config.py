@@ -1,5 +1,3 @@
-import sys
-from os import path
 import json
 import logging
 import errno
@@ -34,13 +32,26 @@ class KaztronConfig:
 
     .. attribute:: filename
 
-    ``str`` - Filename or filepath for the config file. Read/write.
+        ``str`` - Filename or filepath for the config file. Read/write.
+
+    .. attribute:: read_only
+
+        ``bool`` - Whether the config file is read-only. If true, disables :meth:`~.write()` and
+        :meth:`~.set`. Read-only property.
     """
-    def __init__(self, filename="config.json", defaults=None):
+    def __init__(self, filename="config.json", defaults=None, read_only=False):
         self.filename = filename
         self._data = {}
         self._defaults = copy.deepcopy(defaults) if defaults else {}
+        self._read_only = read_only
+        if read_only:
+            self.write = None
+            self.set = None
         self.read()
+
+    @property
+    def read_only(self):
+        return self._read_only
 
     def read(self):
         """
@@ -49,9 +60,16 @@ class KaztronConfig:
         """
         logger.info("config({}) Reading file...".format(self.filename))
         self._data = copy.deepcopy(self._defaults)
-        with open(self.filename) as cfg_file:
-            read_data = json.load(cfg_file)
-        self._data.update(read_data)
+        try:
+            with open(self.filename) as cfg_file:
+                read_data = json.load(cfg_file)
+        except OSError as e:
+            if e.errno == errno.ENOENT:  # file not found, just create it
+                self.write()
+            else:  # other failures should bubble up
+                raise
+        else:
+            self._data.update(read_data)
 
     def write(self):
         """
@@ -146,7 +164,7 @@ class KaztronConfig:
 
         try:
             section_data = self._data[section]
-        except KeyErrore:
+        except KeyError:
             logger.debug("Section {!r} not found: creating new section".format(section))
             section_data = self._data[section] = {}
 
@@ -168,18 +186,25 @@ def log_level(value: str):
 
 
 _kaztron_config = None
-_filter_config = None
+_runtime_config = None
 
 
 def get_kaztron_config(defaults=None):
+    """
+    Get the static configuration object for the bot. Constructs the object if needed.
+    """
     global _kaztron_config
     if not _kaztron_config:
-        _kaztron_config = KaztronConfig(defaults=defaults)
+        _kaztron_config = KaztronConfig(defaults=defaults, read_only=True)
     return _kaztron_config
 
 
-def get_filter_config():
-    global _filter_config
-    if not _filter_config:
-        _filter_config = KaztronConfig("dict.json", defaults={"filter": {"warn": [], "delete": []}})
-    return _filter_config
+def get_runtime_config():
+    """
+    Get the dynamic (state-persisting) configuration object for the bot. Constructs the object if
+    needed.
+    """
+    global _runtime_config
+    if not _runtime_config:
+        _runtime_config = KaztronConfig("state.json")
+    return _runtime_config
