@@ -11,7 +11,7 @@ from kaztron.utils.discord import check_role
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str
 
-logger = logging.getLogger('kaztron.wordfilter')
+logger = logging.getLogger('kaztron.' + __name__)
 
 
 class WordFilter:

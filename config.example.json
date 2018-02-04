@@ -9,7 +9,8 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter"],
+    "extensions": ["core", "welcome", "wordfilter"],
+    "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log"
   },

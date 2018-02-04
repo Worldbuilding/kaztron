@@ -1,5 +1,6 @@
 # coding=utf8
 
+from collections import OrderedDict
 import logging
 import random
 import sys
@@ -25,14 +26,20 @@ from kaztron.utils.strings import get_command_str, get_help_str
 
 __version__ = "1.2.6"
 
-changelog = "- Improved logging facilities\n"\
-            "- Internal refactor for maintainability and reliability\n"\
-            "- Internal architectural improvements: configuration handling\n"\
-            "- Refactor of command UI of several modules\n"
-url_manual = "https://github.com/Kazandaki/KazTron/wiki"
-url_github = "https://github.com/Kazandaki/KazTron"
-url_roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
-url_spotlight = "https://docs.google.com/spreadsheets/d/1YSwx6AJFfOEzIwTAeb71YXEeM0l34mUt6OvyhxTwQis/edit?usp=sharing"
+bot_info = {
+    "version": __version__,
+    "changelog": "- Improved logging facilities\n"
+                 "- Internal refactor for maintainability and reliability\n"
+                 "- Internal architectural improvements: configuration handling\n"
+                 "- Refactor of command UI of several modules\n",
+    "links": OrderedDict()
+}
+bot_info["links"]["Manual"] = "https://github.com/Kazandaki/KazTron/wiki"
+bot_info["links"]["GitHub"] = "https://github.com/cxcfme/KazTron"
+bot_info["links"]["Roadmap"] = "https://docs.google.com/spreadsheets/d/" \
+        "1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
+bot_info["links"]["Spotlight Apps"] = "https://docs.google.com/spreadsheets/d/" \
+        "1YSwx6AJFfOEzIwTAeb71YXEeM0l34mUt6OvyhxTwQis/edit?usp=sharing"
 
 cfg_defaults = {
     "discord": {
@@ -93,8 +100,6 @@ async def on_ready():
     for msg in startup_info:
         logger.info(msg)  # for file logging
         print(msg)  # because current console logger always logs at WARN level
-
-    # TODO: validate configs against server? e.g. channels
 
 
 @client.event
@@ -240,18 +245,6 @@ async def on_command_error(exc, ctx, force=False):
         await client.send_message(dest_output,
                                   ("[ERROR] Unknown error while trying to process command {}\n"
                                    "Error: {!s}\n\nSee logs for details").format(cmd_string, exc))
-
-
-@client.command(pass_context=True,
-    description="Sends a request for the bot (e.g. features, bug reports) "
-                "to the bot maintainers. Avoid spam or repeated messages.")
-async def request(ctx):
-    clogger.debug("request(): {}".format(message_log_str(ctx.message)))
-    bot_author = discord.User(id=config.get("discord", "bot_owner_id", -1))
-    message = "Feature request from {!s}: {!s}".format(
-        ctx.message.author, str(ctx.message.content).split(' ', 1)[1])
-    await client.send_message(bot_author, message)
-    await client.say("I forwarded your request.")
 
 
 # TODO: extract this into its own module, fix the poorly designed 'lucky' global/non-persisted state
@@ -425,26 +418,6 @@ async def send_spotlight_info(destination: discord.Object, spotlight_data: [str]
         em.add_field(name="Additional Content", value="[Click Here](%s)" % spotlight_data[15], inline=True)
 
     await client.send_message(destination, embed=em)
-
-
-@client.command(pass_context=True,
-    description="[MOD ONLY] Provide bot info. Useful for testing but responsivity too.")
-@mod_only()
-async def info(ctx):
-    clogger.debug("info(): {!s}".format(message_log_str(ctx.message)))
-    usercolor = 0x80AAFF
-    em = discord.Embed(color=usercolor)
-    em.set_author(name="KazTron %s" % __version__)
-    em.add_field(name="Changelog", value=changelog, inline=False)
-    em.add_field(name="Instruction Manual",
-        value="[Click Here]({})".format(url_manual), inline=True)
-    em.add_field(name="GitHub Page",
-        value="[Click Here]({})".format(url_github), inline=True)
-    em.add_field(name="Development Roadmap",
-        value="[Click Here]({})".format(url_roadmap), inline=True)
-    em.add_field(name="Spotlight Applications",
-        value="[Click Here]({})".format(url_spotlight), inline=True)
-    await client.say(embed=em)
 
 
 @client.command(pass_context=True, description="Rolls dice. Only allowed on some channels.")
