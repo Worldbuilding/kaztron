@@ -467,24 +467,6 @@ async def down(ctx):
 
 
 @client.command(pass_context=True,
-                description="Gives a user the 'tabletop' role on demand. "
-                            "If the user already has the role, takes it away.")
-async def rp(ctx):
-    clogger.info("rp(): {}".format(message_log_str(ctx.message)))
-    # TODO: generalise role-giving into its own utility function
-    # TODO: parametrize this?
-    tabletop_role = get_named_role(ctx.server, 'tabletop')
-    if tabletop_role in ctx.message.author.roles:
-        await client.remove_roles(ctx.message.author, tabletop_role)
-        await client.say("Thou hast been revok'd the 'tabletop' role.")
-        clogger.info("up(): Removed tabletop role from user {}".format(ctx.message.author))
-    else:
-        await client.add_roles(ctx.message.author, tabletop_role)
-        await client.say("I bestow upon thee the 'tabletop' role.")
-        clogger.info("up(): Gave tabletop role to user {}".format(ctx.message.author))
-
-
-@client.command(pass_context=True,
     description="[MOD ONLY] Finds user with given ID")
 @mod_only()
 async def find(ctx):

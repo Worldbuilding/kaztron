@@ -39,7 +39,7 @@ class CoreCog:
 
     @commands.command(pass_context=True, aliases=['bug', 'issue'])
     @commands.cooldown(rate=5, per=60)
-    async def request(self, ctx, *args):
+    async def request(self, ctx):
         """
         Submit a bug report or feature request to the bot DevOps Team.
 
