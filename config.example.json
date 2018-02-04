@@ -1,15 +1,15 @@
 {
   "discord": {
-    "mod_roles": ["role 1", "role 2", "etc."],
+    "mod_roles": ["role 1", "role 2", "etc." ],
     "playing": "status (playing ...) message here",
-    "bot_owner_id" : "Bot master user ID",
+    "bot_owner_id": "Bot master user ID",
     "token": "bot auth token",
     "channel_output": "channel ID for general bot messages",
     "channel_test": "channel ID for general testing purposes (some commands are allowed here as well as their normal allowed channels)"
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["core", "welcome", "wordfilter", "dice"],
+    "extensions": ["core", "welcome", "wordfilter", "dice", "modtools"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log"
@@ -29,5 +29,15 @@
   },
   "dice": {
     "channel_dice": "channel ID where dice are allowed"
+  },
+  "modtools": {
+    "distinguish_map": {
+      "mod-role1": "distinguish-role1",
+      "mod-role2": "distinguish-role2"
+    },
+    "wb_images": [
+      ["url1", "artist name 1"],
+      ["url2", "artist name 2"]
+    ]
   }
 }

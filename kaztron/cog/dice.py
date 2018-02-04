@@ -74,8 +74,6 @@ class DiceCog:
         """
         Rolls four dice for the FATE tabletop roleplaying game system.
 
-        Usage: .rollf
-
         Arguments: None
         """
         logger.info("roll: {}".format(message_log_str(ctx.message)))
