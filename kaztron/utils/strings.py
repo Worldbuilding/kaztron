@@ -45,3 +45,10 @@ def get_help_str(ctx: commands.Context) -> str:
     # return cmd_str
 
     return "{0.bot.command_prefix}help {0.command!s}".format(ctx)
+
+
+def get_timestamp_str(msg: discord.Message) -> str:
+    """
+    Get the timestamp string of a message in ISO format, to second precision.
+    """
+    return msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")

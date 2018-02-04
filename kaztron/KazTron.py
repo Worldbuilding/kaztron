@@ -7,8 +7,8 @@ import sys
 import discord
 from discord.ext import commands
 
-from kaztron import showcaser
 from kaztron.config import get_kaztron_config
+from kaztron.driver import showcaser
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import check_role, get_named_role
@@ -18,7 +18,6 @@ from kaztron.utils.strings import get_command_str, get_help_str
 # In the loving memory of my time as a moderator of r/worldbuilding network
 # To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
 # (Assuming this is from Kazandaki -- Laogeodritt)
-from kaztron.utils.strings import format_list
 
 #
 # Application data

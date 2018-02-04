@@ -2,6 +2,7 @@ import traceback
 import logging
 
 import discord
+from kaztron.utils.strings import get_timestamp_str
 
 
 def setup_logging(logger, config):
@@ -31,7 +32,7 @@ def message_log_str(message: discord.Message) -> str:
     [2012-01-01 12:34:56] <#channel:username#1234> "Message here"
     """
     return "[{}] <#{!s}:{!s}> {!r}"\
-        .format(message.timestamp.isoformat(sep=' '),
+        .format(get_timestamp_str(message),
                 message.channel, message.author, message.content)
 
 

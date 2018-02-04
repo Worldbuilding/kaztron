@@ -4,12 +4,12 @@ from typing import Union
 import discord
 from discord.ext import commands
 
-import kaztron.wordfilter as engine
 from kaztron.config import get_kaztron_config, get_runtime_config
+from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.utils.checks import mod_only
-from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_command_str, get_help_str
 from kaztron.utils.discord import check_role
+from kaztron.utils.logging import message_log_str
+from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str
 
 logger = logging.getLogger('kaztron.wordfilter')
 
@@ -25,6 +25,11 @@ class WordFilter:
         'd': 'delete',
         'del': 'delete',
         'delete': 'delete'
+    }
+
+    engines = {
+        'warn': WordFilterEngine(),
+        'delete': WordFilterEngine()
     }
 
     list_headings = {
@@ -49,6 +54,7 @@ class WordFilter:
             logger.error(str(e))
             raise RuntimeError("Failed to load runtime config") from e
         self._make_default_config()
+        self._load_filter_rules()
         self.dest_output = None
         self.dest_warning = None
         self.dest_current = None
@@ -76,6 +82,11 @@ class WordFilter:
 
         if changed:
             c.write()
+
+    def _load_filter_rules(self):
+        for filter_type, engine in self.engines.items():
+            logger.debug("Reloading {} rules".format(filter_type))
+            engine.load_rules(self.filter_cfg.get("filter", filter_type, []))
 
     async def on_ready(self):
         """
@@ -105,41 +116,36 @@ class WordFilter:
         is_pm = isinstance(message.channel, discord.PrivateChannel)
         if not is_mod and not is_pm:
             message_string = str(message.content)
-            is_delete = engine.filter_func(
-                self.filter_cfg.get("filter", "delete", []),
-                message_string
-            )
-            is_warn = engine.filter_func(
-                self.filter_cfg.get("filter", "warn", []),
-                message_string
-            )
+            del_match = self.engines['delete'].check_message(message_string)
+            warn_match = self.engines['warn'].check_message(message_string)
 
             # logging
-            if is_delete or is_warn:
-                if is_delete:
-                    log_fmt = "Found filter match (auto-delete) in {}"
+            if del_match or warn_match:
+                if del_match:
+                    log_fmt = "Found filter match [auto-delete] '{1}' in {0}"
                 else:  # is_warn
-                    log_fmt = "Found filter match (auto-warn) in {}"
+                    log_fmt = "Found filter match (auto-warn) '{2}' in {0}"
 
-                logger.info(log_fmt.format(message_log_str(message)))
+                logger.info(log_fmt.format(message_log_str(message), del_match, warn_match))
 
             # delete
-            if is_delete:
+            if del_match:
                 logger.debug("Deleting message")
                 await self.bot.delete_message(message)
 
             # warn
-            if is_delete or is_warn:
+            if del_match or warn_match:
                 logger.debug("Preparing and sending filter warning")
-                filter_type = 'delete' if is_delete else 'warn'
+                filter_type = 'delete' if del_match else 'warn'
+                match_text = del_match if del_match else warn_match
 
                 em = discord.Embed(color=self.match_warn_color[filter_type])
                 em.set_author(name=self.match_headings[filter_type])
                 em.add_field(name="User", value=message.author.mention, inline=True)
                 em.add_field(name="Channel", value=message.channel.mention, inline=True)
-                em.add_field(name="Timestamp", value=message.timestamp, inline=True)
-                # TODO: show rule matched
-                em.add_field(name="Content", value=message_string, inline=True)
+                em.add_field(name="Timestamp", value=get_timestamp_str(message), inline=True)
+                em.add_field(name="Match Text", value=match_text, inline=True)
+                em.add_field(name="Content", value=message_string, inline=False)
 
                 await self.bot.send_message(self.dest_current, embed=em)
 
@@ -227,6 +233,8 @@ class WordFilter:
                 .format(ctx.message.author, word, validated_type))
             await self.bot.say("Added `{}` to the {} list.".format(word, validated_type))
 
+            self._load_filter_rules()
+
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     async def rem(self, ctx, filter_type: str, index: int):
         """
@@ -268,6 +276,8 @@ class WordFilter:
                     .format(ctx.message.author, del_value, validated_type))
                 await self.bot.say("Removed `{}` from the {} list."
                     .format(del_value, validated_type))
+
+                self._load_filter_rules()
 
     @word_filter.command(pass_context=True, aliases=['sw', 's'])
     @mod_only()
