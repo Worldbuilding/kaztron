@@ -346,6 +346,12 @@ class WordFilter:
             from kaztron.KazTron import on_command_error
             await on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
+    @commands.command(pass_context=True)
+    @mod_only()
+    async def switch(self, ctx):
+        """ DEPRECATED. """
+        await self.bot.say('This command is deprecated. Use `.filter switch` instead.')
+
     async def validate_filter_type(self, filter_type) -> Union[str, None]:
         """
         Validate the filter_type parameter for wordfilter commands.

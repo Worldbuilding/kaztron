@@ -27,8 +27,9 @@ from kaztron.utils.strings import format_list
 __version__ = "1.2.6"
 
 changelog = "- Improved logging facilities\n"\
-            "- Internal refactor for reliability and code cleanliness.\n"\
-            "- Internal architectural improvements: configuration handling\n"
+            "- Internal refactor for maintainability and reliability\n"\
+            "- Internal architectural improvements: configuration handling\n"\
+            "- Refactor of command UI of several modules\n"
 url_manual = "https://github.com/Kazandaki/KazTron/wiki"
 url_github = "https://github.com/Kazandaki/KazTron"
 url_roadmap = "https://docs.google.com/spreadsheets/d/1ScVRoondp50HoonVBTZz8WUmfkLnDlGaomJrG0pgGs0/edit?usp=sharing"
