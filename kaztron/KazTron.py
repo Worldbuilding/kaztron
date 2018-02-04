@@ -148,8 +148,8 @@ async def on_command_error(exc, ctx, force=False):
 
     if isinstance(exc, commands.CommandOnCooldown):
         await client.send_message(ctx.message.channel,
-            "`{}` is on cooldown! Try again in {:.2f} seconds."
-            .format(get_command_str(ctx), exc.retry_after))
+            "`{}` is on cooldown! Try again in {:.0f} seconds."
+            .format(get_command_str(ctx), max(exc.retry_after, 1.0)))
 
     elif isinstance(exc, commands.CommandInvokeError):
         root_exc = exc.__cause__ if exc.__cause__ is not None else exc
