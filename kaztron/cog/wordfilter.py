@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Union
+from typing import Union
 
 import discord
 from discord.ext import commands
@@ -8,7 +8,7 @@ import kaztron.wordfilter as engine
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list
+from kaztron.utils.strings import format_list, get_command_str, get_help_str
 from kaztron.utils.discord import check_role
 
 logger = logging.getLogger('kaztron.wordfilter')
@@ -47,7 +47,7 @@ class WordFilter:
             self.filter_cfg = get_runtime_config()
         except OSError as e:
             logger.error(str(e))
-            raise RuntimeError("Failed to load module config") from e
+            raise RuntimeError("Failed to load runtime config") from e
         self._make_default_config()
         self.dest_output = None
         self.dest_warning = None
@@ -102,7 +102,7 @@ class WordFilter:
         """
 
         is_mod = check_role(self.config.get("discord", "mod_roles", []), message)
-        is_pm = isinstance(message, discord.PrivateChannel)
+        is_pm = isinstance(message.channel, discord.PrivateChannel)
         if not is_mod and not is_pm:
             message_string = str(message.content)
             is_delete = engine.filter_func(
@@ -153,8 +153,10 @@ class WordFilter:
         All commands permit single-letter mnemonics for convenience, e.g. `.filter l` is
         equivalent to `.filter list`.
         """
-        await self.bot.say('Invalid subcommand. Use `{}help {}` for instructions.'
-            .format(self.bot.command_prefix, ctx.invoked_with))
+        command_list = list(self.word_filter.commands.keys())
+        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
+                            'Use `{1}help {2}` or `{1}help {2} <subcommand>` for instructions.')
+            .format(command_list, self.bot.command_prefix, ctx.invoked_with))
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
     async def filter_list(self, ctx, filter_type: str=None):
@@ -175,8 +177,8 @@ class WordFilter:
         """
         logger.info("filter_list: {}".format(message_log_str(ctx.message)))
         if filter_type is None:  # not passed - list both
-            await self.filter_list(ctx, 'del')
-            await self.filter_list(ctx, 'warn')
+            await ctx.invoke(self.filter_list, 'del')
+            await ctx.invoke(self.filter_list, 'warn')
         else:
             validated_type = await self.validate_filter_type(filter_type)
             if validated_type is None:
@@ -294,6 +296,55 @@ class WordFilter:
             .format(self.dest_current.name))
         await self.bot.say("Changed the filter warning channel to {}"
             .format(self.dest_current.mention))
+
+    @word_filter.error
+    @filter_list.error
+    @add.error
+    @rem.error
+    @switch.error
+    async def word_filter_error(self, exc, ctx: commands.Context):
+        cmd_string = message_log_str(ctx.message)
+
+        if isinstance(exc, commands.BadArgument):
+            msg = "Bad argument passed in command: {}".format(cmd_string)
+            logger.warning(msg)
+            await self.bot.send_message(ctx.message.channel,
+                ("Invalid argument(s) for the command `{}`. "
+                 "Check that the arguments after the command name are correct."
+                 "Use `{}` for instructions.")
+                    .format(get_command_str(ctx), get_help_str(ctx)))
+            # No need to log user errors to mods
+
+        elif isinstance(exc, commands.TooManyArguments):
+            msg = "Too many arguments passed in command: {}".format(cmd_string)
+            logger.warning(msg)
+            if ctx.invoked_subcommand.name == 'add':
+                await self.bot.send_message(ctx.message.channel,
+                    ("Too many arguments for the command `{}`. "
+                     "Did you forget quotation marks around the filter text? "
+                     "Use `{}` for instructions.")
+                        .format(get_command_str(ctx), get_help_str(ctx)))
+            else:
+                await self.bot.send_message(ctx.message.channel,
+                    ("Too many arguments for the command `{}`. "
+                     "Check that the arguments after the command name are correct. "
+                     "Use `{}` for instructions.")
+                        .format(get_command_str(ctx), get_help_str(ctx)))
+            # No need to log user errors to mods
+
+        elif isinstance(exc, commands.MissingRequiredArgument):
+            msg = "Missing required arguments in command: {}".format(cmd_string)
+            logger.warning(msg)
+            await self.bot.send_message(ctx.message.channel,
+                ("Missing argument(s) for the command `{}`. "
+                 "Check that you've passed all the needed arguments after the command name. "
+                 "Use `{}` for instructions.")
+                    .format(get_command_str(ctx), get_help_str(ctx)))
+            # No need to log user errors to mods
+
+        else:
+            from kaztron.KazTron import on_command_error
+            await on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
     async def validate_filter_type(self, filter_type) -> Union[str, None]:
         """

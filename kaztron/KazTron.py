@@ -7,12 +7,14 @@ import sys
 import discord
 from discord.ext import commands
 
-from kaztron import showcaser, wordfilter
+from kaztron import showcaser
 from kaztron.config import get_kaztron_config
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import check_role, get_named_role
 from kaztron.utils.logging import setup_logging, message_log_str, exc_log_str, tb_log_str
+from kaztron.utils.strings import get_command_str, get_help_str
+
 # In the loving memory of my time as a moderator of r/worldbuilding network
 # To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
 # (Assuming this is from Kazandaki -- Laogeodritt)
@@ -141,8 +143,8 @@ async def on_command_error(exc, ctx, force=False):
 
     if isinstance(exc, commands.CommandOnCooldown):
         await client.send_message(ctx.message.channel,
-            "{} is on cooldown! Try again in {:.2f} seconds."
-            .format(ctx.command.name, exc.retry_after))
+            "`{}` is on cooldown! Try again in {:.2f} seconds."
+            .format(get_command_str(ctx), exc.retry_after))
 
     elif isinstance(exc, commands.CommandInvokeError):
         root_exc = exc.__cause__ if exc.__cause__ is not None else exc
@@ -188,33 +190,39 @@ async def on_command_error(exc, ctx, force=False):
     elif isinstance(exc, commands.NoPrivateMessage):
         msg = "Attempt to use non-PM command in PM: {}".format(cmd_string)
         clogger.warning(msg)
-        await client.send_message(ctx.message.channel, "Sorry, you can't use that command in PMs.")
+        await client.send_message(ctx.message.channel, "Sorry, you can't use that command in PM.")
         # No need to log this on Discord, spammy and isn't something mods need to be aware of
 
     elif isinstance(exc, commands.BadArgument):
         msg = "Bad argument passed in command: {}".format(cmd_string)
         clogger.warning(msg)
         await client.send_message(ctx.message.channel,
-            "Bad argument for the command '{}'. ".format(ctx.invoked_with) +
+            ("Invalid argument(s) for the command `{}`. "
             "Check that the arguments after the command name are correct."
-            " (Dev note: Implement error handler + specify more precise check)")
+            "Use `{}` for instructions. "
+            "(Dev note: Implement error handler + specify more precise check)")
+                .format(get_command_str(ctx), get_help_str(ctx)))
         # No need to log user errors to mods
 
     elif isinstance(exc, commands.TooManyArguments):
         msg = "Too many arguments passed in command: {}".format(cmd_string)
         clogger.warning(msg)
         await client.send_message(ctx.message.channel,
-            "Too many arguments for the command '{}'. ".format(ctx.invoked_with) +
-            "Check that the arguments after the command name are correct.")
+            ("Too many arguments for the command `{}`. "
+            "Check that the arguments after the command name are correct. "
+             "Use `{}` for instructions.")
+                .format(get_command_str(ctx), get_help_str(ctx)))
         # No need to log user errors to mods
 
     elif isinstance(exc, commands.MissingRequiredArgument):
         msg = "Missing required arguments in command: {}".format(cmd_string)
         clogger.warning(msg)
         await client.send_message(ctx.message.channel,
-            "Missing arguments for the command '{}'. ".format(ctx.invoked_with) +
-            "Check that you've passed all the needed arguments after the command name."
-            " (Dev note: Implement error handler + specify more precise check)")
+            ("Missing argument(s) for the command `{}`. "
+            "Check that you've passed all the needed arguments after the command name. "
+             "Use `{}` for instructions. "
+            "(Dev note: Implement error handler + specify more precise check)")
+                .format(get_command_str(ctx), get_help_str(ctx)))
         # No need to log user errors to mods
 
     elif isinstance(exc, commands.CommandNotFound):
@@ -223,7 +231,7 @@ async def on_command_error(exc, ctx, force=False):
         if ctx.invoked_with not in ['.', '..'] and not ctx.invoked_with.startswith('.'):
             clogger.warning(msg)
             await client.send_message(ctx.message.author,
-                "Sorry, I don't know the command '{}'".format(ctx.invoked_with))
+                "Sorry, I don't know the command `{}`".format(get_help_str(ctx)))
 
     else:
         clogger.exception("Unknown exception occurred")
