@@ -28,7 +28,7 @@ def get_named_role(server: discord.Server, role_name: str) -> discord.Role:
     :param server: Server on which to find the role
     :param role_name: Role name to find
     :return: Discord Role corresponding to the given name
-    :except ValueError: role does not exist
+    :raises ValueError: role does not exist
     """
     role = discord.utils.get(server.roles, name=role_name)
     if role is None:
