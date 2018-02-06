@@ -7,7 +7,7 @@ from discord.ext import commands
 from kaztron.config import get_kaztron_config
 from kaztron.utils.logging import message_log_str
 
-logger = logging.getLogger('kaztron.' + __name__)
+logger = logging.getLogger(__name__)
 
 
 class DiceCog:

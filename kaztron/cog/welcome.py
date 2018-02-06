@@ -4,7 +4,7 @@ import discord
 
 from kaztron.config import get_kaztron_config
 
-logger = logging.getLogger('kaztron.' + __name__)
+logger = logging.getLogger(__name__)
 
 
 class Welcome:

@@ -9,7 +9,7 @@ from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import get_timestamp_str
 
-logger = logging.getLogger('kaztron.' + __name__)
+logger = logging.getLogger(__name__)
 
 
 class CoreCog:

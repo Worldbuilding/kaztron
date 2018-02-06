@@ -5,7 +5,7 @@ import discord
 from kaztron.config import get_kaztron_config
 from kaztron.utils.discord import get_named_role
 
-logger = logging.getLogger('kaztron.' + __name__)
+logger = logging.getLogger(__name__)
 
 
 class RoleManager:

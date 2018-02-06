@@ -9,7 +9,7 @@ from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import get_named_role
 from kaztron.utils.logging import message_log_str
 
-logger = logging.getLogger('kaztron.' + __name__)
+logger = logging.getLogger(__name__)
 
 
 class ModToolsCog:
