@@ -9,12 +9,12 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["core", "welcome", "wordfilter", "dice", "modtools"],
+    "extensions": ["core", "welcome", "wordfilter", "dice", "modtools", "spotlight"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log"
   },
-  "showcase": {
+  "spotlight": {
     "channel": "Channel ID",
     "audience_role": "Spotlight Audience role name",
     "spreadsheet_id": "Google Spreadsheet ID",

@@ -1,4 +1,5 @@
-from collections import deque
+import re
+from typing import List
 
 import discord
 from discord.ext import commands
@@ -8,11 +9,68 @@ def format_list(list_) -> str:
     """
     Format a list as a string for display over Discord, with indices starting from 1.
     """
-    fmt = "{0: >3d}. {1:s}"
-    text_bits = ["```"]
+    digits = len(str(len(list_)))
+    fmt = "{0: >" + str(digits) + "d}. {1!s:s}"
+    text_bits = []
     text_bits.extend(fmt.format(i+1, item) for i, item in enumerate(list_))
-    text_bits.append("```")
     return '\n'.join(text_bits)
+
+
+def split_chunks_on(str_: str, maxlen: int, split_char='\n') -> List[str]:
+    """
+    Split a long string along `split_char` such that all strings are smaller than but as close as
+    possible to `maxlen` size.
+
+    Lines that exceed `maxlen` size will not be split.
+    """
+    len_split = len(split_char)
+    lines = str_.split(split_char)
+    parts = []
+    this_part = []
+    running_len = 0
+    for line in lines:
+        len_line = len(line) + len_split  # can't forget the newline/split_char!
+        if len_line + running_len <= maxlen:
+            this_part.append(line)
+            running_len += len_line
+        else:
+            parts.append(this_part)
+            this_part = [line]
+            running_len = len_line
+    parts.append(this_part)  # last one, not committed in loop
+    return [split_char.join(part) for part in parts]
+
+
+def split_code_chunks_on(str_: str, maxlen: int, split_char='\n', lang: str=None) -> List[str]:
+    """
+    Same as :func:`split_chunks_on`, but returns string parts that are all formatted as Markdown
+    code blocks, optionally with a language string (the original string must not already be a code
+    block!).
+
+    Lines that exceed `maxlen` size will not be split.
+    """
+    head = '```{}\n'.format(lang if lang else '')
+    tail = '\n```'
+    len_pad = len(head) + len(tail)
+    raw_parts = split_chunks_on(str_, maxlen - len_pad, split_char=split_char)
+    return ["{}{}{}".format(head, part, tail) for part in raw_parts]
+
+
+def natural_truncate(str_: str, maxlen: int, ellipsis='[…]') -> str:
+    """
+    If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis
+    appended to the end.
+    """
+    maxlen_net = maxlen - len(ellipsis)
+    if len(str_) > maxlen:
+            trunc_str = str_[:maxlen_net]
+            match = re.search(r'\W.*?$', trunc_str)
+            if match:
+                return str_[:match.start() + 1] + ellipsis
+            else:
+                return trunc_str
+    else:
+        return str_
 
 
 def get_command_str(ctx: commands.Context) -> str:

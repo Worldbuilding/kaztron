@@ -9,7 +9,7 @@ import discord
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config
-from kaztron.driver import showcaser
+from kaztron.driver import gsheets
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import check_role, get_named_role
@@ -69,8 +69,7 @@ except OSError as e:
     sys.exit(1)
 
 dest_output = discord.Object(id=config.get('discord', 'channel_output'))
-dest_showcase = discord.Object(id=config.get('showcase', 'channel'))
-lucky = None  # Ugh, fix this.
+dest_showcase = discord.Object(id=config.get('spotlight', 'channel'))
 
 
 # setup logging
@@ -235,8 +234,8 @@ async def on_command_error(exc, ctx, force=False):
         # avoid some natural language things that start with period (ellipsis, etc.)
         if ctx.invoked_with not in ['.', '..'] and not ctx.invoked_with.startswith('.'):
             clogger.warning(msg)
-            await client.send_message(ctx.message.author,
-                "Sorry, I don't know the command `{}`".format(get_help_str(ctx)))
+            await client.send_message(ctx.message.channel, "Sorry, I don't know the command `{}{}`"
+                .format(client.command_prefix, ctx.invoked_with))
 
     else:
         clogger.exception("Unknown exception occurred")
@@ -245,176 +244,3 @@ async def on_command_error(exc, ctx, force=False):
         await client.send_message(dest_output,
                                   ("[ERROR] Unknown error while trying to process command {}\n"
                                    "Error: {!s}\n\nSee logs for details").format(cmd_string, exc))
-
-
-# TODO: extract this into its own module, fix the poorly designed 'lucky' global/non-persisted state
-@client.command(pass_context=True, description="World spotlight control.")
-async def spotlight(ctx):
-    """
-    Public subcommands:
-
-    * `join` Join or leave the world spotlight audience. If you join, you will be pinged for
-      spotlight-related news (e.g. start of a spotlight). Example usage: `.spotlight join`
-    
-    Mod-only subcommands:
-
-    * `choose [index]` Choose row #<index> as current spotlight from the spreadsheet.
-    * `roll` Roll a random spotlight application from the spreadsheet.
-    * `current` Display the currently selected spotlight.
-    * `showcase` Show the currently selected spotlight in the Showcase channel (publicly).
-    """
-    global lucky
-    clogger.debug("spotlight(): " + message_log_str(ctx.message)[:64])
-
-    commandraw = str(ctx.message.content)
-    command = commandraw[11:]
-
-    # TODO: convert to subcommands. See here: https://github.com/Rapptz/discord.py/blob/d50acf79f8003052090f79770ad251daa3a7ff70/docs/faq.rst#how-do-i-make-a-subcommand
-    # TODO: properly tokenize the arguments... I think discord.py is supposed to already tokenize though? Look into this, look into Context.args
-    if command == "join":
-        clogger.debug("spotlight(): audience role request from {!s}".format(ctx.message.author))
-        audience_role = get_named_role(ctx.server, config.get("showcase", "audience_role"))
-        if audience_role in ctx.message.author.roles:
-            await client.remove_roles(ctx.message.author, audience_role)
-            await client.delete_message(ctx.message)
-            await client.send_message(ctx.message.author,
-                "You are no longer part of the world spotlight audience. You will not be pinged "
-                "for spotlight-related news. You can use the same command to join the audience "
-                "again.")
-            clogger.info("spotlight(): removed audience role from {!s}".format(ctx.message.author))
-        else:
-            await client.add_roles(ctx.message.author, audience_role)
-            await client.delete_message(ctx.message)
-            await client.send_message(ctx.message.author,
-                "You are now a part of the world spotlight audience. You can be mass pinged by the "
-                "moderators or the host for spotlight-related news (like the start of a "
-                "spotlight). You can use the same command to leave the audience.")
-            clogger.info("spotlight(): gave audience role to {!s}".format(ctx.message.author))
-
-    elif check_role(config.get("discord", "mod_roles", []), ctx.message):
-        if command[:6] == "choose":
-            clogger.debug("spotlight(): choose")
-            row_index = int(command[7:])-2
-            try:
-                lucky = showcaser.choose(row_index)
-            except IndexError:
-                err_msg = "Index out of range: {:d}".format(row_index + 2)
-                clogger.error("spotlight(): choose: " + err_msg)
-                await client.say(err_msg)
-                return
-            await send_spotlight_info(ctx.message.channel, lucky)
-
-        elif command == "roll":
-            clogger.debug("spotlight(): roll")
-            lucky = showcaser.roll()
-            await send_spotlight_info(ctx.message.channel, lucky)
-
-        elif command == "current":
-            clogger.debug("spotlight(): current")
-            if lucky:
-                await send_spotlight_info(ctx.message.channel, lucky)
-            else:
-                clogger.warning("spotlight(): current: No spotlight currently selected.")
-                await client.say("No spotlight currently selected.")
-
-        elif command == "showcase":
-            clogger.debug("spotlight(): showcase")
-            if lucky:
-                await client.send_message(dest_showcase, "**Next spotlight host!**")
-                await send_spotlight_info(dest_showcase, lucky)
-            else:
-                clogger.warning("spotlight(): showcase: No spotlight currently selected.")
-                await client.say("No spotlight currently selected.")
-        else:
-            err_msg = "{!r} is not a valid spotlight sub-command.".format(command)
-            clogger.warning("spotlight(): " + err_msg)
-            await client.say("{!r} is not a valid spotlight sub-command.".format(command))
-    else:
-        err_msg = "Non-mod tried to use mod-only spotlight command: {}".format(message_log_str(ctx.message))
-        clogger.warning(err_msg)
-        await client.send_message(ctx.message.channel, "You're not allowed to use that command.")
-        await client.send_message(dest_output, "[WARNING] " + err_msg)
-
-
-@spotlight.error
-async def spotlight_on_error(exc, ctx):
-    cmd_string = message_log_str(ctx.message)
-    if isinstance(exc, commands.CommandInvokeError):
-        root_exc = exc.__cause__ if exc.__cause__ is not None else exc
-
-        # noinspection PyUnresolvedReferences
-        if isinstance(root_exc, showcaser.Error):  # any Google API errors
-            clogger.exception("Google API error while processing command: {}\n\n{}"
-                              .format(cmd_string, tb_log_str(root_exc)))
-            await client.send_message(ctx.message.channel,
-                "An error occurred while communicating with the Google API. "
-                "See bot output for details.")
-            await client.send_message(dest_output,
-                                      ("[ERROR] An error occurred while communicating with the Google API.\n"
-                "Original command: {}\n{}\n\nSee logs for details")
-                                      .format(cmd_string, exc_log_str(root_exc)))
-
-        elif isinstance(root_exc,
-                (showcaser.UnknownClientSecretsFlowError, showcaser.InvalidClientSecretsError)
-                ):  # Auth credentials file errors
-            clogger.error("Problem with Google API credentials file: {}\n\n{}"
-                          .format(cmd_string, tb_log_str(root_exc)))
-            await client.send_message(ctx.message.channel,
-                "Problem with the stored Google API credentials. "
-                "See bot output for details.")
-            await client.send_message(dest_output,
-                                      ("[ERROR] Problem with Google API credentials file.\n"
-                 "Original command: {}\n{}\n\nSee logs for details")
-                                      .format(cmd_string, exc_log_str(root_exc)))
-
-        elif isinstance(root_exc, discord.HTTPException):
-            cmd_string = str(ctx.message.content)[11:]
-            clogger.error("Error sending spotlight info ({}): {}".format(cmd_string, root_exc.text))
-            await client.send_message(ctx.message.channel,
-                "Error sending spotlight info: {}".format(root_exc.text))
-            await client.send_message(dest_output,
-                ("[ERROR] Error sending spotlight info.\n"
-                 "Original command: {}\nDiscord API error: {}\n\n"
-                 "See logs for details").format(cmd_string, root_exc.text))
-
-        else:
-            await on_command_error(exc, ctx, force=True)  # Other errors can bubble up
-    else:
-        on_command_error(exc, ctx, force=True)
-
-
-async def send_spotlight_info(destination: discord.Object, spotlight_data: [str]) -> None:
-    """
-    Returns a discord.Embed object containing human-readable formatted
-    spotlight_data. This object can then be sent to any normal text channel
-    over Discord.
-
-    :param destination: The destination as a Discord object (often a :cls:`discord.Channel`)
-    :param spotlight_data: the array of spotlight data to send
-    :return: None, or a :cls:`discord.HTTPException` class if sending fails (this is already
-        logged and communicated over Discord, provided for informational purposes/further handling)
-    """
-    user = discord.User(id=spotlight_data[2])
-    clogger.info("Displaying spotlight data for: {!s} - {!s}"
-        .format(user, spotlight_data[4]))
-
-    usercolor = 0x80AAFF
-    em = discord.Embed(color=usercolor)
-    em.add_field(name="Author", value=user.mention, inline=False)
-    em.add_field(name="Project Name", value=spotlight_data[4], inline=False)
-    em.add_field(name="Project Description", value=spotlight_data[11], inline=False)
-
-    if spotlight_data[8] != "n/a":
-        em.add_field(
-            name="Are there any mature or controversial issues that you explore or discuss in your world?",
-            value=spotlight_data[8], inline=False)
-
-    em.add_field(name="Keywords", value=spotlight_data[5], inline=False)
-
-    if spotlight_data[14] and spotlight_data[14].lower() != "n/a":
-        em.add_field(name="Project Art", value="[Click Here](%s)" % spotlight_data[14], inline=True)
-
-    if spotlight_data[15] and spotlight_data[15].lower() != "n/a":
-        em.add_field(name="Additional Content", value="[Click Here](%s)" % spotlight_data[15], inline=True)
-
-    await client.send_message(destination, embed=em)

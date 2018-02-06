@@ -1,5 +1,17 @@
 import discord
 
+MSG_MAX_LEN = 2000
+
+
+class Limits:
+    MESSAGE = MSG_MAX_LEN
+    EMBED_TEXT = 6000
+    EMBED_TITLE = 256
+    EMBED_DESC = 2048
+    EMBED_FIELD_NAME = 256
+    EMBED_FIELD_VALUE = 1024
+    EMBED_FIELD_NUM = 25
+
 
 def check_role(rolelist, message):
     """
