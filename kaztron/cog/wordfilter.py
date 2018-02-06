@@ -7,11 +7,12 @@ from discord.ext import commands
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.utils.checks import mod_only
-from kaztron.utils.discord import check_role
+from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str
+from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str, \
+    split_code_chunks_on, natural_truncate
 
-logger = logging.getLogger('kaztron.' + __name__)
+logger = logging.getLogger(__name__)
 
 
 class WordFilter:
@@ -92,16 +93,20 @@ class WordFilter:
         """
         Load information from the server.
         """
-        self.dest_output = self.bot.get_channel(self.config.get('discord', 'channel_output'))
-        self.dest_warning = self.bot.get_channel(self.config.get('filter', 'channel_warning'))
+        dest_output_id = self.config.get('discord', 'channel_output')
+        self.dest_output = self.bot.get_channel(dest_output_id)
+
+        dest_warning_id = self.config.get('filter', 'channel_warning')
+        self.dest_warning = self.bot.get_channel(dest_warning_id)
+
         self.dest_current = self.bot.get_channel(self.filter_cfg.get('filter', 'channel'))
 
         # validation
         if self.dest_output is None:
-            raise ValueError('Output channel {} not found'.format(self.dest_output.id))
+            raise ValueError("Output channel '{}' not found".format(dest_output_id))
 
         if self.dest_warning is None:
-            raise ValueError('WordFilter warning channel {} not found'.format(self.dest_warning.id))
+            raise ValueError("WordFilter warning channel '{}' not found".format(dest_warning_id))
 
         if self.dest_current is None:
             self.dest_current = self.dest_warning
@@ -145,7 +150,9 @@ class WordFilter:
                 em.add_field(name="Channel", value=message.channel.mention, inline=True)
                 em.add_field(name="Timestamp", value=get_timestamp_str(message), inline=True)
                 em.add_field(name="Match Text", value=match_text, inline=True)
-                em.add_field(name="Content", value=message_string, inline=False)
+                em.add_field(name="Content",
+                             value=natural_truncate(message_string, Limits.EMBED_FIELD_VALUE),
+                             inline=False)
 
                 await self.bot.send_message(self.dest_current, embed=em)
 
@@ -161,8 +168,8 @@ class WordFilter:
         """
         command_list = list(self.word_filter.commands.keys())
         await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}help {2}` or `{1}help {2} <subcommand>` for instructions.')
-            .format(command_list, self.bot.command_prefix, ctx.invoked_with))
+                            'Use `{1}` or `{1} <subcommand>` for instructions.')
+            .format(command_list, get_help_str(ctx)))
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
     async def filter_list(self, ctx, filter_type: str=None):
@@ -197,8 +204,13 @@ class WordFilter:
             if filter_list:
                 list_str = format_list(filter_list)
             else:
-                list_str = '```Empty```'
-            await self.bot.say("{}\n\n{}".format(self.list_headings[validated_type], list_str))
+                list_str = 'Empty'
+
+            heading_str = self.list_headings[validated_type]
+            say_strings = split_code_chunks_on(list_str, MSG_MAX_LEN - len(heading_str) - 2)
+            await self.bot.say("{}\n{}".format(heading_str, say_strings[0]))
+            for say_str in say_strings[1:]:
+                await self.bot.say(say_str)
 
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['a'])
     async def add(self, ctx, filter_type: str, word: str):
