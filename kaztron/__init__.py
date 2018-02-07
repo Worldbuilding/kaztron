@@ -1,14 +1,16 @@
 # kaztron
 from collections import OrderedDict
 
-__version__ = "1.2.6"
+__version__ = "1.3a1"
 
 bot_info = {
     "version": __version__,
-    "changelog": "- Improved logging facilities\n"
-                 "- Internal refactor for maintainability and reliability\n"
-                 "- Internal architectural improvements: configuration handling\n"
-                 "- Refactor of command UI of several modules\n",
+    "changelog":
+        "+ Spotlight queue management feature\n"
+        "+ Refactor of all command UI and usability improvements\n"
+        "+ Improved logging facilities\n"
+        "+ Internal rewrite for maintainability & reliability\n"
+        "x Various bugfixes - see git history",
     "links": OrderedDict()
 }
 bot_info["links"]["Manual"] = "https://github.com/Kazandaki/KazTron/wiki"
