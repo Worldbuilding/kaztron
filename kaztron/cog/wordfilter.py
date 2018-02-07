@@ -365,8 +365,8 @@ class WordFilter:
             # No need to log user errors to mods
 
         else:
-            from kaztron.KazTron import on_command_error
-            await on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+            core_cog = self.bot.get_cog("CoreCog")
+            await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
     @commands.command(pass_context=True)
     @mod_only()

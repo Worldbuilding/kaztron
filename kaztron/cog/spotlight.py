@@ -761,11 +761,11 @@ class Spotlight:
                      "See logs for details").format(cmd_string, root_exc))
 
             else:
-                from kaztron.KazTron import on_command_error
-                await on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+                core_cog = self.bot.get_cog("CoreCog")
+                await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
         else:
-            from kaztron.KazTron import on_command_error
-            await on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+            core_cog = self.bot.get_cog("CoreCog")
+            await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
 
 def setup(bot):
