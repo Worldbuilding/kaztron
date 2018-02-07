@@ -7,7 +7,7 @@ from collections import deque
 import discord
 from discord.ext import commands
 
-import dateutil.parser
+import dateparser
 from datetime import datetime
 
 from kaztron.config import get_kaztron_config, get_runtime_config
@@ -16,8 +16,7 @@ from kaztron.utils.checks import mod_only
 from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
-from kaztron.utils.strings import format_list, get_help_str, \
-    split_code_chunks_on, natural_truncate
+from kaztron.utils.strings import format_list, get_help_str, split_code_chunks_on, natural_truncate
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ class SpotlightApp:
     @error_handler(ValueError, datetime.utcfromtimestamp(0))
     @error_handler(IndexError, datetime.utcfromtimestamp(0))
     def timestamp(self) -> datetime:
-        return dateutil.parser.parse(self._data[0])
+        return dateparser.parse(self._data[0])
 
     @property
     @error_handler(IndexError, "")
