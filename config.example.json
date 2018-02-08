@@ -9,7 +9,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "modnotes"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log"
@@ -43,5 +43,8 @@
       ["url1", "artist name 1"],
       ["url2", "artist name 2"]
     ]
+  },
+  "modnotes": {
+
   }
 }

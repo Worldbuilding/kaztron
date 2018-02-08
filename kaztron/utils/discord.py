@@ -11,6 +11,7 @@ class Limits:
     EMBED_FIELD_NAME = 256
     EMBED_FIELD_VALUE = 1024
     EMBED_FIELD_NUM = 25
+    NAME = 32
 
 
 def check_role(rolelist, message):
@@ -46,3 +47,7 @@ def get_named_role(server: discord.Server, role_name: str) -> discord.Role:
     if role is None:
         raise ValueError("Role '{!s}' not found.".format(role_name))
     return role
+
+
+def user_mention(discord_id: str) -> str:
+    return '<@{}>'.format(discord_id)

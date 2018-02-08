@@ -1,5 +1,6 @@
+import datetime
 import re
-from typing import List
+from typing import List, Union
 
 import discord
 from discord.ext import commands
@@ -105,8 +106,17 @@ def get_help_str(ctx: commands.Context) -> str:
     return "{0.bot.command_prefix}help {0.command!s}".format(ctx)
 
 
-def get_timestamp_str(msg: discord.Message) -> str:
+def get_timestamp_str(dt: Union[discord.Message, datetime.datetime]) -> str:
     """
     Get the timestamp string of a message in ISO format, to second precision.
     """
-    return msg.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(dt, discord.Message):
+        dt = dt.timestamp
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def none_wrapper(value, default=""):
+    """
+    Pure laziness! Sometimes this ends up being nice syntactic sugar for code readability.
+    """
+    return value if value is not None else default

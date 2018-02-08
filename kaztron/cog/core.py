@@ -30,7 +30,7 @@ class CoreCog:
         startup_info = (
             "Logged in as {} (id:{})".format(self.bot.user.name, self.bot.user.id),
             "KazTron version {}".format(kaztron.__version__),
-            "Discord API version {}".format(discord.__version__)
+            "discord.py version {}".format(discord.__version__)
         )
 
         for msg in startup_info:

@@ -80,7 +80,7 @@ class ModToolsCog:
     @mod_only()
     async def finduser(self, ctx, user_id: int):
         """
-        [MOD ONLY] Finds a Discord user from their Discord.
+        [MOD ONLY] Finds a Discord user from their Discord ID.
 
         Arguments:
         * user_id: The ID number of the user.

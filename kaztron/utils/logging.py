@@ -23,6 +23,9 @@ def setup_logging(logger, config):
     ch.setFormatter(ch_formatter)
     logger.addHandler(ch)
 
+    # SQLalchemy
+    logging.getLogger('sqlalchemy.engine').setLevel(min(logging.INFO, cfg_level))
+
 
 def message_log_str(message: discord.Message) -> str:
     """
