@@ -4,7 +4,9 @@ from sqlalchemy import event
 # noinspection PyUnresolvedReferences
 from sqlalchemy.orm import relationship, sessionmaker, Query
 # noinspection PyUnresolvedReferences
-from sqlalchemy.orm import exc
+from sqlalchemy.orm import exc as orm_exc
+# noinspection PyUnresolvedReferences
+from sqlalchemy import exc as core_exc
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.engine import Engine
 
