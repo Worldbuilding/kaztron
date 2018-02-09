@@ -2,6 +2,7 @@ import enum
 import math
 import logging
 from types import SimpleNamespace
+from typing import List, Optional
 
 import discord
 from discord.ext import commands
@@ -11,7 +12,7 @@ from kaztron.config import get_kaztron_config
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import user_mention, Limits
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list
+from kaztron.utils.strings import format_list, get_help_str
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,7 @@ class User(cogdb.Base):
     discord_id = db.Column(db.String(24), unique=True, nullable=False)
     name = db.Column(db.String(Limits.NAME))
     aliases = db.relationship('UserAlias', back_populates='user', lazy='joined')
-    links = db.relationship('UserLink', foreign_keys='UserLink.user1_id',
-                            back_populates='user1', lazy='selectin')
+    group_id = db.Column(db.Integer, nullable=True)
     records = db.relationship('Record', foreign_keys='Record.user_id',
                               back_populates='user')
     authorship = db.relationship('Record', foreign_keys='Record.author_id',
@@ -66,38 +66,6 @@ class UserAlias(cogdb.Base):
         return "{1} (alias *{0:d})".format(self.user_id, self.name)
 
 
-class UserLink(cogdb.Base):
-    __tablename__ = 'userlinks'
-    __table_args__ = (
-        db.ForeignKeyConstraint(['user1_id', 'user2_id'],
-                                ['userlinks.user2_id', 'userlinks.user1_id']),
-        db.CheckConstraint("user1_id <> user2_id")
-    )
-
-    def __init__(self, *, link_id, user1_id, user2_id):
-        self.link_id = link_id
-        if user1_id < user2_id:
-            self.user1_id = user1_id
-            self.user2_id = user2_id
-        else:
-            self.user1_id = user2_id
-            self.user2_id = user1_id
-
-    link_id = db.Column(db.Integer, db.Sequence('link_id_seq'), primary_key=True, nullable=False)
-    user1_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), index=True, nullable=False)
-    user2_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
-
-    user1 = db.relationship('User', foreign_keys=[user1_id])
-    user2 = db.relationship('User', foreign_keys=[user2_id])
-
-    def __repr__(self):
-        return "<UserLink(link_id={:d}, user1_id={:d}, user2_id={:d})>" \
-            .format(self.link_id, self.user1_id, self.user2_id)
-
-    def __str__(self):
-        return "*{0:d} == *{1:d}".format(self.user1_id, self.user2_id)
-
-
 class RecordType(enum.Enum):
     note = 0
     good = 1
@@ -124,13 +92,15 @@ class Record(cogdb.Base):
 
     def __repr__(self):
         return "<Record(record_id={:d})>" \
-            .format(self.link_id, self.user1_id, self.user2_id)
+            .format(self.record_id)
 
     def __str__(self):
         raise NotImplementedError()  # TODO
 
 
 class ModNotes:
+    # TODO: Possible future enhancement: separate out all of the sqlalchemy database business logic
+    # TODO: ... from the Discord API/"view" logic and make that its own class
     NOTES_PAGE_SIZE = 20
     USEARCH_PAGE_SIZE = 20
 
@@ -219,6 +189,10 @@ class ModNotes:
             else:
                 logger.debug('_query_user: found user: {!r}'.format(db_user))
             return db_user
+
+    def _query_group(self, user: User) -> List[User]:
+        """ Get all users in a user's group. """
+        return self.session.query(User).filter(User.group_id == user.group_id).all()
 
     @staticmethod
     def format_display_user(db_user: User):
@@ -336,31 +310,26 @@ class ModNotes:
                                      UserAlias.name.ilike(search_term_like)))\
                       .order_by(User.name)\
                       .all()  # No limit/offset as sqlite is in-process - no transmission advantage
-        len_results = len(results)  # And we want to be user-friendly with the results info
-        pages = int(math.ceil(len_results/self.USEARCH_PAGE_SIZE))
 
-        logger.info("notes usearch: Found {:d} results for {!r}".format(len_results, search_term))
+        logger.info("notes usearch: Found {:d} results for {!r}".format(len(results), search_term))
+        await self._display_usearch(results, search_term_s, page)
 
-        if page > pages:
-            page = pages
+    async def _display_usearch(self, results: List, search_term: str, page: int):
+        """
+        Format and send the results to the requesting channel.
+        """
+        len_results = len(results)
+        total_pages = int(math.ceil(len_results/self.USEARCH_PAGE_SIZE))
+
+        if page > total_pages:
+            page = total_pages
 
         results_lines = []
         start_index = (page-1)*self.USEARCH_PAGE_SIZE
         end_index = start_index + self.USEARCH_PAGE_SIZE
 
         for user in results[start_index:end_index]:
-            # Find the match
-            if search_term_s.lower() in user.name.lower():
-                matched_alias = None
-            else:
-                for alias in filter(lambda a: search_term_s.lower() in a.name.lower(), user.aliases):
-                    matched_alias = alias
-                    break
-                else:
-                    matched_alias = None
-                    logger.warning("No match in result matches??? "
-                                   "Search: {!r} User: {!r} Check sqlalchemy output..."
-                        .format(search_term, user))
+            matched_alias = self._find_match_field(user, search_term)
 
             # Format this user for the list display
             if not matched_alias:
@@ -373,10 +342,36 @@ class ModNotes:
 
         # Output - should always be sub-2000 characters
         heading = self.USEARCH_HEADING_F.format(
-            page=page, pages=pages,
+            page=page, pages=total_pages,
             total=len_results, query=search_term
         )
         await self.bot.say("{}\n\n{}".format(heading, format_list(results_lines)))
+
+    @staticmethod
+    def _find_match_field(user: User, search_term: str) -> Optional[UserAlias]:
+        """
+        Find whether the canonical name or alias of a user was matched.
+
+        Needed because the results don't indicate whether the canonical name or an alias was
+        matched - only 20 results at a time so the processing time shouldn't be a concern.
+
+        :param user:
+        :param search_term:
+        :return: The UserAlias object that matched, or None if the canonical name matches or
+            no match is found (for now this is non-critical, it's a should-not-happen error case
+            that just ends up displaying the canonical name - can change to raise ValueError
+            in the future?)
+        """
+        if search_term.lower() in user.name.lower():
+            return None
+
+        for alias_ in filter(lambda a: search_term.lower() in a.name.lower(), user.aliases):
+            return alias_  # first one is fine
+        else:  # if no results from the filter()
+            logger.warning(("User is in results set but doesn't seem to match query? "
+                            "Is something buggered? "
+                            "Q: {!r} User: {!r} Check sqlalchemy output...")
+                .format(search_term, user))
 
     @notes.command(pass_context=True)
     @mod_only()
@@ -432,95 +427,152 @@ class ModNotes:
         Example:
         .notes alias add @FireAlchemist#1234 The Flame Alchemist
         """
+        logger.info("notes alias: {}".format(message_log_str(ctx.message)))
         addrem = addrem[0].lower()
         if addrem == 'a':
-            action_rem = False
+            db_user = await self._query_user(user)
+            await self._alias_add(db_user, alias)
         elif addrem == 'r':
-            action_rem = True
+            db_user = await self._query_user(user)
+            await self._alias_rem(db_user, alias)
         else:
             raise commands.BadArgument("Argument 1 of `.notes alias` must be `add` or `rem`")
 
-        logger.info("notes alias {}: {}"
-            .format('rem' if action_rem else 'add', message_log_str(ctx.message)))
-        db_user = await self._query_user(user)
-        db_user_repr = repr(db_user)  # Want this before the update
+    async def _alias_add(self, db_user: User, alias: str):
         alias_filt = alias.split('\n', maxsplit=1)[0][:Limits.NAME]
+        db_user_repr = repr(db_user)  # Want this before the update
+        try:
+            db_alias = UserAlias(user=db_user, name=alias_filt)
+            db_user.aliases.append(db_alias)
+            self.session.commit()
+        except:
+            self.session.rollback()
+            raise
+        else:
+            logger.info("Updated user {} - added alias {!r}".format(db_user_repr, alias_filt))
+            await self.bot.say("Updated user {0} - added alias '{1}'"
+                .format(self.format_display_user(db_user), alias_filt))
 
-        if not action_rem:  # add
-            try:
-                db_alias = UserAlias(user=db_user, name=alias_filt)
-                db_user.aliases.append(db_alias)
-                self.session.commit()
-            except:
-                self.session.rollback()
-                raise
-            else:
-                logger.info("Updated user {} - added alias {!r}".format(db_user_repr, alias_filt))
-                await self.bot.say("Updated user {0} - added alias '{1}'"
-                    .format(self.format_display_user(db_user), alias_filt))
+    async def _alias_rem(self, user: User, alias: str):
+        alias_filt = alias.split('\n', maxsplit=1)[0][:Limits.NAME]
+        db_user_repr = repr(user)  # Want this before the update
+        try:
+            alias = [a for a in user.aliases if a.name.lower() == alias_filt.lower()][0]
+        except IndexError:
+            logger.warning("User {} - cannot remove alias - no such alias {!r}"
+                .format(db_user_repr, alias_filt))
+            await self.bot.say("Cannot remove alias for {0} - no such alias '{1}'"
+                .format(self.format_display_user(user), alias_filt))
+            return
 
-        else:  # rem
-            try:
-                alias_index = [a.name.lower() for a in db_user.aliases].index(alias_filt.lower())
-            except ValueError:
-                logger.warning("User {} - cannot remove alias - no such alias {!r}"
-                    .format(db_user_repr, alias_filt))
-                await self.bot.say("Cannot remove alias for {0} - no such alias '{1}'"
-                    .format(self.format_display_user(db_user), alias_filt))
-                return
+        try:
+            self.session.delete(alias)
+            self.session.commit()
+        except:
+            self.session.rollback()
+            raise
+        else:
+            logger.info("Updated user {} - removed alias {!r}".format(db_user_repr, alias_filt))
+            await self.bot.say("Updated user {0} - removed alias '{1}'"
+                .format(self.format_display_user(user), alias_filt))
 
-            try:
-                del db_user.aliases[alias_index]
-                self.session.commit()
-            except:
-                self.session.rollback()
-                raise
-            else:
-                logger.info("Updated user {} - removed alias {!r}".format(db_user_repr, alias_filt))
-                await self.bot.say("Updated user {0} - removed alias '{1}'"
-                    .format(self.format_display_user(db_user), alias_filt))
-
-    @notes.command(pass_context=True, ignore_extra=False)
+    @notes.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
-    async def link(self, ctx, user1: str, user2: str):
+    async def link(self, ctx):
+        """
+        [MOD ONLY] Set or remove an identity link between two users.
+
+        An identity link creates a group of users which are all considered to be the same
+        individual. The .notes command will show the user info and records for both simultaneously,
+        if one of them is looked up. The users remain separate and can be unlinked later.
         """
 
-        [MOD ONLY] Set an identity link between two users.
+        command_list = list(self.link.commands.keys())
+        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
+                            'Use `{1}` or `{1} <subcommand>` for instructions.')
+            .format(command_list, get_help_str(ctx)))
 
-        An identity link considers both users as the same individual. The .notes command will show
-        the user info and records for both simultaneously, if one of them is looked up. The users
-        remain separate and can be unlinked later - this is not an irreversible merge.
+    @link.command(name='add', pass_context=True, ignore_extra=False, aliases=['a'])
+    @mod_only()
+    async def link_add(self, ctx, user1: str, user2: str):
+        """
+        Set an identity link between two users.
 
-        See also `.help notes unlink`.
+        If both users already have links to more users, the two linked groups are merged together.
+        This is irreversible.
+
+        See `.help link` for more information on linking.
 
         Arguments:
-        * <user1> and <user2>: Required. The two users to link or unlink. See `.help notes`.
+        * <user1> and <user2>: Required. The two users to link. See `.help notes`.
 
         Example:
-        .notes link @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
+        .notes link add @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
         """
         logger.info("notes link: {}".format(message_log_str(ctx.message)))
+        db_user1 = await self._query_user(user1)
+        db_user2 = await self._query_user(user2)
+        try:
+            # If both are in groups, merge the groups
+            if db_user1.group_id is not None and db_user2.group_id is not None:
+                logger.debug("Merging group {1.group_id:d} into group {0.group_id:d}"
+                    .format(db_user1, db_user2))
+                for user in self._query_group(db_user2):
+                    user.group_id = db_user1.group_id
 
-    @notes.command(pass_context=True, ignore_extra=False)
+            # if one is in a group, assign the ungrouped user to the grouped user
+            elif db_user1.group_id is not None:
+                logger.debug("Assigning user {1.user_id:d} to group {0.group_id:d}"
+                    .format(db_user1, db_user2))
+                db_user2.group_id = db_user1.group_id
+
+            elif db_user2.group_id is not None:
+                logger.debug("Assigning user {0.user_id:d} to group {1.group_id:d}"
+                    .format(db_user1, db_user2))
+                db_user1.group_id = db_user2.group_id
+
+            # If neither are in a group, assign a new group
+            else:
+                logger.debug("Assigning users {0.user_id:d}, {1.user_id:d} to group {0.user_id:d}"
+                    .format(db_user1, db_user2))
+                db_user1.group_id = db_user2.group_id = db_user1.user_id
+
+            self.session.commit()
+
+        except:
+            self.session.rollback()
+            raise
+        else:
+            logger.info("Added link between {!r} and {!r}".format(db_user1, db_user2))
+            await self.bot.say("Added link between users {} and {}"
+                .format(self.format_display_user(db_user1), self.format_display_user(db_user2)))
+
+    @link.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r'])
     @mod_only()
-    async def unlink(self, ctx, user1: str, user2: str):
+    async def link_rem(self, ctx, user: str):
         """
+        Unlink a user from other linked users.
 
-        [MOD ONLY] Set an identity link between two users.
-
-        An identity link considers both users as the same individual. The .notes command will show
-        the user info and records for both simultaneously, if one of them is looked up. The users
-        remain separate and can be unlinked later - this is not an irreversible merge.
-
-        See also `.help notes unlink`.
+        See `.help link` for more information on linking.
 
         Arguments:
-        * <user1> and <user2>: Required. The two users to link or unlink. See `.help notes`.
+        * <user>: Required. The user to unlink. See `.help notes`.
 
         Example:
-        .notes link @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
+        .notes link rem @FireAlchemist#1234
         """
-        logger.info("notes unlink: {}".format(message_log_str(ctx.message)))
+        logger.info("notes link: {}".format(message_log_str(ctx.message)))
+        db_user = await self._query_user(user)
+        try:
+            db_user.group_id = None
+            self.session.commit()
+        except:
+            self.session.rollback()
+            raise
+        else:
+            logger.info("Updated user {!r} -unlinked".format(db_user))
+            await self.bot.say("Updated user {0} - unlinked"
+                .format(self.format_display_user(db_user)))
 
 
 def setup(bot):
