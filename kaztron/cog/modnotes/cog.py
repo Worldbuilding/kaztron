@@ -7,7 +7,7 @@ from discord.ext import commands
 from kaztron.config import get_kaztron_config
 from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only
-from kaztron.utils.discord import Limits
+from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_help_str
 
@@ -51,6 +51,21 @@ class ModNotes:
         """
         # TODO: remember to eager-load notes from the User object
         logger.info("notes: {}".format(message_log_str(ctx.message)))
+        db_user = await c.query_user(self.bot, user)
+        db_group = c.query_user_group(db_user)
+
+        em = discord.Embed(color=0xAA80FF, title=db_user.name)
+        em.set_author(name="Moderation Record")
+        em.add_field(name="Mention", value=user_mention(db_user.discord_id), inline=True)
+
+        alias_str = '\n'.join(a.name for a in db_user.aliases)
+        em.add_field(name="Aliases", value=alias_str if alias_str else 'None', inline=True)
+
+        links_str = '\n'.join(user_mention(u.discord_id) for u in db_group)
+        em.add_field(name="Links", value=links_str if links_str else 'None', inline=True)
+        await self.bot.say(embed=em)
+
+        # TODO: records
 
     @notes.command(pass_context=True)
     @mod_only()
