@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config
-from kaztron.utils.checks import mod_only
+from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import get_named_role
 from kaztron.utils.logging import message_log_str
 
@@ -78,7 +78,8 @@ class ModToolsCog:
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
-    async def finduser(self, ctx, user_id: int):
+    @mod_channels()
+    async def whois(self, ctx, user_id: int):
         """
         [MOD ONLY] Finds a Discord user from their Discord ID.
 

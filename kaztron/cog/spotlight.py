@@ -723,7 +723,7 @@ class Spotlight:
 
             # noinspection PyUnresolvedReferences
             if isinstance(root_exc, gsheets.Error):  # any Google API errors
-                logger.exception("Google API error while processing command: {}\n\n{}"
+                logger.error("Google API error while processing command: {}\n\n{}"
                     .format(cmd_string, tb_log_str(root_exc)))
                 await self.bot.send_message(ctx.message.channel,
                     "An error occurred while communicating with the Google API. "

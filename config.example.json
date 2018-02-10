@@ -1,6 +1,8 @@
 {
   "discord": {
-    "mod_roles": ["role 1", "role 2", "etc." ],
+    "mod_roles": ["role 1", "role 2", "etc."],
+    "admin_roles": ["role 1", "role 2", "etc."],
+    "mod_channels": ["channel ID 1", "channel ID 2", "etc."],
     "playing": "status (playing ...) message here",
     "bot_owner_id": "Bot master user ID",
     "token": "bot auth token",

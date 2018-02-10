@@ -6,7 +6,7 @@ from discord.ext import commands
 
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
-from kaztron.utils.checks import mod_only
+from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str, \
@@ -158,6 +158,7 @@ class WordFilter:
 
     @commands.group(name="filter", invoke_without_command=True, pass_context=True)
     @mod_only()
+    @mod_channels()
     async def word_filter(self, ctx):
         """
         [MOD ONLY] Manages the filter lists. This feature is used to notify moderators of keywords
@@ -172,6 +173,8 @@ class WordFilter:
             .format(command_list, get_help_str(ctx)))
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
+    @mod_only()
+    @mod_channels()
     async def filter_list(self, ctx, filter_type: str=None):
         """
         [MOD ONLY] Lists the current filters.
@@ -213,6 +216,8 @@ class WordFilter:
                 await self.bot.say(say_str)
 
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['a'])
+    @mod_only()
+    @mod_channels()
     async def add(self, ctx, filter_type: str, word: str):
         """
         [MOD ONLY] Add a new filter word/expression.
@@ -248,6 +253,8 @@ class WordFilter:
             self._load_filter_rules()
 
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
+    @mod_only()
+    @mod_channels()
     async def rem(self, ctx, filter_type: str, index: int):
         """
         [MOD ONLY] Remove a new filter word/expression.
@@ -293,6 +300,7 @@ class WordFilter:
 
     @word_filter.command(pass_context=True, aliases=['sw', 's'])
     @mod_only()
+    @mod_channels()
     async def switch(self, ctx):
         """
         [MOD ONLY] Change the bot output channel for wordfilter warnings.

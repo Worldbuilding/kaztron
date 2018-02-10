@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 from kaztron.config import get_kaztron_config
 from kaztron.driver import database as db
-from kaztron.utils.checks import mod_only
+from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_help_str
@@ -35,6 +35,7 @@ class ModNotes:
     @commands.group(aliases=['note'], invoke_without_command=True, pass_context=True,
         ignore_extra=False)
     @mod_only()
+    @mod_channels()
     async def notes(self, ctx, user: str, page: int=0):
         """
         [MOD ONLY] Access moderation logs.
@@ -69,6 +70,7 @@ class ModNotes:
 
     @notes.command(pass_context=True)
     @mod_only()
+    @mod_channels()
     async def add(self, ctx, user: str, type_: str, *, note_contents):
         """
 
@@ -114,9 +116,11 @@ class ModNotes:
         """
         logger.info("notes add: {}".format(message_log_str(ctx.message)))
         # TODO: parse note_contents for options
+        # TODO: log all contents to a dedicated #mods-logs channel
 
     @notes.command(pass_context=True, ignore_extra=False)
     @mod_only()
+    @mod_channels()
     async def rem(self, ctx, note_id: int):
         """
 
@@ -131,9 +135,11 @@ class ModNotes:
             Remove note number 122.
         """
         logger.info("notes rem: {}".format(message_log_str(ctx.message)))
+        # TODO: soft delete, unless permanently deleted by Admin - purge command?
 
     @notes.command(pass_context=True)
     @mod_only()
+    @mod_channels()
     async def usearch(self, ctx, search_term: str, page: int=1):
         """
 
@@ -214,6 +220,7 @@ class ModNotes:
 
     @notes.command(pass_context=True)
     @mod_only()
+    @mod_channels()
     async def name(self, ctx, user: str, *, new_name: str):
         """
 
@@ -241,6 +248,7 @@ class ModNotes:
 
     @notes.command(pass_context=True)
     @mod_only()
+    @mod_channels()
     async def alias(self, ctx, addrem: str, user: str, *, alias: str):
         """
 
@@ -287,6 +295,7 @@ class ModNotes:
 
     @notes.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
+    @mod_channels()
     async def link(self, ctx):
         """
         [MOD ONLY] Set or remove an identity link between two users.
@@ -303,6 +312,7 @@ class ModNotes:
 
     @link.command(name='add', pass_context=True, ignore_extra=False, aliases=['a'])
     @mod_only()
+    @mod_channels()
     async def link_add(self, ctx, user1: str, user2: str):
         """
         Set an identity link between two users.
@@ -327,6 +337,7 @@ class ModNotes:
 
     @link.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r'])
     @mod_only()
+    @mod_channels()
     async def link_rem(self, ctx, user: str):
         """
         Unlink a user from other linked users.

@@ -120,8 +120,14 @@ class CoreCog:
                 cmd_string)
             logger.warning(err_msg)
             await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel,
-                "Only mods can use that command.")
+            await self.bot.send_message(ctx.message.channel, "Only mods can use that command.")
+
+        elif isinstance(exc, UnauthorizedChannelError):
+            err_msg = "Unauthorised channel for this command: {!r}".format(
+                cmd_string)
+            logger.warning(err_msg)
+            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
             logger.warning(
