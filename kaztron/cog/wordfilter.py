@@ -299,10 +299,10 @@ class WordFilter:
 
                 self._load_filter_rules()
 
-    @word_filter.command(pass_context=True, aliases=['sw', 's'])
+    @word_filter.command(name='switch', pass_context=True, ignore_extra=False, aliases=['s', 'sw'])
     @mod_only()
     @mod_channels()
-    async def switch(self, ctx):
+    async def filter_switch(self, ctx):
         """
         [MOD ONLY] Change the bot output channel for wordfilter warnings.
 
@@ -332,7 +332,7 @@ class WordFilter:
     @filter_list.error
     @add.error
     @rem.error
-    @switch.error
+    @filter_switch.error
     async def word_filter_error(self, exc, ctx: commands.Context):
         cmd_string = message_log_str(ctx.message)
 
@@ -377,9 +377,9 @@ class WordFilter:
             core_cog = self.bot.get_cog("CoreCog")
             await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
-    @commands.command(pass_context=True)
+    @commands.command(name='switch', pass_context=True)
     @mod_only()
-    async def switch(self, ctx):
+    async def switch_deprecated(self, ctx):
         """ DEPRECATED. """
         await self.bot.say('This command is deprecated. Use `.filter switch` instead.')
 
