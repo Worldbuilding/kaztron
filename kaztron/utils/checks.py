@@ -20,7 +20,7 @@ def mod_only():
 
     def predicate(ctx: commands.Context):
         if check_role(config.get("discord", "mod_roles", []), ctx.message) or\
-                check_role(config.get("discord", "admin_roles"), ctx.message):
+                check_role(config.get("discord", "admin_roles", []), ctx.message):
             logger.info("Validated {!s} as moderator".format(ctx.message.author))
             return True
         else:

@@ -117,7 +117,8 @@ class WordFilter:
         Message handler. Check all non-mod messages for filtered words.
         """
 
-        is_mod = check_role(self.config.get("discord", "mod_roles", []), message)
+        is_mod = check_role(self.config.get("discord", "mod_roles", []) +
+                            self.config.get("discord", "admin_roles", []), message)
         is_pm = isinstance(message.channel, discord.PrivateChannel)
         if not is_mod and not is_pm:
             message_string = str(message.content)
