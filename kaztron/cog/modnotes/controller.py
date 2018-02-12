@@ -70,11 +70,11 @@ async def query_user(bot, id_: str):
     elif id_.startswith('<@') and id_.endswith('>'):
         discord_id = id_[2:-1]
         if not discord_id.isnumeric():
-            raise ValueError('_query_user: Invalid discord ID format: must be numeric')
+            raise ValueError('Invalid Discord user ID format: must be numeric')
     elif id_.startswith('*'):
         db_id = int(id_[1:])
     else:
-        raise ValueError('_query_user: Invalid user ID format')
+        raise ValueError('Invalid user ID format')
 
     # Retrieve the user depending on the passed ID type
     if discord_id:
@@ -260,7 +260,11 @@ def ungroup_user(user: User) -> User:
 
 @on_error_rollback
 def insert_note(*, user: User, author: User, type_: RecordType,
-                timestamp: datetime, expires: datetime, body: str) -> Record:
+                timestamp: datetime=None, expires: datetime=None, body: str) -> Record:
+    # Validation/defaults
+    if timestamp is None:
+        timestamp = datetime.utcnow()
+
     logger.info("Inserting note...")
     logger.debug("note: user={!r} author={!r} type={.name} timestamp={} expires={} body={!r}"
         .format(

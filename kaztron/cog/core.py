@@ -8,7 +8,8 @@ from kaztron.errors import *
 from kaztron.config import get_kaztron_config
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str
-from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_str
+from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_str, \
+    get_command_prefix, get_usage_str
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,9 @@ class CoreCog:
 
         for msg in startup_info:
             logger.info(msg)  # for file logging
-            print(msg)  # because current console logger always logs at WARN level
+
+        for msg in startup_info:  # Iterate again to keep these together in logs
+            print(msg)  # in case console logger is below INFO level - display startup info
 
     async def on_error(self, event, *args, **kwargs):
         exc_info = sys.exc_info()
@@ -79,6 +82,11 @@ class CoreCog:
 
         if not force and hasattr(ctx.command, "on_error"):
             return
+
+        if ctx is not None and ctx.command is not None:
+            usage_str = get_usage_str(ctx)
+        else:
+            usage_str = '(Unable to retrieve usage information)'
 
         if isinstance(exc, commands.CommandOnCooldown):
             await self.bot.send_message(ctx.message.channel,
@@ -134,7 +142,7 @@ class CoreCog:
                 "Check failed on command: {!r}\n\n{}".format(cmd_string, tb_log_str(exc)))
             await self.bot.send_message(ctx.message.channel,
                 "You're not allowed to use that command. "
-                " (Dev note: Implement error handler + specify more precise reason)")
+                " (Dev note: Implement error handler with more precise reason)")
 
         elif isinstance(exc, commands.NoPrivateMessage):
             msg = "Attempt to use non-PM command in PM: {}".format(cmd_string)
@@ -146,33 +154,28 @@ class CoreCog:
         elif isinstance(exc, commands.BadArgument):
             msg = "Bad argument passed in command: {}".format(cmd_string)
             logger.warning(msg)
+            exc_msg = exc.args[0] if len(exc.args) > 0 else '(No error message).'
             await self.bot.send_message(ctx.message.channel,
-                ("Invalid argument(s) for the command `{}`. "
-                 "Check that the arguments after the command name are correct."
-                 "Use `{}` for instructions. "
-                 "(Dev note: Implement error handler + specify more precise check)")
-                    .format(get_command_str(ctx), get_help_str(ctx)))
+                ("Invalid argument(s) for the command `{}`. {}\n\n**Usage:** `{}`\n\n"
+                 "Use `{}` for help. "
+                 "*(Dev note: Add error handler with more precise reason when possible)*")
+                    .format(get_command_str(ctx), exc_msg, usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
         elif isinstance(exc, commands.TooManyArguments):
             msg = "Too many arguments passed in command: {}".format(cmd_string)
             logger.warning(msg)
             await self.bot.send_message(ctx.message.channel,
-                ("Too many arguments for the command `{}`. "
-                 "Check that the arguments after the command name are correct. "
-                 "Use `{}` for instructions.")
-                    .format(get_command_str(ctx), get_help_str(ctx)))
+                "Too many arguments.\n\n**Usage:** `{}`\n\nUse `{}` for help."
+                    .format(usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
         elif isinstance(exc, commands.MissingRequiredArgument):
             msg = "Missing required arguments in command: {}".format(cmd_string)
             logger.warning(msg)
             await self.bot.send_message(ctx.message.channel,
-                ("Missing argument(s) for the command `{}`. "
-                 "Check that you've passed all the needed arguments after the command name. "
-                 "Use `{}` for instructions. "
-                 "(Dev note: Implement error handler + specify more precise check)")
-                    .format(get_command_str(ctx), get_help_str(ctx)))
+                "Missing argument(s) for the command `{}`.\n\n**Usage:** `{}`\n\nUse `{}` for help."
+                    .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
         elif isinstance(exc, commands.CommandNotFound):
@@ -181,13 +184,13 @@ class CoreCog:
             if ctx.invoked_with not in ['.', '..'] and not ctx.invoked_with.startswith('.'):
                 logger.warning(msg)
                 await self.bot.send_message(ctx.message.channel,
-                    "Sorry, I don't know the command `{}{}`"
-                        .format(self.bot.command_prefix, ctx.invoked_with))
+                    "Sorry, I don't know the command `{}{.invoked_with}`"
+                        .format(get_command_prefix(ctx), ctx))
 
         else:
             logger.exception("Unknown exception occurred")
             await self.bot.send_message(ctx.message.channel,
-                "An error occurred! Details have been logged. Let a mod know so we can "
+                "An unexpected error occurred! Details have been logged. Let a mod know so we can "
                 "investigate.")
             await self.bot.send_message(self.dest_output,
                 ("[ERROR] Unknown error while trying to process command {}\n"
@@ -214,7 +217,7 @@ class CoreCog:
 
     @commands.command(pass_context=True, aliases=['bug', 'issue'])
     @commands.cooldown(rate=5, per=60)
-    async def request(self, ctx):
+    async def request(self, ctx, *, content: str):
         """
         Submit a bug report or feature request to the bot DevOps Team.
 
@@ -231,9 +234,6 @@ class CoreCog:
         Abuse may be treated in the same way as other forms of spam on the Discord server.
         """
         logger.debug("request(): {}".format(message_log_str(ctx.message)))
-
-        content = ctx.message.content.split(
-                "{0.bot.command_prefix}{0.invoked_with} ".format(ctx))[1]
 
         em = discord.Embed(color=0x80AAFF)
         em.set_author(name="User Issue Submission")

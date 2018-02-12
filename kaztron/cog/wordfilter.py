@@ -328,51 +328,18 @@ class WordFilter:
         await self.bot.say("Changed the filter warning channel to {}"
             .format(self.dest_current.mention))
 
-    @word_filter.error
-    @filter_list.error
     @add.error
-    @rem.error
-    @filter_switch.error
-    async def word_filter_error(self, exc, ctx: commands.Context):
+    async def filter_add_error(self, exc, ctx: commands.Context):
         cmd_string = message_log_str(ctx.message)
 
-        if isinstance(exc, commands.BadArgument):
-            msg = "Bad argument passed in command: {}".format(cmd_string)
-            logger.warning(msg)
-            await self.bot.send_message(ctx.message.channel,
-                ("Invalid argument(s) for the command `{}`. "
-                 "Check that the arguments after the command name are correct."
-                 "Use `{}` for instructions.")
-                    .format(get_command_str(ctx), get_help_str(ctx)))
-            # No need to log user errors to mods
-
-        elif isinstance(exc, commands.TooManyArguments):
+        if isinstance(exc, commands.TooManyArguments):
             msg = "Too many arguments passed in command: {}".format(cmd_string)
             logger.warning(msg)
-            if ctx.invoked_subcommand.name == 'add':
-                await self.bot.send_message(ctx.message.channel,
-                    ("Too many arguments for the command `{}`. "
-                     "Did you forget quotation marks around the filter text? "
-                     "Use `{}` for instructions.")
-                        .format(get_command_str(ctx), get_help_str(ctx)))
-            else:
-                await self.bot.send_message(ctx.message.channel,
-                    ("Too many arguments for the command `{}`. "
-                     "Check that the arguments after the command name are correct. "
-                     "Use `{}` for instructions.")
-                        .format(get_command_str(ctx), get_help_str(ctx)))
-            # No need to log user errors to mods
-
-        elif isinstance(exc, commands.MissingRequiredArgument):
-            msg = "Missing required arguments in command: {}".format(cmd_string)
-            logger.warning(msg)
             await self.bot.send_message(ctx.message.channel,
-                ("Missing argument(s) for the command `{}`. "
-                 "Check that you've passed all the needed arguments after the command name. "
+                ("Too many arguments.\n\n**Usage:** `{} <warn|del> \"<filter text>\"`\n\n"
+                 "Did you forget quotation marks around the filter text? "
                  "Use `{}` for instructions.")
                     .format(get_command_str(ctx), get_help_str(ctx)))
-            # No need to log user errors to mods
-
         else:
             core_cog = self.bot.get_cog("CoreCog")
             await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
