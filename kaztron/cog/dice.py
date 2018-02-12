@@ -29,7 +29,7 @@ class DiceCog:
         if self.ch_dice is None:
             raise ValueError("Channel {} not found".format(self.config.get('dice', 'channel_dice')))
 
-    @commands.command(pass_context=True, aliases=['rolls'])
+    @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
     @in_channels(ch_allowed_list)
     async def roll(self, ctx, dice: str):
         """
@@ -66,7 +66,7 @@ class DiceCog:
             logger.info("Rolled dice: {:d}d{:d} = {!r} (sum={})"
                 .format(num_rolls, num_sides, result, total))
 
-    @commands.command(pass_context=True)
+    @commands.command(pass_context=True, ignore_extra=False)
     @in_channels(ch_allowed_list)
     async def rollf(self, ctx):
         """
