@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Optional
 
 import discord
 
@@ -133,22 +133,26 @@ def query_user_group(user: User) -> List[User]:
         return [user]
 
 
-def query_user_records(user_group: Union[User, List[User]]) -> List[Record]:
+def query_user_records(user_group: Union[User, List[User], None], removed=False) -> List[Record]:
     """
     :param user_group: User or user group as a list of users.
+    :param removed: Whether to search for non-removed or removed records.
     :return:
     """
     if isinstance(user_group, User):
         user_list = [User]
-    else:
+    elif user_group is not None:
         user_list = user_group  # type: List[User]
+    else:
+        user_list = []
 
-    user_ids = [u.user_id for u in user_list]
+    query = session.query(Record).filter_by(is_removed=removed)
 
-    results = session.query(Record) \
-        .filter(Record.user_id.in_(user_ids)) \
-        .order_by(db.desc(Record.timestamp)) \
-        .all()
+    if user_list:
+        query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
+
+    results = query.order_by(db.desc(Record.timestamp)).all()
+
     logger.info("query_user_records: "
                 "Found {:d} records for user group: {!r}".format(len(results), user_group))
     return results
@@ -270,3 +274,28 @@ def insert_note(*, user: User, author: User, type_: RecordType,
     session.add(rec)
     session.commit()
     return rec
+
+
+def get_record(record_id: Optional[int], removed=False) -> Record:
+    logger.info("Querying record id={:d}".format(record_id))
+    query = session.query(Record).filter_by(is_removed=removed)
+    if record_id is not None:
+        query = query.filter_by(record_id=record_id)
+    return query.one()
+
+
+@on_error_rollback
+def mark_removed_record(record_id: int, removed=True) -> Record:
+    record = get_record(record_id, removed=not removed)
+    logger.info("Marking record {!r} as {}removed".format(record, '' if removed else 'not '))
+    record.is_removed = removed
+    session.commit()
+    return record
+
+
+@on_error_rollback
+def delete_removed_record(record_id: int):
+    record = get_record(record_id, removed=True)
+    logger.info("Deleting record {!r}".format(record))
+    session.delete(record)
+    session.commit()

@@ -3,6 +3,7 @@
     "mod_roles": ["role 1", "role 2", "etc."],
     "admin_roles": ["role 1", "role 2", "etc."],
     "mod_channels": ["channel ID 1", "channel ID 2", "these are channels where mod/non-public commands are allowed"],
+    "admin_channels": ["channel ID 1", "channel ID 2", "admin-only channels (not automatically considered mod channels)"],
     "playing": "status (playing ...) message here",
     "bot_owner_id": "Bot master user ID",
     "token": "bot auth token",

@@ -10,7 +10,7 @@ import discord
 from discord.ext import commands
 from kaztron.config import get_kaztron_config
 from kaztron.driver import database as db
-from kaztron.utils.checks import mod_only, mod_channels
+from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class ModNotes:
-    NOTES_PAGE_SIZE = 20
+    NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
 
     USEARCH_HEADING_F = "**USER SEARCH RESULTS [{page}/{pages}]** - {total} results for `{query!r}`"
@@ -68,6 +68,7 @@ class ModNotes:
                                              for u in group_users if u != user) or 'None'
 
         len_user_info = len(title) + len(footer)
+        total_fields = len(user_fields)
 
         em = make_embed()
 
@@ -80,6 +81,7 @@ class ModNotes:
             sep_name = 'Records Listing'
             sep_value = self.EMBED_SEPARATOR
             em.add_field(name=sep_name, value=sep_value, inline=False)
+            total_fields += 1
             len_user_info += len(sep_name) + len(sep_value)
 
         len_records = 0
@@ -99,7 +101,7 @@ class ModNotes:
                 record_fields['Expires'] = 'Never'
 
             # If this record is from a grouped user, show this
-            if rec.user_id != user.user_id:
+            if user and rec.user_id != user.user_id:
                 record_fields['Linked from'] = self.format_display_user(rec.user)
             elif short:
                 record_fields['User'] = "{}\n{}"\
@@ -110,18 +112,22 @@ class ModNotes:
                 '{}{}'.format(rec.body[:self.EMBED_FIELD_LEN], self.EMBED_SEPARATOR)
             )
 
+            fields_rec = len(record_fields) + 1
             len_rec = sum(len(name) + len(value) for name, value in record_fields.items()) + \
                 sum(len(s) for s in contents)
 
             # If the length is too long, split the message here
             # Kinda hacky, we send the current embed and rebuild a new one here
             # 0.95 safety factor - I don't know how Discord counts the 6000 embed limit...
-            if len_user_info + len_records + len_rec > int(0.95 * Limits.EMBED_TOTAL):
+            too_many_fields = total_fields + fields_rec > Limits.EMBED_FIELD_NUM
+            embed_too_long = len_user_info + len_records + len_rec > int(0.95 * Limits.EMBED_TOTAL)
+            if too_many_fields or embed_too_long:
                 await self.bot.send_message(dest, embed=em)
 
                 em = make_embed()
                 len_user_info = len(title)  # that's all for this next embed
                 len_records = 0
+                total_fields = 0
 
             # Configure record info in embed
             for field_name, field_value in record_fields.items():
@@ -131,6 +137,7 @@ class ModNotes:
             em.add_field(name=contents[0], value=contents[1], inline=False)
 
             len_records += len_rec
+            total_fields += fields_rec
 
         if footer:
             em.set_footer(text=footer)
@@ -263,8 +270,11 @@ class ModNotes:
 
         [MOD ONLY] Remove an existing note.
 
+        To prevent accidental data deletion, the removed note can be viewed and restored by admin
+        users.
+
         Arguments:
-        * <user>: Required. The user to whom the note applies. See `.help notes`.
+        * <note_id>: Required. The ID of the note to remove. See `.help notes`.
 
         Example:
 
@@ -272,7 +282,94 @@ class ModNotes:
             Remove note number 122.
         """
         logger.info("notes rem: {}".format(message_log_str(ctx.message)))
-        # TODO: soft delete, unless permanently deleted by Admin - purge command?
+        try:
+            record = c.mark_removed_record(note_id)
+        except db.orm_exc.NoResultFound:
+            await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
+        else:
+            await self.show_records(ctx.message.channel,
+                user=record.user, records=[record],
+                box_title="Note removed.", page=None, short=True)
+            await self.bot.send_message(self.ch_log, "Removed note #{:04d}".format(note_id))
+
+    @notes.command(pass_context=True, ignore_extra=False)
+    @admin_only()
+    @admin_channels()
+    async def removed(self, ctx, user: str, page: int=1):
+        """
+
+        [ADMIN ONLY] Show deleted notes.
+
+        Arguments:
+        * <user>: Required. The user to filter by, or `all`. See `.help notes`.
+        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
+          Default: 1.
+        """
+        logger.info("notes removed: {}".format(message_log_str(ctx.message)))
+        if user != 'all':
+            db_user = await c.query_user(self.bot, user)
+            db_group = c.query_user_group(db_user)
+            db_records = c.query_user_records(db_group, removed=True)
+        else:
+            db_user = None
+            db_group = None
+            db_records = c.query_user_records(None, removed=True)
+        total_pages = int(math.ceil(len(db_records) / self.NOTES_PAGE_SIZE))
+        page = max(1, min(total_pages, page))
+
+        start_index = (page-1)*self.NOTES_PAGE_SIZE
+        end_index = start_index + self.NOTES_PAGE_SIZE
+
+        await self.show_records(
+            ctx.message.channel,
+            user=db_user, records=db_records[start_index:end_index], group=db_group,
+            page=page, total_pages=total_pages, total_records=len(db_records),
+            box_title='*** Removed Records', short=True
+        )
+
+    @notes.command(pass_context=True, ignore_extra=False)
+    @admin_only()
+    @mod_channels()
+    async def restore(self, ctx, note_id: int):
+        """
+        [ADMIN ONLY] Restore a removed note.
+
+        Arguments:
+        * <note_id>: Required. The ID of the note to remove. Use `.notes removed` to list.
+        """
+        logger.info("notes restore: {}".format(message_log_str(ctx.message)))
+        try:
+            record = c.mark_removed_record(note_id, removed=False)
+        except db.orm_exc.NoResultFound:
+            await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
+        else:
+            await self.show_records(ctx.message.channel,
+                user=record.user, records=[record],
+                box_title="Note restored.", page=None, short=True)
+            await self.bot.send_message(self.ch_log, "Note #{:04d} restored".format(note_id))
+
+    @notes.command(pass_context=True, ignore_extra=False)
+    @admin_only()
+    @mod_channels()
+    async def purge(self, ctx, note_id: int):
+        """
+        [ADMIN ONLY] Permanently destroy a removed note.
+
+        Arguments:
+        * <note_id>: Required. The ID of the note to remove. Use `.notes removed` to list.
+        """
+        logger.info("notes purge: {}".format(message_log_str(ctx.message)))
+        try:
+            record = c.get_record(note_id, removed=True)
+            await self.show_records(ctx.message.channel,
+                user=record.user, records=[record],
+                box_title="Attempting to purge...", page=None, short=True)
+            c.delete_removed_record(note_id)
+        except db.orm_exc.NoResultFound:
+            await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
+        else:
+            await self.bot.say("Record #{:04d} purged.".format(note_id))
+            # don't send to ch_log, this has no non-admin visibility
 
     @notes.command(pass_context=True)
     @mod_only()

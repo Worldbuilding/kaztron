@@ -18,14 +18,13 @@ class User(Base):
         back_populates='user')
     authorship = db.relationship('Record', foreign_keys='Record.author_id',
         back_populates='author')
-    is_removed = db.Column(db.Boolean, nullable=False, default=False, server_default="FALSE")
 
     def __repr__(self):
         return ("<User(user_id={:d}, discord_id={!r}, name={!r}, aliases=[{}], " \
-               "group_id={!s}, is_removed={!s})>") \
+               "group_id={!s})>") \
             .format(self.user_id, self.discord_id, self.name,
                     ', '.join([repr(a) for a in self.aliases]),
-                    self.group_id, self.is_removed)
+                    self.group_id)
 
     def __str__(self):
         return "{1} (*{0:d})".format(self.user_id, self.name)
@@ -73,10 +72,11 @@ class Record(Base):
     type = db.Column(db.Enum(RecordType), nullable=False)
     expires = db.Column(db.DateTime, nullable=True)
     body = db.Column(db.String(2048), nullable=False)
+    is_removed = db.Column(db.Boolean, nullable=False, default=False, server_default="FALSE")
 
     def __repr__(self):
-        return "<Record(record_id={:d})>" \
-            .format(self.record_id)
+        return "<Record(record_id={:d}, is_removed={!s})>" \
+            .format(self.record_id, self.is_removed)
 
     def __str__(self):
         raise NotImplementedError()  # TODO
