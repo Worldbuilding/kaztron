@@ -1,11 +1,12 @@
 # kaztron
 from collections import OrderedDict
 
-__version__ = "1.3a1"
+__version__ = "1.3b1"
 
 bot_info = {
     "version": __version__,
     "changelog":
+        "+ Modnotes\n"
         "+ Spotlight queue management feature\n"
         "+ Refactor of all command UI and usability improvements\n"
         "+ Improved logging facilities\n"
