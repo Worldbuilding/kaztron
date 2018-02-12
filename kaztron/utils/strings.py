@@ -1,6 +1,6 @@
 import datetime
 import re
-from typing import List, Union
+from typing import List, Union, Dict
 
 import discord
 from discord.ext import commands
@@ -120,3 +120,19 @@ def none_wrapper(value, default=""):
     Pure laziness! Sometimes this ends up being nice syntactic sugar for code readability.
     """
     return value if value is not None else default
+
+
+_KWARG_RE = re.compile('\s*([A-Za-z0-9_-]+)=("[^"]+"|[^ ]+)\s+(.*)')
+
+
+def parse_keyword_args(keywords: List[str], args: str) -> (Dict[str, str], str):
+    kwargs = {}
+    matches = _KWARG_RE.match(args)
+    while matches is not None:
+        key, value, args = matches.group(1, 2, 3)
+        if key in kwargs:
+            raise ValueError("Argument '{}' passed multiple times".format(key))
+        elif key in keywords:
+            kwargs[key] = value
+        matches = _KWARG_RE.match(args)
+    return kwargs, args.strip()

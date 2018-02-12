@@ -1,7 +1,11 @@
+import re
+from datetime import datetime
 import logging
 import math
+from collections import OrderedDict
 from typing import List, Optional
 
+import dateparser
 import discord
 from discord.ext import commands
 from kaztron.config import get_kaztron_config
@@ -9,9 +13,9 @@ from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_help_str
+from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args
 
-from kaztron.cog.modnotes.model import User, UserAlias
+from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
 from kaztron.cog.modnotes import controller as c
 
 logger = logging.getLogger(__name__)
@@ -22,21 +26,122 @@ class ModNotes:
     USEARCH_PAGE_SIZE = 20
 
     USEARCH_HEADING_F = "**USER SEARCH RESULTS [{page}/{pages}]** - {total} results for `{query!r}`"
+    EMBED_SEPARATOR = '\n{}'.format('\\_'*16)
+    EMBED_FIELD_LEN = Limits.EMBED_FIELD_VALUE - len(EMBED_SEPARATOR)
+
+    DATEPARSER_SETTINGS = {'TIMEZONE': 'UTC', 'TO_TIMEZONE': 'UTC'}
 
     def __init__(self, bot):
         self.bot = bot  # type: commands.Bot
         self.config = get_kaztron_config()
         self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
+        self.ch_log = discord.Object(self.config.get('modnotes', 'channel_log'))
 
     @staticmethod
     def format_display_user(db_user: User):
-        return "<@{}> (\*{})".format(db_user.discord_id, db_user.user_id)
+        return "<@{}> (`*{}`)".format(db_user.discord_id, db_user.user_id)
+
+    async def show_records(self, dest: discord.Object, *,
+                           user: User, records: List[Record], group: List[User]=None,
+                           box_title: str, page: int=None, total_pages: int=1,
+                           total_records: int=None, short=False):
+        if group is not None:
+            group_users = group
+        else:
+            group_users = []
+
+        embed_color = 0xAA80FF
+        title = box_title
+        if page is not None:
+            footer = 'Page {}/{} (Total {} records)'.format(page, total_pages, total_records)
+        else:
+            footer = ''  # must be empty string for len() later, not None
+        user_fields = OrderedDict()
+
+        def make_embed() -> discord.Embed:
+            return discord.Embed(color=embed_color, title=title)
+
+        if not short:
+            user_fields[user.name] = self.format_display_user(user)
+            user_fields['Aliases'] = '\n'.join(a.name for a in user.aliases) or 'None'
+            user_fields['Links'] = '\n'.join(user_mention(u.discord_id)
+                                             for u in group_users if u != user) or 'None'
+
+        len_user_info = len(title) + len(footer)
+
+        em = make_embed()
+
+        for field_name, field_value in user_fields.items():
+            em.add_field(name=field_name, value=field_value, inline=True)
+            len_user_info += len(field_name) + len(field_value)
+
+        # separator
+        if not short:
+            sep_name = 'Records Listing'
+            sep_value = self.EMBED_SEPARATOR
+            em.add_field(name=sep_name, value=sep_value, inline=False)
+            len_user_info += len(sep_name) + len(sep_value)
+
+        len_records = 0
+        for rec in records:
+            # Compile record info
+            record_fields = OrderedDict()
+
+            rec_title = "Record #{:04d}".format(rec.record_id)
+            record_fields[rec_title] = get_timestamp_str(rec.timestamp) + ' UTC'
+            if rec.expires:
+                expire_str = get_timestamp_str(rec.expires) + ' UTC'
+                if rec.expires <= datetime.utcnow():
+                    record_fields['Expires'] = expire_str + '\n**EXPIRED**'
+                else:
+                    record_fields['Expires'] = expire_str
+            else:
+                record_fields['Expires'] = 'Never'
+
+            # If this record is from a grouped user, show this
+            if rec.user_id != user.user_id:
+                record_fields['Linked from'] = self.format_display_user(rec.user)
+            elif short:
+                record_fields['User'] = "{}\n{}"\
+                    .format(rec.user.name, self.format_display_user(rec.user))
+
+            contents = (
+                '{} by {}'.format(rec.type.name.title(), rec.author.name),
+                '{}{}'.format(rec.body[:self.EMBED_FIELD_LEN], self.EMBED_SEPARATOR)
+            )
+
+            len_rec = sum(len(name) + len(value) for name, value in record_fields.items()) + \
+                sum(len(s) for s in contents)
+
+            # If the length is too long, split the message here
+            # Kinda hacky, we send the current embed and rebuild a new one here
+            # 0.95 safety factor - I don't know how Discord counts the 6000 embed limit...
+            if len_user_info + len_records + len_rec > int(0.95 * Limits.EMBED_TOTAL):
+                await self.bot.send_message(dest, embed=em)
+
+                em = make_embed()
+                len_user_info = len(title)  # that's all for this next embed
+                len_records = 0
+
+            # Configure record info in embed
+            for field_name, field_value in record_fields.items():
+                em.add_field(name=field_name, value=field_value, inline=True)
+                len_records += len(field_name) + len(field_value)
+
+            em.add_field(name=contents[0], value=contents[1], inline=False)
+
+            len_records += len_rec
+
+        if footer:
+            em.set_footer(text=footer)
+
+        await self.bot.send_message(dest, embed=em)
 
     @commands.group(aliases=['note'], invoke_without_command=True, pass_context=True,
         ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def notes(self, ctx, user: str, page: int=0):
+    async def notes(self, ctx, user: str, page: int=1):
         """
         [MOD ONLY] Access moderation logs.
 
@@ -50,23 +155,22 @@ class ModNotes:
             .notes @User#1234
             .notes 330178495568436157 3
         """
-        # TODO: remember to eager-load notes from the User object
         logger.info("notes: {}".format(message_log_str(ctx.message)))
         db_user = await c.query_user(self.bot, user)
         db_group = c.query_user_group(db_user)
+        db_records = c.query_user_records(db_group)
+        total_pages = int(math.ceil(len(db_records) / self.NOTES_PAGE_SIZE))
+        page = max(1, min(total_pages, page))
 
-        em = discord.Embed(color=0xAA80FF, title=db_user.name)
-        em.set_author(name="Moderation Record")
-        em.add_field(name="Mention", value=user_mention(db_user.discord_id), inline=True)
+        start_index = (page-1)*self.NOTES_PAGE_SIZE
+        end_index = start_index + self.NOTES_PAGE_SIZE
 
-        alias_str = '\n'.join(a.name for a in db_user.aliases)
-        em.add_field(name="Aliases", value=alias_str if alias_str else 'None', inline=True)
-
-        links_str = '\n'.join(user_mention(u.discord_id) for u in db_group)
-        em.add_field(name="Links", value=links_str if links_str else 'None', inline=True)
-        await self.bot.say(embed=em)
-
-        # TODO: records
+        await self.show_records(
+            ctx.message.channel,
+            user=db_user, records=db_records[start_index:end_index], group=db_group,
+            page=page, total_pages=total_pages, total_records=len(db_records),
+            box_title='Moderation Record'
+        )
 
     @notes.command(pass_context=True)
     @mod_only()
@@ -115,8 +219,41 @@ class ModNotes:
             This creates a record for an event 2 hours ago.
         """
         logger.info("notes add: {}".format(message_log_str(ctx.message)))
-        # TODO: parse note_contents for options
-        # TODO: log all contents to a dedicated #mods-logs channel
+
+        # load/preprocess positional arguments and defaults
+        db_user = await c.query_user(self.bot, user)
+        db_author = await c.query_user(self.bot, ctx.message.author.id)
+        timestamp = datetime.utcnow()
+        expires = None
+        try:
+            record_type = RecordType[type_.lower()]
+        except KeyError as e:
+            raise commands.BadArgument("'{}' is not a permitted record type ({})"
+                .format(type_, ', '.join(t.name for t in RecordType))) from e
+
+        # Parse and load kwargs from the note_contents, if present
+        kwargs, note_contents = parse_keyword_args(['timestamp', 'expires'], note_contents)
+
+        if 'timestamp' in kwargs:
+            timestamp = dateparser.parse(kwargs['timestamp'], settings=self.DATEPARSER_SETTINGS)
+            if timestamp is None:
+                raise commands.BadArgument("Invalid timespec: '{}'".format(kwargs['timestamp']))
+        if 'expires' in kwargs:
+            expires = dateparser.parse(kwargs['expires'], settings=self.DATEPARSER_SETTINGS)
+            if expires is None:
+                raise commands.BadArgument("Invalid timespec: '{}'".format(kwargs['expires']))
+
+        if len(note_contents) > self.EMBED_FIELD_LEN:
+            raise commands.BadArgument('Note contents too long: '
+                                       'max {:d} characters'.format(self.EMBED_FIELD_LEN))
+
+        record = c.insert_note(user=db_user, author=db_author, type_=record_type,
+                      timestamp=timestamp, expires=expires, body=note_contents)
+
+        await self.show_records(self.ch_log, user=db_user, records=[record],
+                                box_title='New Moderation Record', page=None, total_pages=1,
+                                short=True)
+        await self.bot.say("Note added.")
 
     @notes.command(pass_context=True, ignore_extra=False)
     @mod_only()
@@ -165,9 +302,7 @@ class ModNotes:
         # Prepare for display
         len_results = len(results)
         total_pages = int(math.ceil(len_results/self.USEARCH_PAGE_SIZE))
-
-        if page > total_pages:
-            page = total_pages
+        page = max(1, min(total_pages, page))
 
         results_lines = []
         start_index = (page-1)*self.USEARCH_PAGE_SIZE
