@@ -6,6 +6,10 @@ import copy
 logger = logging.getLogger("kaztron.config")
 
 
+class ReadOnlyError(Exception):
+    pass
+
+
 class KaztronConfig:
     """
     Simple interface for KazTron configuration files. This class uses JSON as
@@ -44,9 +48,6 @@ class KaztronConfig:
         self._data = {}
         self._defaults = copy.deepcopy(defaults) if defaults else {}
         self._read_only = read_only
-        if read_only:
-            self.write = None
-            self.set = None
         self.read()
 
     @property
@@ -65,7 +66,10 @@ class KaztronConfig:
                 read_data = json.load(cfg_file)
         except OSError as e:
             if e.errno == errno.ENOENT:  # file not found, just create it
-                self.write()
+                if not self._read_only:
+                    self.write()
+                else:
+                    raise
             else:  # other failures should bubble up
                 raise
         else:
@@ -76,6 +80,8 @@ class KaztronConfig:
         Write the current config data to the configured file.
         :raises OSError: Error opening file.
         """
+        if self._read_only:
+            raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
         logger.info("config({}) Writing file...".format(self.filename))
         with open(self.filename, "w") as cfg_file:
             json.dump(self._data, cfg_file)
@@ -159,6 +165,8 @@ class KaztronConfig:
         :param key: Key name to store
         :param value: Value to store at the given section and key
         """
+        if self._read_only:
+            raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
         logger.debug("config:set: file={!r} section={!r} key={!r} value={!r}"
             .format(self.filename, section, key, value))
 
