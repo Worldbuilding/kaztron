@@ -525,7 +525,7 @@ class ModNotes:
 
         await self.bot.say(msg_format.format(self.format_display_user(db_user), alias_s))
 
-    @notes.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
+    @notes.group(pass_context=True, invoke_without_command=True)
     @mod_only()
     @mod_channels()
     async def link(self, ctx):
