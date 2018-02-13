@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Union, Tuple, Optional
+from typing import List, Union, Tuple, Optional, Iterable
 
 import discord
 
@@ -135,26 +135,46 @@ def query_user_group(user: User) -> List[User]:
 
 def query_user_records(user_group: Union[User, List[User], None], removed=False) -> List[Record]:
     """
-    :param user_group: User or user group as a list of users.
+    :param user_group: User or user group as an iterable of users.
     :param removed: Whether to search for non-removed or removed records.
     :return:
     """
-    if isinstance(user_group, User):
-        user_list = [User]
-    elif user_group is not None:
-        user_list = user_group  # type: List[User]
-    else:
-        user_list = []
+    # Input validation
+    # type: Optional[List[User]]
+    user_list = [user_group] if isinstance(user_group, User) else user_group
 
+    # Query
     query = session.query(Record).filter_by(is_removed=removed)
-
     if user_list:
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
-
     results = query.order_by(db.desc(Record.timestamp)).all()
-
     logger.info("query_user_records: "
                 "Found {:d} records for user group: {!r}".format(len(results), user_group))
+    return results
+
+
+def query_unexpired_records(*,
+                            users: Union[User, Iterable[User]]=None,
+                            types: Union[RecordType, Iterable[RecordType]]=None
+                            ):
+    """
+    :param users: User or user group as a list of users.
+    :param types: type of record, or an iterable of them
+    """
+    # Input validation
+    user_list = [users] if isinstance(users, User) else users  # type: Optional[List[User]]
+    rtypes = [types] if isinstance(types, RecordType) else types  # type: Optional[List[RecordType]]
+
+    # Query
+    query = session.query(Record) \
+                   .filter(db.or_(datetime.utcnow() < Record.expires, Record.expires == None))
+    if user_list:
+        query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
+    if rtypes:
+        query = query.filter(Record.type.in_(rtypes))
+    results = query.order_by(db.desc(Record.timestamp)).all()
+    logger.info("query_unexpired_records: "
+                "Found {:d} records for users={!r} types={!r}".format(len(results), users, rtypes))
     return results
 
 

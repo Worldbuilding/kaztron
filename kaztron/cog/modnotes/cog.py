@@ -43,7 +43,7 @@ class ModNotes:
         return "<@{}> (`*{}`)".format(db_user.discord_id, db_user.user_id)
 
     async def show_records(self, dest: discord.Object, *,
-                           user: User, records: List[Record], group: List[User]=None,
+                           user: Optional[User], records: List[Record], group: List[User]=None,
                            box_title: str, page: int=None, total_pages: int=1,
                            total_records: int=None, short=False):
         if group is not None:
@@ -62,11 +62,12 @@ class ModNotes:
         def make_embed() -> discord.Embed:
             return discord.Embed(color=embed_color, title=title)
 
-        if not short:
+        if not short and user:
             user_fields[user.name] = self.format_display_user(user)
             user_fields['Aliases'] = '\n'.join(a.name for a in user.aliases) or 'None'
-            user_fields['Links'] = '\n'.join(user_mention(u.discord_id)
-                                             for u in group_users if u != user) or 'None'
+            if group_users:
+                user_fields['Links'] = '\n'.join(user_mention(u.discord_id)
+                                                 for u in group_users if u != user) or 'None'
 
         len_user_info = len(title) + len(footer)
         total_fields = len(user_fields)
@@ -104,7 +105,7 @@ class ModNotes:
             # If this record is from a grouped user, show this
             if user and rec.user_id != user.user_id:
                 record_fields['Linked from'] = self.format_display_user(rec.user)
-            elif short:
+            elif short:  # If no user info section, show the record user individually
                 record_fields['User'] = "{}\n{}"\
                     .format(rec.user.name, self.format_display_user(rec.user))
 
@@ -178,6 +179,39 @@ class ModNotes:
             user=db_user, records=db_records[start_index:end_index], group=db_group,
             page=page, total_pages=total_pages, total_records=len(db_records),
             box_title='Moderation Record'
+        )
+
+    @notes.command(aliases=['watch'], pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def watches(self, ctx, page: int=1):
+        """
+        [MOD ONLY] Show all watches currently in effect (i.e. non-expired watch, int, warn records).
+
+        Arguments:
+        * user: Required. The user for whom to find moderation notes. This can be an @mention, a
+          Discord ID (numerical only), or a KazTron ID (starts with *).
+        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
+          Default: 1.
+
+        Example:
+            .notes @User#1234
+            .notes 330178495568436157 3
+        """
+        logger.info("notes watches: {}".format(message_log_str(ctx.message)))
+        watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
+        db_records = c.query_unexpired_records(types=watch_types)
+        total_pages = int(math.ceil(len(db_records) / self.NOTES_PAGE_SIZE))
+        page = max(1, min(total_pages, page))
+
+        start_index = (page-1)*self.NOTES_PAGE_SIZE
+        end_index = start_index + self.NOTES_PAGE_SIZE
+
+        await self.show_records(
+            ctx.message.channel,
+            user=None, records=db_records[start_index:end_index],
+            page=page, total_pages=total_pages, total_records=len(db_records),
+            box_title='Active Watches', short=True
         )
 
     @notes.command(pass_context=True)
