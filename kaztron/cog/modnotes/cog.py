@@ -13,7 +13,8 @@ from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args
+from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args, \
+    get_command_str
 
 from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
 from kaztron.cog.modnotes import controller as c
@@ -42,7 +43,7 @@ class ModNotes:
         return "<@{}> (`*{}`)".format(db_user.discord_id, db_user.user_id)
 
     async def show_records(self, dest: discord.Object, *,
-                           user: User, records: List[Record], group: List[User]=None,
+                           user: Optional[User], records: List[Record], group: List[User]=None,
                            box_title: str, page: int=None, total_pages: int=1,
                            total_records: int=None, short=False):
         if group is not None:
@@ -61,11 +62,12 @@ class ModNotes:
         def make_embed() -> discord.Embed:
             return discord.Embed(color=embed_color, title=title)
 
-        if not short:
+        if not short and user:
             user_fields[user.name] = self.format_display_user(user)
             user_fields['Aliases'] = '\n'.join(a.name for a in user.aliases) or 'None'
-            user_fields['Links'] = '\n'.join(user_mention(u.discord_id)
-                                             for u in group_users if u != user) or 'None'
+            if group_users:
+                user_fields['Links'] = '\n'.join(user_mention(u.discord_id)
+                                                 for u in group_users if u != user) or 'None'
 
         len_user_info = len(title) + len(footer)
         total_fields = len(user_fields)
@@ -103,7 +105,7 @@ class ModNotes:
             # If this record is from a grouped user, show this
             if user and rec.user_id != user.user_id:
                 record_fields['Linked from'] = self.format_display_user(rec.user)
-            elif short:
+            elif short:  # If no user info section, show the record user individually
                 record_fields['User'] = "{}\n{}"\
                     .format(rec.user.name, self.format_display_user(rec.user))
 
@@ -179,6 +181,39 @@ class ModNotes:
             box_title='Moderation Record'
         )
 
+    @notes.command(aliases=['watch'], pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def watches(self, ctx, page: int=1):
+        """
+        [MOD ONLY] Show all watches currently in effect (i.e. non-expired watch, int, warn records).
+
+        Arguments:
+        * user: Required. The user for whom to find moderation notes. This can be an @mention, a
+          Discord ID (numerical only), or a KazTron ID (starts with *).
+        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
+          Default: 1.
+
+        Example:
+            .notes @User#1234
+            .notes 330178495568436157 3
+        """
+        logger.info("notes watches: {}".format(message_log_str(ctx.message)))
+        watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
+        db_records = c.query_unexpired_records(types=watch_types)
+        total_pages = int(math.ceil(len(db_records) / self.NOTES_PAGE_SIZE))
+        page = max(1, min(total_pages, page))
+
+        start_index = (page-1)*self.NOTES_PAGE_SIZE
+        end_index = start_index + self.NOTES_PAGE_SIZE
+
+        await self.show_records(
+            ctx.message.channel,
+            user=None, records=db_records[start_index:end_index],
+            page=page, total_pages=total_pages, total_records=len(db_records),
+            box_title='Active Watches', short=True
+        )
+
     @notes.command(pass_context=True)
     @mod_only()
     @mod_channels()
@@ -203,10 +238,12 @@ class ModNotes:
             * appeal: Formal appeal received.
         * [OPTIONS]: Optional. Options of the form:
             * timestamp="timespec": Sets the note's time (e.g. the time at which a note happened).
-              Default is now.
+              Default is now. Instead of `timestamp`, you can also use the synonyms `starts`,
+              `start`, `time`.
             * expires="timespec": Sets when a note expires. This is purely documentation: for
               example, to take note of when a temp ban ends, or a permaban appeal is available, etc.
-              Default is no expiration.
+              Default is no expiration. Instead of `expires`, you can also use the synonyms
+              `expire`, `ends` or `end`.
             * The timespec is "smart". You can type a date and time (like "3 Dec 2017 5PM"), or
               relative times in natural language ("10 minutes ago", "in 2 days", "now"). Just make
               sure not to forget quotation marks.
@@ -230,8 +267,9 @@ class ModNotes:
         # load/preprocess positional arguments and defaults
         db_user = await c.query_user(self.bot, user)
         db_author = await c.query_user(self.bot, ctx.message.author.id)
-        timestamp = datetime.utcnow()
+        timestamp = None
         expires = None
+        is_expires_set = False
         try:
             record_type = RecordType[type_.lower()]
         except KeyError as e:
@@ -239,21 +277,39 @@ class ModNotes:
                 .format(type_, ', '.join(t.name for t in RecordType))) from e
 
         # Parse and load kwargs from the note_contents, if present
-        kwargs, note_contents = parse_keyword_args(['timestamp', 'expires'], note_contents)
+        time_keywords = ('timestamp', 'starts', 'start', 'time')
+        expire_keywords = ('expires', 'expire', 'ends', 'end')
+        try:
+            kwargs, note_contents = \
+                parse_keyword_args(time_keywords + expire_keywords, note_contents)
+        except ValueError as e:
+            raise commands.BadArgument(e.args[0]) from e
 
-        if 'timestamp' in kwargs:
-            timestamp = dateparser.parse(kwargs['timestamp'], settings=self.DATEPARSER_SETTINGS)
-            if timestamp is None:
-                raise commands.BadArgument("Invalid timespec: '{}'".format(kwargs['timestamp']))
-        if 'expires' in kwargs:
-            expires = dateparser.parse(kwargs['expires'], settings=self.DATEPARSER_SETTINGS)
-            if expires is None:
-                raise commands.BadArgument("Invalid timespec: '{}'".format(kwargs['expires']))
+        for key, arg in kwargs.items():
+            if key.lower() in time_keywords:
+                if timestamp is None:
+                    timestamp = dateparser.parse(arg, settings=self.DATEPARSER_SETTINGS)
+                    if timestamp is None:  # dateparser failed to parse
+                        raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
+                else:
+                    raise commands.BadArgument("Several `timestamp`` arguments (+ synonyms) found.")
+            elif key.lower() in expire_keywords:
+                if not is_expires_set:
+                    is_expires_set = True  # to detect multiple args
+                    if arg.lower() in ('none', 'never'):
+                        expires = None
+                    else:
+                        expires = dateparser.parse(arg, settings=self.DATEPARSER_SETTINGS)
+                        if expires is None:  # dateparser failed to parse
+                            raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
+                else:
+                    raise commands.BadArgument("Several `expires`` arguments (+ synonyms) found.")
 
         if len(note_contents) > self.EMBED_FIELD_LEN:
             raise commands.BadArgument('Note contents too long: '
                                        'max {:d} characters'.format(self.EMBED_FIELD_LEN))
 
+        # Record and user
         record = c.insert_note(user=db_user, author=db_author, type_=record_type,
                       timestamp=timestamp, expires=expires, body=note_contents)
 
@@ -371,10 +427,10 @@ class ModNotes:
             await self.bot.say("Record #{:04d} purged.".format(note_id))
             # don't send to ch_log, this has no non-admin visibility
 
-    @notes.command(pass_context=True)
+    @notes.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def usearch(self, ctx, search_term: str, page: int=1):
+    async def finduser(self, ctx, search_term: str, page: int=1):
         """
 
         [MOD ONLY] User search.
@@ -387,11 +443,11 @@ class ModNotes:
 
         Example:
 
-        .notes search Indium
+        .notes finduser Indium
             If there is a user called "IndiumPhosphide", they would be matched.
         """
         search_term_s = search_term[:Limits.NAME]
-        logger.info("notes usearch: {}".format(message_log_str(ctx.message)))
+        logger.info("notes finduser: {}".format(message_log_str(ctx.message)))
 
         # Get results
         results = c.search_users(search_term_s)
@@ -525,16 +581,17 @@ class ModNotes:
 
         await self.bot.say(msg_format.format(self.format_display_user(db_user), alias_s))
 
-    @notes.group(pass_context=True, invoke_without_command=True)
+    @notes.group(pass_context=True, invoke_without_command=True, ignore_extra=True)
     @mod_only()
     @mod_channels()
-    async def link(self, ctx):
+    async def group(self, ctx):
         """
-        [MOD ONLY] Set or remove an identity link between two users.
+        [MOD ONLY] Group and ungroup users together.
 
-        An identity link creates a group of users which are all considered to be the same
+        An identity group identifies users which are all considered to be the same
         individual. The .notes command will show the user info and records for both simultaneously,
-        if one of them is looked up. The users remain separate and can be unlinked later.
+        if one of them is looked up. The users remain separate and can be removed from the group
+        later.
         """
 
         command_list = list(self.link.commands.keys())
@@ -542,48 +599,100 @@ class ModNotes:
                             'Use `{1}` or `{1} <subcommand>` for instructions.')
             .format(command_list, get_help_str(ctx)))
 
-    @link.command(name='add', pass_context=True, ignore_extra=False, aliases=['a'])
+    @group.command(name='add', pass_context=True, ignore_extra=False, aliases=['a'])
     @mod_only()
     @mod_channels()
-    async def link_add(self, ctx, user1: str, user2: str):
+    async def group_add(self, ctx, user1: str, user2: str):
         """
-        Set an identity link between two users.
+        Group two users together.
 
-        If both users already have links to more users, the two linked groups are merged together.
-        This is irreversible.
+        If one user is not in a group, that user is added to the other user's group. If both users
+        are in separate groups, both groups are merged. This is irreversible.
 
-        See `.help link` for more information on linking.
+        See `.help group` for more information on grouping.
 
         Arguments:
         * <user1> and <user2>: Required. The two users to link. See `.help notes`.
 
         Example:
-        .notes link add @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
+        .notes group add @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
         """
-        logger.info("notes link: {}".format(message_log_str(ctx.message)))
+        logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user1 = await c.query_user(self.bot, user1)
         db_user2 = await c.query_user(self.bot, user2)
         c.group_users(db_user1, db_user2)
-        await self.bot.say("Added link between users {} and {}"
+        await self.bot.say("Grouped users {} and {}"
             .format(self.format_display_user(db_user1), self.format_display_user(db_user2)))
 
-    @link.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r'])
+    @group.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r'])
     @mod_only()
     @mod_channels()
-    async def link_rem(self, ctx, user: str):
+    async def group_rem(self, ctx, user: str):
         """
-        Unlink a user from other linked users.
+        Remove a user from the group.
 
-        See `.help link` for more information on linking.
+        See `.help group` for more information on grouping.
 
         Arguments:
-        * <user>: Required. The user to unlink. See `.help notes`.
+        * <user>: Required. The user to ungroup. See `.help notes`.
 
         Example:
-        .notes link rem @FireAlchemist#1234
+        .notes group rem @FireAlchemist#1234
         """
-        logger.info("notes link: {}".format(message_log_str(ctx.message)))
+        logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user = await c.query_user(self.bot, user)
         c.ungroup_user(db_user)
-        await self.bot.say("Updated user {0} - unlinked"
+        await self.bot.say("Updated user {0} - ungrouped"
             .format(self.format_display_user(db_user)))
+
+    @notes.error
+    @add.error
+    @removed.error
+    @name.error
+    @alias.error
+    async def on_error_query_user(self, exc, ctx):
+        cmd_string = message_log_str(ctx.message)
+        if isinstance(exc, commands.CommandInvokeError):
+            root_exc = exc.__cause__ if exc.__cause__ is not None else exc
+
+            if isinstance(root_exc, ValueError) and root_exc.args and 'user ID' in root_exc.args[0]:
+                logger.warning("Invalid user argument: {!s}. For {}".format(root_exc, cmd_string))
+                await self.bot.send_message(ctx.message.channel,
+                    "User format is not valid. User must be specified as an @mention, as a Discord "
+                    "ID (numerical only), or a KazTron ID (starts with `*`).")
+
+            elif isinstance(root_exc, c.UserNotFound):
+                logger.warning("User not found: {!s}. For {}".format(root_exc, cmd_string))
+                await self.bot.send_message(ctx.message.channel,
+                    "User was not found. The user must either exist in the KazTron modnotes "
+                    "database already, or exist on Discord (for @mentions and Discord IDs).")
+
+            else:
+                core_cog = self.bot.get_cog("CoreCog")
+                await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+        else:
+            core_cog = self.bot.get_cog("CoreCog")
+            await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+
+    @group_add.error
+    async def on_error_group_add(self, exc, ctx):
+        cmd_string = message_log_str(ctx.message)
+        if isinstance(exc, commands.TooManyArguments):
+            logger.warning("Too many args: {}".format(exc, cmd_string))
+            await self.bot.send_message(ctx.message.channel,
+                "Too many arguments. Note that you can only `{}` two users at a time."
+                .format(get_command_str(ctx)))
+        else:
+            await self.on_error_query_user(exc, ctx)
+
+    @group_rem.error
+    async def on_error_group_rem(self, exc, ctx):
+        cmd_string = message_log_str(ctx.message)
+        if isinstance(exc, commands.TooManyArguments):
+            logger.warning("Too many args: {}".format(exc, cmd_string))
+            await self.bot.send_message(ctx.message.channel,
+                "Too many arguments. "
+                "Note that you can only `{}` *one* user from its group at a time."
+                    .format(get_command_str(ctx)))
+        else:
+            await self.on_error_query_user(exc, ctx)

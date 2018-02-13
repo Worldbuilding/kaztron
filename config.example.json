@@ -20,6 +20,7 @@
   "spotlight": {
     "channel": "Channel ID",
     "audience_role": "Spotlight Audience role name",
+    "host_role": "Spotlight Host role name",
     "spreadsheet_id": "Google Spreadsheet ID",
     "spreadsheet_range": "Google Spreadsheet range name"
   },

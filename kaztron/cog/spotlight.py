@@ -1,7 +1,7 @@
 import random
 import time
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 from collections import deque
 
 import discord
@@ -14,7 +14,7 @@ from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only
 from kaztron.utils.decorators import error_handler
-from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits
+from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits, remove_role_from_all
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
 from kaztron.utils.strings import format_list, get_help_str, split_code_chunks_on, natural_truncate
 
@@ -29,6 +29,8 @@ class SpotlightApp:
     def __init__(self, data: List[str], bot: commands.Bot):
         self._data = data
         self.bot = bot
+        self._cached_user = None
+        self._is_user_cached = False
 
     @staticmethod
     def is_filled(str_property: str) -> bool:
@@ -51,11 +53,34 @@ class SpotlightApp:
     def user_id(self) -> str:
         return self._data[2]
 
-    async def get_user(self) -> Optional[discord.User]:
-        try:
-            return await self.bot.get_user_info(self._data[2])
-        except (discord.NotFound, discord.HTTPException):
-            return None
+    async def get_user(self, ctx: commands.Context=None)\
+            -> Union[discord.User, discord.Member, None]:
+        """
+        Return a :cls:`discord.User` or :cls:`discord.Member` class for the current user.
+        Returns None if the application's discord ID is invalid.
+
+        If possible, this method will return a cached copy of a :cls:`discord.User` if it has been
+        called previously (this won't work if the spotlight applications cache has been refreshed -
+        see the main cog class), avoiding API calls.
+
+        If ``ctx`` is provided, always fetches a :cls:`discord.Member` from the current server's
+        user cache.
+
+        :param ctx: Context. If provided, return the Member on the current server.
+        :return:
+        """
+        if ctx is None:
+            if self._is_user_cached:
+                return self._cached_user
+
+            try:
+                self._cached_user = await self.bot.get_user_info(self._data[2])
+            except (discord.NotFound, discord.HTTPException):
+                self._cached_user = None
+            self._is_user_cached = True
+            return self._cached_user
+        else:
+            return ctx.message.server.get_member(self._data[2])
 
     @property
     @error_handler(IndexError, "")
@@ -186,6 +211,7 @@ class Spotlight:
         self.dest_output = None
         self.dest_spotlight = None
         self.role_audience_name = self.config.get('spotlight', 'audience_role')
+        self.role_host_name = self.config.get('spotlight', 'host_role')
 
         self.user_agent = self.config.get("core", "name")
         self.gsheet_id = self.config.get("spotlight", "spreadsheet_id")
@@ -237,7 +263,8 @@ class Spotlight:
         :raises IndexError: Current index invalid or not set. In this case, note that logging and
         messaging the command caller is already handled.
         """
-        logger.info("Retrieving current spotlight application...")
+        logger.info("Retrieving current spotlight application "
+                    "index={:d}...".format(self.current_app_index))
 
         if self.current_app_index < 0:
             err_msg = "No spotlight application selected"
@@ -494,14 +521,42 @@ class Spotlight:
     @mod_only()
     async def showcase(self, ctx):
         """
-        [MOD ONLY] Publicly announce the currently selected application in the Spotlight channel.
+        [MOD ONLY] Publicly announce the currently selected application in the Spotlight channel,
+        and switch the Spotlight Host role to the application's owner (if valid).
         """
+
+        # Retrieve and showcase the app
         logger.debug("showcase: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         try:
-            await self.send_spotlight_info(self.dest_spotlight, await self._get_current())
+            current_app = await self._get_current()
         except IndexError:
-            pass  # get_current() already handles this
+            return  # get_current() already handles this
+
+        user = await current_app.get_user(ctx)  # None if invalid
+
+        await self.bot.send_message(self.dest_spotlight,
+            "**WORLD SPOTLIGHT**\n\n"
+            "Our next host is {0}, presenting their project, *{1}*!\n\nWelcome, {0}!"
+                .format(user.mention if user else current_app.user_name, current_app.project))
+        await self.send_spotlight_info(self.dest_spotlight, current_app)
+        await self.bot.say("Application showcased: {}".format(await current_app.str_discord()))
+
+        server = ctx.message.server  # type: discord.Server
+        host_role = get_named_role(server, self.role_host_name)
+
+        # Deassign the spotlight host role
+        await remove_role_from_all(self.bot, server, host_role)
+
+        # Assign the role to the selected app's owner
+        if user is not None:
+            await self.bot.add_roles(user, host_role)
+            await self.bot.say("'{}' role switched to {.mention}.".format(self.role_host_name, user))
+        else:
+            logger.warning("Invalid discord ID in application: '{}'".format(current_app.user_id))
+            await self.bot.say("Can't set new Spotlight Host role: "
+                               "Application Discord ID '{0.user_id}' is invalid (app: {0!s})"
+                               .format(current_app))
 
     @spotlight.group(pass_context=True, invoke_without_command=True, aliases=['q'])
     @mod_only()

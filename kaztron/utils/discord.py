@@ -49,5 +49,17 @@ def get_named_role(server: discord.Server, role_name: str) -> discord.Role:
     return role
 
 
+async def remove_role_from_all(client: discord.Client, server: discord.Server, role: discord.Role):
+    """
+    Removes a role from all users on the server who have that role.
+    :param client: Discord client or bot instance.
+    :param server:
+    :param role:
+    """
+    for u in server.members:
+        if role in u.roles:
+            await client.remove_roles(u, role)
+
+
 def user_mention(discord_id: str) -> str:
     return '<@{}>'.format(discord_id)
