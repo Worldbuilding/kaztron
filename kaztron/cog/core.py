@@ -209,7 +209,7 @@ class CoreCog:
         """
         logger.debug("info(): {!s}".format(message_log_str(ctx.message)))
         em = discord.Embed(color=0x80AAFF)
-        em.set_author(name="KazTron %s" % kaztron.bot_info["version"])
+        em.set_author(name="KazTron v{}".format(kaztron.bot_info["version"]))
         em.add_field(name="Changelog", value=kaztron.bot_info["changelog"], inline=False)
         for title, url in kaztron.bot_info["links"].items():
             em.add_field(name=title, value="[Link]({})".format(url), inline=True)

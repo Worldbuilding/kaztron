@@ -5,9 +5,10 @@ import sys
 import asyncio
 import logging
 
-from discord.ext import commands
+import time
 
-from kaztron import cfg_defaults
+import kaztron
+from kaztron import runner
 from kaztron.config import get_kaztron_config
 from kaztron.utils.logging import setup_logging
 
@@ -18,49 +19,42 @@ from kaztron.utils.logging import setup_logging
 
 # load configuration
 try:
-    config = get_kaztron_config(cfg_defaults)
+    config = get_kaztron_config(kaztron.cfg_defaults)
 except OSError as e:
     print(str(e), file=sys.stderr)
-    sys.exit(1)
+    sys.exit(runner.ErrorCodes.CFG_FILE)
 
 # setup logging
 setup_logging(logging.getLogger(), config)  # setup the root logger
 logger = logging.getLogger("kaztron.bootstrap")
 
 
+def reset_backoff(backoff: runner.Backoff, sequence):
+    if sequence == backoff.n:  # don't do it if we had a retry in the meantime
+        backoff.reset()
+
+
 if __name__ == '__main__':
-    client = commands.Bot(command_prefix='.',
-        description='This an automated bot for the /r/worldbuilding discord server',
-        pm_help=True)
+    logger.info("Welcome to KazTron v{}, booting up...".format(kaztron.__version__))
 
-    # Load extensions
-    startup_extensions = config.get("core", "extensions")
-    client.load_extension("kaztron.cog.core")
-    for extension in startup_extensions:
-        # noinspection PyBroadException
-        try:
-            client.load_extension("kaztron.cog." + extension)
-        except Exception as e:
-            logger.exception('Failed to load extension {}'.format(extension))
-            sys.exit(1)
-
-    # Run the main loop
     loop = asyncio.get_event_loop()
-    # noinspection PyBroadException
     try:
-        loop.run_until_complete(client.login(config.get("discord", "token")))
-        loop.run_until_complete(client.connect())
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-        logger.info("Waiting for client to close...")
-        loop.run_until_complete(client.close())
-        logger.info("Client closed.")
-    except:
-        logger.exception("Uncaught exception during bot execution")
-        logger.error("Waiting for client to close...")
-        loop.run_until_complete(client.close())
-        logger.error("Client closed.")
+        bo_timer = runner.Backoff(initial_time=3.0, base=1.58, max_attempts=12)
+        wait_time = 0
+        while True:
+            reset_task = loop.call_later(wait_time, reset_backoff, bo_timer, bo_timer.n)
+            runner.run(loop)
+            logger.error("Bot halted unexpectedly.")
+            reset_task.cancel()
+            wait_time = bo_timer.next()
+            logger.info("Restarting bot in {:.1f} seconds...".format(wait_time))
+            time.sleep(wait_time)
+            logger.info("Restarting bot...")
+    except StopIteration:
+        logger.error("Too many failed attempts. Exiting.")
+        sys.exit(runner.ErrorCodes.RETRY_MAX_ATTEMPTS)
+    except KeyboardInterrupt:  # outside of runner.run
+        logger.info("Interrupted by user. Exiting.")
     finally:
-        logger.info("Closing event loop...")
-        loop.close()
         logger.info("Exiting.")
+        loop.close()
