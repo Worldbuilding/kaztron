@@ -5,8 +5,6 @@ import discord
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config, get_runtime_config
-from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
-from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str, \
@@ -15,7 +13,7 @@ from kaztron.utils.strings import format_list, get_command_str, get_help_str, ge
 logger = logging.getLogger(__name__)
 
 
-class WordFilter:
+class WordWar:
 
     display_filter_types = ['warn', 'del']
 
@@ -54,16 +52,35 @@ class WordFilter:
         except OSError as e:
             logger.error(str(e))
             raise RuntimeError("Failed to load runtime config") from e
-        self.filter_cfg.set_defaults(
-            'filter',
-            warn=[],
-            delete=[],
-            channel=self.config.get('filter', 'channel_warning')
-        )
+        self._make_default_config()
         self._load_filter_rules()
         self.dest_output = None
         self.dest_warning = None
         self.dest_current = None
+
+    def _make_default_config(self):
+        changed = False
+        c = self.filter_cfg
+        try:
+            c.get('filter', 'warn')
+        except KeyError:
+            c.set('filter', 'warn', [])
+            changed = True
+
+        try:
+            c.get('filter', 'delete')
+        except KeyError:
+            c.set('filter', 'delete', [])
+            changed = True
+
+        try:
+            c.get('filter', 'channel')
+        except KeyError:
+            c.set('filter', 'channel', self.config.get('filter', 'channel_warning'))
+            changed = True
+
+        if changed:
+            c.write()
 
     def _load_filter_rules(self):
         for filter_type, engine in self.engines.items():

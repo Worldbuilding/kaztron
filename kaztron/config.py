@@ -78,7 +78,8 @@ class KaztronConfig:
     def write(self):
         """
         Write the current config data to the configured file.
-        :raises OSError: Error opening file.
+        :raises OSError: Error opening or writing file.
+        :raise RuntimeError: configuration is set as read-only
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
@@ -164,6 +165,7 @@ class KaztronConfig:
         :param section: Section of the config file
         :param key: Key name to store
         :param value: Value to store at the given section and key
+        :raise RuntimeError: configuration is set as read-only
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
@@ -177,6 +179,27 @@ class KaztronConfig:
             section_data = self._data[section] = {}
 
         section_data[key] = copy.deepcopy(value)
+
+    def set_defaults(self, section: str, **kwargs):
+        """
+        Set configuration values for any keys that are not already defined in the config file.
+        The current instance must not be read-only. This method will write to file.
+
+        :param section: The section to set. This method can only set one section at a time.
+        :param kwargs: key=value pairs to set, if the key is not already in the config.
+        :raises OSError: Error opening or writing file.
+        :raise RuntimeError: configuration is set as read-only
+        """
+        is_changed = False
+        for key, value in kwargs.items():
+            try:
+                self.get(section, key)
+            except KeyError:
+                self.set(section, key, value)
+                is_changed = True
+
+        if is_changed:
+            self.write()
 
 
 def log_level(value: str):

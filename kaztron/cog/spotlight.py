@@ -206,7 +206,7 @@ class Spotlight:
             logger.error(str(e))
             raise RuntimeError("Failed to load runtime config") from e
 
-        self._make_default_config()
+        self.db.set_defaults('spotlight', current=-1, queue=[])
 
         self.dest_output = None
         self.dest_spotlight = None
@@ -221,24 +221,6 @@ class Spotlight:
 
         self.current_app_index = int(self.db.get('spotlight', 'current', -1))
         self.queue = deque(self.db.get('spotlight', 'queue', []))
-
-    def _make_default_config(self):
-        changed = False
-        c = self.db
-        try:
-            int(c.get('spotlight', 'current'))
-        except (KeyError, ValueError):
-            c.set('spotlight', 'current', -1)
-            changed = True
-
-        try:
-            c.get('spotlight', 'queue')
-        except KeyError:
-            c.set('spotlight', 'queue', [])
-            changed = True
-
-        if changed:
-            c.write()
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
