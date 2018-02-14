@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     loop = asyncio.get_event_loop()
     try:
-        bo_timer = runner.Backoff()
+        bo_timer = runner.Backoff(initial_time=3.0, base=1.58, max_attempts=12)
         wait_time = 0
         while True:
             reset_task = loop.call_later(wait_time, reset_backoff, bo_timer, bo_timer.n)
