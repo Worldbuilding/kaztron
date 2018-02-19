@@ -40,6 +40,14 @@ class CoreCog:
         for msg in startup_info:  # Iterate again to keep these together in logs
             print(msg)  # in case console logger is below INFO level - display startup info
 
+        try:
+            await self.bot.send_message(
+                self.dest_output,
+                "**KazTron has (re)connected**\n" + '\n'.join(startup_info)
+            )
+        except discord.HTTPException:
+            logger.exception("Error sending startup information to output channel")
+
     async def on_error(self, event, *args, **kwargs):
         exc_info = sys.exc_info()
         if exc_info[0] is KeyboardInterrupt:
