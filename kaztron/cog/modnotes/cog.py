@@ -13,7 +13,7 @@ from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args, \
+from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args,\
     get_command_str
 
 from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
@@ -214,7 +214,7 @@ class ModNotes:
             box_title='Active Watches', short=True
         )
 
-    @notes.command(pass_context=True)
+    @notes.command(pass_context=True, aliases=['a'])
     @mod_only()
     @mod_channels()
     async def add(self, ctx, user: str, type_: str, *, note_contents):
@@ -318,7 +318,7 @@ class ModNotes:
                                 short=True)
         await self.bot.say("Note added.")
 
-    @notes.command(pass_context=True, ignore_extra=False)
+    @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels()
     async def rem(self, ctx, note_id: int):
@@ -594,7 +594,7 @@ class ModNotes:
         later.
         """
 
-        command_list = list(self.link.commands.keys())
+        command_list = list(self.group.commands.keys())
         await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
                             'Use `{1}` or `{1} <subcommand>` for instructions.')
             .format(command_list, get_help_str(ctx)))
@@ -624,7 +624,7 @@ class ModNotes:
         await self.bot.say("Grouped users {} and {}"
             .format(self.format_display_user(db_user1), self.format_display_user(db_user2)))
 
-    @group.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r'])
+    @group.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels()
     async def group_rem(self, ctx, user: str):

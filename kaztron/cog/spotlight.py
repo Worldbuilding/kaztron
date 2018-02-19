@@ -709,7 +709,7 @@ class Spotlight:
         else:
             self._write_db()
 
-    @queue.command(name='rem', ignore_extra=False, pass_context=True, aliases=['r'])
+    @queue.command(name='rem', ignore_extra=False, pass_context=True, aliases=['r', 'remove'])
     @mod_only()
     async def queue_rem(self, ctx, queue_index: int):
         logger.debug("queue rem: {}".format(message_log_str(ctx.message)))
