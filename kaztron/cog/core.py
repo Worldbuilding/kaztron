@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import sys
@@ -52,6 +53,8 @@ class CoreCog:
         exc_info = sys.exc_info()
         if exc_info[0] is KeyboardInterrupt:
             logger.warning("Interrupted by user (SIGINT)")
+            raise exc_info[1]
+        elif exc_info[0] is asyncio.CancelledError:
             raise exc_info[1]
 
         log_msg = "Error occurred in {}({}, {})".format(

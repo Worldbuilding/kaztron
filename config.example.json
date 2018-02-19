@@ -12,7 +12,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "sprint"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log"
@@ -50,5 +50,16 @@
   },
   "modnotes": {
     "channel_log": "channel ID - for channel to log all new records to (read-only ideally?)"
+  },
+  "sprint": {
+    "channel": "channel ID",
+    "role_sprint": "role name - people currently sprinting",
+    "role_follow": "role name - people who want to get notified about new sprints",
+    "delay_default": 300,
+    "delay_max": 900,
+    "duration_default": 1500,
+    "duration_min": 300,
+    "duration_max": 3600,
+    "finalize_time": 300
   }
 }
