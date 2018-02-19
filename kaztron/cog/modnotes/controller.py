@@ -200,8 +200,8 @@ def search_users(search_term: str) -> List[User]:
     """
     search_term_like = '%{}%'.format(search_term.replace('%', '\\%').replace('_', '\\_'))
     results = session.query(User).outerjoin(UserAlias) \
-        .filter(db.or_(User.name.ilike(search_term_like),
-                UserAlias.name.ilike(search_term_like))) \
+        .filter(db.or_(User.name.ilike(search_term_like, escape='\\'),
+                UserAlias.name.ilike(search_term_like, escape='\\'))) \
         .order_by(User.name) \
         .all()
     logger.info("search_users: Found {:d} results for {!r}".format(len(results), search_term))
