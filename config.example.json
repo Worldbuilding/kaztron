@@ -12,7 +12,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "modnotes"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log"
