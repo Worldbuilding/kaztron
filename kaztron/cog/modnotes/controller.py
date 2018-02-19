@@ -175,7 +175,7 @@ def query_unexpired_records(*,
     rtypes = [types] if isinstance(types, RecordType) else types  # type: Optional[List[RecordType]]
 
     # Query
-    query = session.query(Record) \
+    query = session.query(Record).filter_by(is_removed=False) \
                    .filter(db.or_(datetime.utcnow() < Record.expires, Record.expires == None))
     if user_list:
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
