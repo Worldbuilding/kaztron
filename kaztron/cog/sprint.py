@@ -11,6 +11,7 @@ from typing import Dict, List, Callable, Tuple, Deque, Optional
 import discord
 from discord.ext import commands
 
+from kaztron.cog.role_man import RoleManager
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.errors import UnauthorizedUserError
 from kaztron.theme import solarized
@@ -511,6 +512,35 @@ class WritingSprint:
 
         self._update_roles()
 
+        roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
+        if roleman:
+            roleman.add_managed_role(
+                role_name=self.role_follow_name,
+                join="follow",
+                leave="unfollow",
+                join_msg="You will now receive notifications when others start a sprint. "
+                         "You can stop getting notifications by using the `.w unfollow` command.",
+                leave_msg="You will no longer receive notifications when others start a sprint. "
+                          "You can get notifications again by using the `.w follow` command.",
+                join_err="Oops! You're already receiving notifications for sprints. "
+                         "Use the `.w unfollow` command to stop getting notifications.",
+                leave_err="Oops! You're not currently getting notifications for sprints. "
+                          "Use the `.w follow` command if you want to start getting notifications.",
+                join_doc="Get notified when sprints are happening.",
+                leave_doc="Stop getting notifications about sprints.\n\n"
+                          "You will still get notifications for sprints you have joined.",
+                group=self.sprint,
+                cog_instance=self,
+                ignore_extra=False
+            )
+        else:
+            err_msg = "Cannot find RoleManager - is it enabled in config?"
+            logger.error(err_msg)
+            try:
+                await self.bot.send_message(self.dest_output, err_msg)
+            except discord.HTTPException:
+                logger.exception("Error sending error to {}".format(self.dest_output_id))
+
         logger.info("Restoring task for current state...")
         if state is SprintState.IDLE:
             logger.info("No sprint, no task needs restoring.")
@@ -839,24 +869,6 @@ class WritingSprint:
         else:
             logger.warning("Cannot set wordcount: user {} not in sprint".format(user.name))
             await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(user.mention))
-
-    @sprint.command(pass_context=True, ignore_extra=False)
-    @in_channels_cfg('sprint', 'channel', allow_pm=True)
-    async def follow(self, ctx):
-        """
-        Get notified when sprints are happening.
-        """
-        logger.info("follow: {}".format(message_log_str(ctx.message)))
-        # TODO
-
-    @sprint.command(pass_context=True, ignore_extra=False)
-    @in_channels_cfg('sprint', 'channel', allow_pm=True)
-    async def unfollow(self, ctx):
-        """
-        Stop getting notifications about sprints, unless you've already joined that sprint.
-        """
-        logger.info("unfollow: {}".format(message_log_str(ctx.message)))
-        # TODO
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)

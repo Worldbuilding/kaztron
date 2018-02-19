@@ -36,7 +36,36 @@
   },
   "role_man": {
     "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
-    "role_voice": "Name of the role to assign while in voice channels"
+    "role_voice": "Name of the role to assign while in voice channels",
+    "user_roles": {
+      "role_name1": {
+        "join": "join command name",
+        "leave": "leave command name",
+        "join_msg": "Message to send user when the user successfully joins the role.",
+        "leave_msg": "Message to send when the user successfully leaves the role.",
+        "join_err": "Message when the user tries to join but is already member of the role.",
+        "leave_err": "Message when the user tries to leave but is not a role member.",
+        "join_doc": "Help string for the join command.",
+        "leave_doc": "Help string for the leave command.",
+        "group": ["command", "subcommand", "etc. - command to group the join/leave commands under, must be Group classes - Optional"],
+        "other arguments": "include other arguments to pass to the discord.ext.commands.command() decorator"
+      },
+      "role_name2": {
+        "join": "join command name",
+        "leave": "leave command name",
+        "join_msg": "Message to send user when the user successfully joins the role.",
+        "leave_msg": "Message to send when the user successfully leaves the role.",
+        "join_err": "Message when the user tries to join but is already member of the role.",
+        "leave_err": "Message when the user tries to leave but is not a role member.",
+        "join_doc": "Help string for the join command.",
+        "leave_doc": "Help string for the leave command.",
+        "group": ["command", "subcommand", "etc. - command to group the join/leave commands under, must be Group classes - Optional"],
+        "other arguments": "include other arguments to pass to the discord.ext.commands.command() decorator"
+      }
+    },
+    "mod_roles": {
+      "role_name1 (same structure as user_roles)": {}
+    }
   },
   "modtools": {
     "distinguish_map": {
