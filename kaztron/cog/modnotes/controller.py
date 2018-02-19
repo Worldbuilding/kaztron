@@ -69,10 +69,23 @@ async def query_user(bot, id_: str):
         discord_id = id_
     elif id_.startswith('<@') and id_.endswith('>'):
         discord_id = id_[2:-1]
+
+        # Handle nickname ! and role & mentions
+        if not discord_id:
+            raise ValueError('Invalid Discord user ID format: no ID in mention')
+        elif discord_id[0] == '&':
+            raise ValueError('Invalid Discord user ID format: mention must be user, not role')
+        elif discord_id[0] == '!':
+            discord_id = discord_id[1:]
+
+        # Discord IDs are stored as strings but must always be numeric values
         if not discord_id.isnumeric():
             raise ValueError('Invalid Discord user ID format: must be numeric')
     elif id_.startswith('*'):
-        db_id = int(id_[1:])
+        try:
+            db_id = int(id_[1:])
+        except ValueError:
+            raise ValueError('Invalid KazTron user ID: everything after `*` must be numeric')
     else:
         raise ValueError('Invalid user ID format')
 
@@ -166,7 +179,7 @@ def query_unexpired_records(*,
     rtypes = [types] if isinstance(types, RecordType) else types  # type: Optional[List[RecordType]]
 
     # Query
-    query = session.query(Record) \
+    query = session.query(Record).filter_by(is_removed=False) \
                    .filter(db.or_(datetime.utcnow() < Record.expires, Record.expires == None))
     if user_list:
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
@@ -187,8 +200,8 @@ def search_users(search_term: str) -> List[User]:
     """
     search_term_like = '%{}%'.format(search_term.replace('%', '\\%').replace('_', '\\_'))
     results = session.query(User).outerjoin(UserAlias) \
-        .filter(db.or_(User.name.ilike(search_term_like),
-                UserAlias.name.ilike(search_term_like))) \
+        .filter(db.or_(User.name.ilike(search_term_like, escape='\\'),
+                UserAlias.name.ilike(search_term_like, escape='\\'))) \
         .order_by(User.name) \
         .all()
     logger.info("search_users: Found {:d} results for {!r}".format(len(results), search_term))

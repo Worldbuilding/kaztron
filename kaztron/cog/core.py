@@ -40,6 +40,14 @@ class CoreCog:
         for msg in startup_info:  # Iterate again to keep these together in logs
             print(msg)  # in case console logger is below INFO level - display startup info
 
+        try:
+            await self.bot.send_message(
+                self.dest_output,
+                "**KazTron has (re)connected**\n" + '\n'.join(startup_info)
+            )
+        except discord.HTTPException:
+            logger.exception("Error sending startup information to output channel")
+
     async def on_error(self, event, *args, **kwargs):
         exc_info = sys.exc_info()
         if exc_info[0] is KeyboardInterrupt:
@@ -130,19 +138,26 @@ class CoreCog:
             await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "Only mods can use that command.")
 
-        elif isinstance(exc, UnauthorizedChannelError):
-            err_msg = "Unauthorised channel for this command: {!r}".format(
+        elif isinstance(exc, AdminOnlyError):
+            err_msg = "Unauthorised user for this command (not an admin): {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
             await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
+            await self.bot.send_message(ctx.message.channel, "Only admins can use that command.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
             logger.warning(
                 "Check failed on command: {!r}\n\n{}".format(cmd_string, tb_log_str(exc)))
             await self.bot.send_message(ctx.message.channel,
                 "You're not allowed to use that command. "
-                " (Dev note: Implement error handler with more precise reason)")
+                " *(Dev note: Implement error handler with more precise reason)*")
+
+        elif isinstance(exc, UnauthorizedChannelError):
+            err_msg = "Unauthorised channel for this command: {!r}".format(
+                cmd_string)
+            logger.warning(err_msg)
+            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
 
         elif isinstance(exc, commands.NoPrivateMessage):
             msg = "Attempt to use non-PM command in PM: {}".format(cmd_string)
@@ -152,9 +167,9 @@ class CoreCog:
             # No need to log this on Discord, spammy and isn't something mods need to be aware of
 
         elif isinstance(exc, commands.BadArgument):
-            msg = "Bad argument passed in command: {}".format(cmd_string)
-            logger.warning(msg)
             exc_msg = exc.args[0] if len(exc.args) > 0 else '(No error message).'
+            msg = "Bad argument passed in command: {}\n{}".format(cmd_string, exc_msg)
+            logger.warning(msg)
             await self.bot.send_message(ctx.message.channel,
                 ("Invalid argument(s) for the command `{}`. {}\n\n**Usage:** `{}`\n\n"
                  "Use `{}` for help. "

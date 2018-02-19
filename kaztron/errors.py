@@ -9,5 +9,9 @@ class ModOnlyError(UnauthorizedUserError):
     pass
 
 
+class AdminOnlyError(UnauthorizedUserError):
+    pass
+
+
 class UnauthorizedChannelError(commands.CommandError):
     pass

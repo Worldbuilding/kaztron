@@ -5,8 +5,6 @@ import discord
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config, get_runtime_config
-from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
-from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str, \
@@ -15,7 +13,7 @@ from kaztron.utils.strings import format_list, get_command_str, get_help_str, ge
 logger = logging.getLogger(__name__)
 
 
-class WordFilter:
+class WordWar:
 
     display_filter_types = ['warn', 'del']
 
@@ -54,16 +52,35 @@ class WordFilter:
         except OSError as e:
             logger.error(str(e))
             raise RuntimeError("Failed to load runtime config") from e
-        self.filter_cfg.set_defaults(
-            'filter',
-            warn=[],
-            delete=[],
-            channel=self.config.get('filter', 'channel_warning')
-        )
+        self._make_default_config()
         self._load_filter_rules()
         self.dest_output = None
         self.dest_warning = None
         self.dest_current = None
+
+    def _make_default_config(self):
+        changed = False
+        c = self.filter_cfg
+        try:
+            c.get('filter', 'warn')
+        except KeyError:
+            c.set('filter', 'warn', [])
+            changed = True
+
+        try:
+            c.get('filter', 'delete')
+        except KeyError:
+            c.set('filter', 'delete', [])
+            changed = True
+
+        try:
+            c.get('filter', 'channel')
+        except KeyError:
+            c.set('filter', 'channel', self.config.get('filter', 'channel_warning'))
+            changed = True
+
+        if changed:
+            c.write()
 
     def _load_filter_rules(self):
         for filter_type, engine in self.engines.items():
@@ -237,52 +254,9 @@ class WordFilter:
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels()
-    async def rem(self, ctx, filter_type: str, word: str):
+    async def rem(self, ctx, filter_type: str, index: int):
         """
-        [MOD ONLY] Remove a filter word/expression by word.
-
-        Arguments:
-        * filter_type: The list to remove from. One of ["warn", "del"] (shorthand: ["w", "d"])
-        * word: The word or expression to remove from the filter list. If it has spaces, use
-          quotation marks.
-
-        Examples:
-
-        `.filter rem warn %word%` - Remove "%word%" from the auto-warning list.
-        `.filter rem del "%pink flamingo%"` - Remove "%pink flamingo%" from the auto-delete list.
-        """
-        logger.info("add: {}".format(message_log_str(ctx.message)))
-        validated_type = await self.validate_filter_type(filter_type)
-        if validated_type is None:
-            # error messages and logging already managed
-            return
-        else:
-            filter_list = self.filter_cfg.get("filter", validated_type)
-            try:
-                # not a copy - can modify directly
-                filter_list.remove(word)
-            except ValueError:
-                err_msg = "No such item in filter list {}: {}".format(validated_type, word)
-                logger.error("rem: " + err_msg)
-                await self.bot.say(err_msg)
-                return
-
-            else:  # no exceptions
-                self.filter_cfg.write()
-
-                logger.info("rem: {}: Removed {!r} from the {} list."
-                    .format(ctx.message.author, word, validated_type))
-                await self.bot.say("Removed `{}` from the {} list."
-                    .format(word, validated_type))
-
-                self._load_filter_rules()
-
-    @word_filter.command(pass_context=True, ignore_extra=False)
-    @mod_only()
-    @mod_channels()
-    async def rnum(self, ctx, filter_type: str, index: int):
-        """
-        [MOD ONLY] Remove a filter word/expression by list index.
+        [MOD ONLY] Remove a new filter word/expression.
 
         Arguments:
         * filter_type: One of warn, del, w, d
@@ -291,10 +265,10 @@ class WordFilter:
 
         Examples:
 
-        `.filter rnum del 5` - Removes the 5th rule in the auto-delete filter.
+        `.filter rem del 5` - Removes the 5th rule in the auto-delete filter.
         `.filter r w 3` - Shorthand. Removes the 3rd rule in the warning-only filter.
         """
-        logger.info("rnum: {}".format(message_log_str(ctx.message)))
+        logger.info("rem: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed

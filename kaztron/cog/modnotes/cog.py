@@ -14,7 +14,7 @@ from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_chann
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args, \
-    get_command_str
+    get_command_str, get_usage_str
 
 from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
 from kaztron.cog.modnotes import controller as c
@@ -214,7 +214,7 @@ class ModNotes:
             box_title='Active Watches', short=True
         )
 
-    @notes.command(pass_context=True)
+    @notes.command(pass_context=True, aliases=['a'])
     @mod_only()
     @mod_channels()
     async def add(self, ctx, user: str, type_: str, *, note_contents):
@@ -318,7 +318,7 @@ class ModNotes:
                                 short=True)
         await self.bot.say("Note added.")
 
-    @notes.command(pass_context=True, ignore_extra=False)
+    @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels()
     async def rem(self, ctx, note_id: int):
@@ -594,7 +594,7 @@ class ModNotes:
         later.
         """
 
-        command_list = list(self.link.commands.keys())
+        command_list = list(self.group.commands.keys())
         await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
                             'Use `{1}` or `{1} <subcommand>` for instructions.')
             .format(command_list, get_help_str(ctx)))
@@ -620,11 +620,18 @@ class ModNotes:
         logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user1 = await c.query_user(self.bot, user1)
         db_user2 = await c.query_user(self.bot, user2)
-        c.group_users(db_user1, db_user2)
-        await self.bot.say("Grouped users {} and {}"
-            .format(self.format_display_user(db_user1), self.format_display_user(db_user2)))
 
-    @group.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r'])
+        if db_user1.group_id is None or db_user1.group_id != db_user2.group_id:
+            c.group_users(db_user1, db_user2)
+            msg = "Grouped users {0} and {1}"
+        else:
+            msg = "Error: Users {0} and {1} are already in the same group!"
+
+        await self.bot.say(
+            msg.format(self.format_display_user(db_user1), self.format_display_user(db_user2))
+        )
+
+    @group.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels()
     async def group_rem(self, ctx, user: str):
@@ -641,11 +648,15 @@ class ModNotes:
         """
         logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user = await c.query_user(self.bot, user)
-        c.ungroup_user(db_user)
-        await self.bot.say("Updated user {0} - ungrouped"
-            .format(self.format_display_user(db_user)))
 
-    @notes.error
+        if db_user.group_id is not None:
+            c.ungroup_user(db_user)
+            msg = "Ungrouped user {0}"
+        else:
+            msg = "Error: Cannot ungroup user {0}: user is not in a group"
+
+        await self.bot.say(msg.format(self.format_display_user(db_user)))
+
     @add.error
     @removed.error
     @name.error
@@ -659,7 +670,7 @@ class ModNotes:
                 logger.warning("Invalid user argument: {!s}. For {}".format(root_exc, cmd_string))
                 await self.bot.send_message(ctx.message.channel,
                     "User format is not valid. User must be specified as an @mention, as a Discord "
-                    "ID (numerical only), or a KazTron ID (starts with `*`).")
+                    "ID (numerical only), or a KazTron ID (`*` followed by a number).")
 
             elif isinstance(root_exc, c.UserNotFound):
                 logger.warning("User not found: {!s}. For {}".format(root_exc, cmd_string))
@@ -673,6 +684,34 @@ class ModNotes:
         else:
             core_cog = self.bot.get_cog("CoreCog")
             await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+
+    @notes.error
+    async def on_error_notes(self, exc, ctx):
+        cmd_string = message_log_str(ctx.message)
+
+        if ctx is not None and ctx.command is not None:
+            usage_str = get_usage_str(ctx)
+        else:
+            usage_str = '(Unable to retrieve usage information)'
+
+        if isinstance(exc, commands.BadArgument):
+            msg = "Bad argument passed in command: {}".format(cmd_string)
+            logger.warning(msg)
+            await self.bot.send_message(ctx.message.channel,
+                ("Invalid argument(s) for the command `{}`. Did you mean `.notes add`?"
+                 "\n\n**Usage:** `{}`\n\nUse `{}` for help.")
+                    .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
+            # No need to log user errors to mods
+
+        elif isinstance(exc, commands.TooManyArguments):
+            msg = "Too many arguments passed in command: {}".format(cmd_string)
+            logger.warning(msg)
+            await self.bot.send_message(ctx.message.channel,
+                ("Too many arguments. Did you mean `.notes add`?\n\n"
+                 "**Usage:** `{}`\n\nUse `{}` for help.")
+                    .format(usage_str, get_help_str(ctx)))
+        else:
+            await self.on_error_query_user(exc, ctx)
 
     @group_add.error
     async def on_error_group_add(self, exc, ctx):
