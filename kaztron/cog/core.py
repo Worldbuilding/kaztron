@@ -138,19 +138,26 @@ class CoreCog:
             await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "Only mods can use that command.")
 
-        elif isinstance(exc, UnauthorizedChannelError):
-            err_msg = "Unauthorised channel for this command: {!r}".format(
+        elif isinstance(exc, AdminOnlyError):
+            err_msg = "Unauthorised user for this command (not an admin): {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
             await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
+            await self.bot.send_message(ctx.message.channel, "Only admins can use that command.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
             logger.warning(
                 "Check failed on command: {!r}\n\n{}".format(cmd_string, tb_log_str(exc)))
             await self.bot.send_message(ctx.message.channel,
                 "You're not allowed to use that command. "
-                " (Dev note: Implement error handler with more precise reason)")
+                " *(Dev note: Implement error handler with more precise reason)*")
+
+        elif isinstance(exc, UnauthorizedChannelError):
+            err_msg = "Unauthorised channel for this command: {!r}".format(
+                cmd_string)
+            logger.warning(err_msg)
+            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
 
         elif isinstance(exc, commands.NoPrivateMessage):
             msg = "Attempt to use non-PM command in PM: {}".format(cmd_string)

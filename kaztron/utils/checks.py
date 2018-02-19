@@ -3,7 +3,7 @@ from typing import List
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config
-from kaztron.errors import ModOnlyError, UnauthorizedChannelError
+from kaztron.errors import ModOnlyError, UnauthorizedChannelError, AdminOnlyError
 from kaztron.utils.discord import check_role
 
 import logging
@@ -41,7 +41,7 @@ def admin_only():
             logger.info("Validated {!s} as bot administrator".format(ctx.message.author))
             return True
         else:
-            raise ModOnlyError("Only administrators may use this command.", ctx)
+            raise AdminOnlyError("Only administrators may use this command.", ctx)
 
     return commands.check(predicate)
 
