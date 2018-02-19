@@ -659,7 +659,7 @@ class ModNotes:
                 logger.warning("Invalid user argument: {!s}. For {}".format(root_exc, cmd_string))
                 await self.bot.send_message(ctx.message.channel,
                     "User format is not valid. User must be specified as an @mention, as a Discord "
-                    "ID (numerical only), or a KazTron ID (starts with `*`).")
+                    "ID (numerical only), or a KazTron ID (`*` followed by a number).")
 
             elif isinstance(root_exc, c.UserNotFound):
                 logger.warning("User not found: {!s}. For {}".format(root_exc, cmd_string))

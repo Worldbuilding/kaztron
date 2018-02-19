@@ -78,10 +78,14 @@ async def query_user(bot, id_: str):
         elif discord_id[0] == '!':
             discord_id = discord_id[1:]
 
+        # Discord IDs are stored as strings but must always be numeric values
         if not discord_id.isnumeric():
             raise ValueError('Invalid Discord user ID format: must be numeric')
     elif id_.startswith('*'):
-        db_id = int(id_[1:])
+        try:
+            db_id = int(id_[1:])
+        except ValueError:
+            raise ValueError('Invalid KazTron user ID: everything after `*` must be numeric')
     else:
         raise ValueError('Invalid user ID format')
 
