@@ -237,9 +237,52 @@ class WordFilter:
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels()
-    async def rem(self, ctx, filter_type: str, index: int):
+    async def rem(self, ctx, filter_type: str, word: str):
         """
-        [MOD ONLY] Remove a new filter word/expression.
+        [MOD ONLY] Remove a filter word/expression by word.
+
+        Arguments:
+        * filter_type: The list to remove from. One of ["warn", "del"] (shorthand: ["w", "d"])
+        * word: The word or expression to remove from the filter list. If it has spaces, use
+          quotation marks.
+
+        Examples:
+
+        `.filter rem warn %word%` - Remove "%word%" from the auto-warning list.
+        `.filter rem del "%pink flamingo%"` - Remove "%pink flamingo%" from the auto-delete list.
+        """
+        logger.info("add: {}".format(message_log_str(ctx.message)))
+        validated_type = await self.validate_filter_type(filter_type)
+        if validated_type is None:
+            # error messages and logging already managed
+            return
+        else:
+            filter_list = self.filter_cfg.get("filter", validated_type)
+            try:
+                # not a copy - can modify directly
+                filter_list.remove(word)
+            except ValueError:
+                err_msg = "No such item in filter list {}: {}".format(validated_type, word)
+                logger.error("rem: " + err_msg)
+                await self.bot.say(err_msg)
+                return
+
+            else:  # no exceptions
+                self.filter_cfg.write()
+
+                logger.info("rem: {}: Removed {!r} from the {} list."
+                    .format(ctx.message.author, word, validated_type))
+                await self.bot.say("Removed `{}` from the {} list."
+                    .format(word, validated_type))
+
+                self._load_filter_rules()
+
+    @word_filter.command(pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def rnum(self, ctx, filter_type: str, index: int):
+        """
+        [MOD ONLY] Remove a filter word/expression by list index.
 
         Arguments:
         * filter_type: One of warn, del, w, d
@@ -248,10 +291,10 @@ class WordFilter:
 
         Examples:
 
-        `.filter rem del 5` - Removes the 5th rule in the auto-delete filter.
+        `.filter rnum del 5` - Removes the 5th rule in the auto-delete filter.
         `.filter r w 3` - Shorthand. Removes the 3rd rule in the warning-only filter.
         """
-        logger.info("rem: {}".format(message_log_str(ctx.message)))
+        logger.info("rnum: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed
