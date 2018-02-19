@@ -620,9 +620,16 @@ class ModNotes:
         logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user1 = await c.query_user(self.bot, user1)
         db_user2 = await c.query_user(self.bot, user2)
-        c.group_users(db_user1, db_user2)
-        await self.bot.say("Grouped users {} and {}"
-            .format(self.format_display_user(db_user1), self.format_display_user(db_user2)))
+
+        if db_user1.group_id is None or db_user1.group_id != db_user2.group_id:
+            c.group_users(db_user1, db_user2)
+            msg = "Grouped users {0} and {1}"
+        else:
+            msg = "Error: Users {0} and {1} are already in the same group!"
+
+        await self.bot.say(
+            msg.format(self.format_display_user(db_user1), self.format_display_user(db_user2))
+        )
 
     @group.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
@@ -641,9 +648,15 @@ class ModNotes:
         """
         logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user = await c.query_user(self.bot, user)
-        c.ungroup_user(db_user)
-        await self.bot.say("Updated user {0} - ungrouped"
-            .format(self.format_display_user(db_user)))
+
+        if db_user.group_id is not None:
+            c.ungroup_user(db_user)
+            msg = "Ungrouped user {0}"
+        else:
+            msg = "Error: Cannot ungroup user {0}: user is not in a group"
+
+        await self.bot.say(msg.format(self.format_display_user(db_user)))
+
     @add.error
     @removed.error
     @name.error
