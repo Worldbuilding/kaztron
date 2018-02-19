@@ -69,6 +69,15 @@ async def query_user(bot, id_: str):
         discord_id = id_
     elif id_.startswith('<@') and id_.endswith('>'):
         discord_id = id_[2:-1]
+
+        # Handle nickname ! and role & mentions
+        if not discord_id:
+            raise ValueError('Invalid Discord user ID format: no ID in mention')
+        elif discord_id[0] == '&':
+            raise ValueError('Invalid Discord user ID format: mention must be user, not role')
+        elif discord_id[0] == '!':
+            discord_id = discord_id[1:]
+
         if not discord_id.isnumeric():
             raise ValueError('Invalid Discord user ID format: must be numeric')
     elif id_.startswith('*'):
