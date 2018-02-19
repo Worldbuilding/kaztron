@@ -13,8 +13,8 @@ from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args,\
-    get_command_str
+from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args, \
+    get_command_str, get_usage_str
 
 from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
 from kaztron.cog.modnotes import controller as c
@@ -644,8 +644,6 @@ class ModNotes:
         c.ungroup_user(db_user)
         await self.bot.say("Updated user {0} - ungrouped"
             .format(self.format_display_user(db_user)))
-
-    @notes.error
     @add.error
     @removed.error
     @name.error
@@ -673,6 +671,34 @@ class ModNotes:
         else:
             core_cog = self.bot.get_cog("CoreCog")
             await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+
+    @notes.error
+    async def on_error_notes(self, exc, ctx):
+        cmd_string = message_log_str(ctx.message)
+
+        if ctx is not None and ctx.command is not None:
+            usage_str = get_usage_str(ctx)
+        else:
+            usage_str = '(Unable to retrieve usage information)'
+
+        if isinstance(exc, commands.BadArgument):
+            msg = "Bad argument passed in command: {}".format(cmd_string)
+            logger.warning(msg)
+            await self.bot.send_message(ctx.message.channel,
+                ("Invalid argument(s) for the command `{}`. Did you mean `.notes add`?"
+                 "\n\n**Usage:** `{}`\n\nUse `{}` for help.")
+                    .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
+            # No need to log user errors to mods
+
+        elif isinstance(exc, commands.TooManyArguments):
+            msg = "Too many arguments passed in command: {}".format(cmd_string)
+            logger.warning(msg)
+            await self.bot.send_message(ctx.message.channel,
+                ("Too many arguments. Did you mean `.notes add`?\n\n"
+                 "**Usage:** `{}`\n\nUse `{}` for help.")
+                    .format(usage_str, get_help_str(ctx)))
+        else:
+            await self.on_error_query_user(exc, ctx)
 
     @group_add.error
     async def on_error_group_add(self, exc, ctx):

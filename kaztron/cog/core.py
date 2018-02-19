@@ -160,9 +160,9 @@ class CoreCog:
             # No need to log this on Discord, spammy and isn't something mods need to be aware of
 
         elif isinstance(exc, commands.BadArgument):
-            msg = "Bad argument passed in command: {}".format(cmd_string)
-            logger.warning(msg)
             exc_msg = exc.args[0] if len(exc.args) > 0 else '(No error message).'
+            msg = "Bad argument passed in command: {}\n{}".format(cmd_string, exc_msg)
+            logger.warning(msg)
             await self.bot.send_message(ctx.message.channel,
                 ("Invalid argument(s) for the command `{}`. {}\n\n**Usage:** `{}`\n\n"
                  "Use `{}` for help. "
