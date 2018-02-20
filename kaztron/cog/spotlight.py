@@ -220,7 +220,7 @@ class Spotlight:
         self.applications_last_refresh = 0
 
         self.current_app_index = int(self.db.get('spotlight', 'current', -1))
-        self.queue = deque(self.db.get('spotlight', 'queue', []))
+        self.queue_data = deque(self.db.get('spotlight', 'queue', []))
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
@@ -235,7 +235,7 @@ class Spotlight:
     def _write_db(self):
         """ Write all data to the dynamic configuration file. """
         self.db.set('spotlight', 'current', self.current_app_index)
-        self.db.set('spotlight', 'queue', list(self.queue))
+        self.db.set('spotlight', 'queue', list(self.queue_data))
         self.db.write()
 
     async def _get_current(self) -> SpotlightApp:
@@ -554,7 +554,7 @@ class Spotlight:
 
     def _get_queue_list(self):
         app_strings = []
-        for app_index in self.queue:
+        for app_index in self.queue_data:
             try:
                 # don't convert this to _get_app - don't want the error msgs from that
                 app_strings.append("(#{0:d}) {1!s}"
@@ -615,7 +615,7 @@ class Spotlight:
             except IndexError:
                 return  # already handled by _get_app
             else:
-                self.queue.append(array_index)
+                self.queue_data.append(array_index)
                 logger.info("queue add: added #{:d} from passed arg".format(list_index))
         else:  # no list_index passed
             try:
@@ -623,13 +623,13 @@ class Spotlight:
             except IndexError:
                 return  # already handled by _get_current
             else:
-                self.queue.append(self.current_app_index)
+                self.queue_data.append(self.current_app_index)
                 logger.info("queue add: added #{:d} from current select"
                     .format(self.current_app_index + 1))
 
         self._write_db()
         await self.bot.say("{}\n```{:d}. {!s}```".format(
-            self.QUEUE_ADD_HEADING, len(self.queue) - 1, app
+            self.QUEUE_ADD_HEADING, len(self.queue_data) - 1, app
         ))
 
     @queue.command(name='insert', ignore_extra=False, pass_context=True, aliases=['i'])
@@ -665,7 +665,7 @@ class Spotlight:
             except IndexError:
                 return  # already handled by _get_app
             else:
-                self.queue.insert(queue_array_index, array_index)
+                self.queue_data.insert(queue_array_index, array_index)
                 logger.info("queue insert: inserted #{1:d} at {0:d} from passed arg"
                     .format(queue_index, list_index))
         else:  # no list_index passed
@@ -674,7 +674,7 @@ class Spotlight:
             except IndexError:
                 return  # already handled by _get_current
             else:
-                self.queue.insert(queue_array_index, self.current_app_index)
+                self.queue_data.insert(queue_array_index, self.current_app_index)
                 logger.info("queue insert: inserted #{1:d} at {0:d} from current select"
                     .format(queue_index, self.current_app_index + 1))
 
@@ -694,16 +694,16 @@ class Spotlight:
         logger.debug("queue next: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         old_index = self.current_app_index
-        self.current_app_index = self.queue.popleft()
+        self.current_app_index = self.queue_data.popleft()
         try:
             await self.send_spotlight_info(ctx.message.channel, await self._get_current())
         except IndexError:
             self.bot.say("Sorry, the queued index seems to have become invalid!")
-            self.queue.appendleft(self.current_app_index)
+            self.queue_data.appendleft(self.current_app_index)
             self.current_app_index = old_index
             return  # get_current() already handles this
         except:
-            self.queue.appendleft(self.current_app_index)
+            self.queue_data.appendleft(self.current_app_index)
             self.current_app_index = old_index
             raise
         else:
@@ -717,15 +717,15 @@ class Spotlight:
 
         queue_array_index = queue_index - 1
         try:
-            array_index = self.queue[queue_array_index]
+            array_index = self.queue_data[queue_array_index]
             list_index = array_index + 1  # user-facing
         except IndexError:
             err_msg = "queue index {:d} out of bounds (1-{:d})" \
-                .format(queue_index, len(self.queue))
+                .format(queue_index, len(self.queue_data))
             logger.warning("queue rem: " + err_msg)
             await self.bot.say(
                 "That isn't a valid queue position! Valid indices are currently 1 to {:d}"
-                .format(len(self.queue))
+                .format(len(self.queue_data))
             )
             return
 
@@ -735,7 +735,7 @@ class Spotlight:
         except IndexError:
             app_str = "(#{0:d}) {}".format(list_index, self.UNKNOWN_APP_STR)
 
-        del self.queue[queue_array_index]
+        del self.queue_data[queue_array_index]
 
         logger.info("queue rem: removed index {0:d}".format(queue_index))
         self._write_db()
