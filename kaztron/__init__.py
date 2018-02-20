@@ -1,7 +1,7 @@
 # kaztron
 from collections import OrderedDict
 
-__version__ = "1.3b3"
+__version__ = "2.0rc1"
 
 bot_info = {
     "version": __version__,
