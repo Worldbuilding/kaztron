@@ -517,10 +517,21 @@ class Spotlight:
 
         user = await current_app.get_user(ctx)  # None if invalid
 
+        try:
+            role = get_named_role(ctx.message.server, self.role_audience_name)
+        except ValueError:
+            logger.exception("Can't retrieve Spotlight Audience role")
+            role = None
+
         await self.bot.send_message(self.dest_spotlight,
-            "**WORLD SPOTLIGHT**\n\n"
-            "Our next host is {0}, presenting their project, *{1}*!\n\nWelcome, {0}!"
-                .format(user.mention if user else current_app.user_name, current_app.project))
+            "**WORLD SPOTLIGHT** {2}\n\n"
+            "Our next host is {0}, presenting their project, *{1}*!\n\n"
+            "Welcome, {0}!".format(
+                user.mention if user else current_app.user_name,
+                current_app.project,
+                role.mention if role else ""
+            )
+        )
         await self.send_spotlight_info(self.dest_spotlight, current_app)
         await self.bot.say("Application showcased: {}".format(await current_app.str_discord()))
 
@@ -629,7 +640,7 @@ class Spotlight:
 
         self._write_db()
         await self.bot.say("{}\n```{:d}. {!s}```".format(
-            self.QUEUE_ADD_HEADING, len(self.queue_data) - 1, app
+            self.QUEUE_ADD_HEADING, len(self.queue_data), app
         ))
 
     @queue.command(name='insert', ignore_extra=False, pass_context=True, aliases=['i'])
@@ -657,6 +668,12 @@ class Spotlight:
         self._load_applications()
 
         queue_array_index = queue_index - 1
+
+        if not (0 <= queue_array_index <= len(self.queue_data)):
+            raise commands.BadArgument(
+                ("{0:d} is not a valid queue index! "
+                 "Currently valid values are 1 to {1:d} inclusive.")
+                .format(queue_index, len(self.queue_data)+1))
 
         if list_index is not None:
             array_index = list_index - 1
@@ -711,23 +728,37 @@ class Spotlight:
 
     @queue.command(name='rem', ignore_extra=False, pass_context=True, aliases=['r', 'remove'])
     @mod_only()
-    async def queue_rem(self, ctx, queue_index: int):
+    async def queue_rem(self, ctx, queue_index: int=None):
+        """
+        [MOD ONLY] Remove a spotlight application from the queue.
+
+        Removes by QUEUE INDEX, not by spotlight number. If no queue index is passed, removes the
+        last item in the queue.
+
+        Arguments:
+        * queue_index: Optional, int. The numerical position in the queue, as shown with `.spotlight
+          queue list`. If this is not provided, the last queue item will be removed.
+
+        Examples:
+            `.spotlight queue rem` - Remove the last spotlight in the queue.
+            `.spotlight queue rem 3` - Remove the third spotlight in the queue.
+        """
         logger.debug("queue rem: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
-        queue_array_index = queue_index - 1
-        try:
-            array_index = self.queue_data[queue_array_index]
-            list_index = array_index + 1  # user-facing
-        except IndexError:
-            err_msg = "queue index {:d} out of bounds (1-{:d})" \
-                .format(queue_index, len(self.queue_data))
-            logger.warning("queue rem: " + err_msg)
-            await self.bot.say(
-                "That isn't a valid queue position! Valid indices are currently 1 to {:d}"
-                .format(len(self.queue_data))
-            )
-            return
+        if queue_index is not None:
+            queue_array_index = queue_index - 1
+
+            if not (0 <= queue_array_index < len(self.queue_data)):
+                raise commands.BadArgument(
+                    ("{0:d} is not a valid queue index! "
+                     "Currently valid values are 1 to {1:d} inclusive.")
+                    .format(queue_index, len(self.queue_data)))
+        else:
+            queue_array_index = -1  # last item
+
+        array_index = self.queue_data[queue_array_index]
+        list_index = array_index + 1  # user-facing
 
         try:
             # don't use _get_app - don't want errmsgs
