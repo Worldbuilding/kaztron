@@ -6,9 +6,10 @@ import logging
 from collections import deque
 from datetime import datetime, timedelta
 from functools import total_ordering
-from typing import Dict, List, Callable, Tuple, Deque, Optional
+from typing import Dict, List, Callable, Tuple, Deque
 
 import discord
+import math
 from discord.ext import commands
 
 from kaztron.cog.role_man import RoleManager
@@ -18,7 +19,7 @@ from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
 from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import get_help_str
+from kaztron.utils.strings import get_help_str, format_list
 
 logger = logging.getLogger(__name__)
 
@@ -49,23 +50,89 @@ class SprintState(enum.Enum):
 
 
 class SprintStats:
-    def __init__(self, *,
-                 user: Optional[discord.User], sprints: int, words: int, time: int, wins: int):
-        self.user = user
-        self.sprints = sprints
-        self.words = words
-        self.time = time
-        self.wins = wins
+    def __init__(self):
+        self.sprints = 0
+        self.words = 0
+        self.rate_sum = 0  # sum of writing rate (words/s) for each sprint
+        self.time = 0
+        self.wins = 0
+        # cumulative quantity related to variance of rate for each sprint
+        self.m2rate = 0
 
-    # TODO: calculate various stats
+    def update(self, words: int, rate: float, time: int, winner=False):
+        """
+        Update the stats with info from a new sprint.
+
+        For the M2/variance algorithm:
+        https://en.wikipedia.org/w/index.php?title=Algorithms_for_calculating_variance&oldid=824616944#Online_algorithm
+
+        :param words: Words written this sprint.
+        :param rate: Rate (words per minute)
+        :param time: Total time this sprint.
+        :param winner: Whether the user associated to this record is the sprint winner.
+        """
+        if winner:
+            self.wins += 1
+
+        prev_rate_avg = self.rate_sum/self.sprints if self.sprints > 0 else 0
+
+        self.sprints += 1
+        self.words += words
+        self.rate_sum += rate
+        self.time += time
+
+        next_rate_avg = self.rate_sum/self.sprints
+
+        last_delta = rate - prev_rate_avg
+        new_delta = rate - next_rate_avg
+
+        self.m2rate = self.m2rate + last_delta * new_delta
+
+    @property
+    def words_mean(self):
+        """ Number of words per sprint on average. """
+        return self.words / self.sprints if self.sprints > 0 else 0
+
+    @property
+    def wpm_mean(self):
+        """ Writing speed, average per sprint, in wpm. """
+        return self.rate_sum / self.sprints if self.sprints > 0 else 0
+
+    @property
+    def wpm_stdev(self):
+        """ Standard deviation of writing speed (wpm) over all sprints. """
+        return math.sqrt(self.m2rate / (self.sprints - 1)) if self.sprints > 1 else 0
+
+    @property
+    def time_mean(self):
+        """ Time per sprint, average, in minutes. """
+        return (self.time / 60 / self.sprints) if self.sprints > 0 else 0
+
+    @property
+    def win_rate(self):
+        """ Win rate as a fractional value (0 <= x <= 1). """
+        return self.wins / self.sprints
 
     def to_dict(self):
         return {
             "sprints": self.sprints,
             "words": self.words,
+            "rate_sum": self.rate_sum,
+            "m2rate": self.m2rate,
             "time": self.time,
             "wins": self.wins
         }
+
+    @classmethod
+    def from_dict(cls, stats_dict: Dict):
+        s = SprintStats()
+        s.sprints = stats_dict.get('sprints', 0)
+        s.words = stats_dict.get('words', 0)
+        s.rate_sum = stats_dict.get('rate_sum', 0)
+        s.m2rate = stats_dict.get('m2rate', 0)
+        s.time = stats_dict.get('time', 0)
+        s.wins = stats_dict.get('wins', 0)
+        return s
 
 
 class SprintData:
@@ -222,12 +289,15 @@ class WritingSprint:
     """
 
     INLINE = True
+    MAX_LEADERS = 5
 
     DISP_COLORS = {
         SprintState.PREPARE: solarized.cyan,
         SprintState.SPRINT: solarized.violet,
         SprintState.COLLECT_RESULTS: solarized.green,
         SprintState.IDLE: solarized.blue,
+        "leader": solarized.blue,
+        "stats": solarized.blue
     }
 
     DISP_EMBEDS = {
@@ -279,7 +349,7 @@ class WritingSprint:
         "on_sprint_warning": EmbedInfo(
             title="Sprint reminder",
             color=solarized.orange,
-            msg="**Sprint reminder!** You better still be writing! {notif}",
+            msg="**Sprint reminder!** {remaining!s} left. You better still be writing! {notif}",
             strings=[
                 ("Started by", "{founder}", INLINE),
                 ("Time remaining", "{remaining!s}", INLINE),
@@ -308,6 +378,45 @@ class WritingSprint:
                 ("Started by", "{founder}", INLINE),
                 ("Duration", "{duration:.0f} minutes", INLINE),
                 ("Final results", "{participants}", INLINE)
+            ]
+        ),
+        "leader": EmbedInfo(
+            title="Leaderboards",
+            color=DISP_COLORS["leader"],
+            msg="",
+            strings=[
+                ("Most prolific", "{leaders_words}", INLINE),
+                ("Fastest writers", "{leaders_wpm}", INLINE),
+                ("Sprint time", "{leaders_time}", INLINE),
+                ("Most wins", "{leaders_wins}", INLINE)
+            ]
+        ),
+        "stats_global": EmbedInfo(
+            title="Global Stats",
+            color=DISP_COLORS["stats"],
+            msg="",
+            strings=[
+                ("Sprints", "{stats.sprints:.0f}", INLINE),
+                ("Total time",  "{hours:.1f} hours", INLINE),
+                ("Total words", "{stats.words:.0f} words", INLINE),
+                ("Average sprint", "{stats.time_mean:.1f} minutes", INLINE),
+                ("Average cumulative productivity",
+                 "{stats.wpm_mean:.1f} wpm overall (σ = {stats.wpm_stdev:.1f})", INLINE)
+            ]
+        ),
+        "stats": EmbedInfo(
+            title=discord.Embed.Empty,
+            color=DISP_COLORS["stats"],
+            msg="",
+            strings=[
+                ("User Stats", "<@{user_id}>", not INLINE),
+                ("Sprints", "{stats.sprints:.0f}", INLINE),
+                ("Wins", "{stats.wins:.0f} ({stats.win_rate:.0%})", INLINE),
+                ("Total time",  "{hours:.1f} hours", INLINE),
+                ("Total words", "{stats.words:.0f} words", INLINE),
+                ("Average sprint", "{stats.time_mean:.1f} minutes", INLINE),
+                ("Average speed",
+                 "{stats.wpm_mean:.1f} wpm (σ = {stats.wpm_stdev:.1f})", INLINE),
             ]
         ),
     }
@@ -352,6 +461,7 @@ class WritingSprint:
                                    "You can start a sprint using `.w start` "
                                    "(see `.help start` for usage information).",
         "err_unauthorized_user": "You have to be the sprint founder ({}) or a mod to do that.",
+        "err_stats_user": "{user.name} hasn't participated in any sprints!",
         "err_wtf": "NonsenseError: You can't do that, there's a blazing bunny on your head."
     }
 
@@ -369,8 +479,8 @@ class WritingSprint:
             'sprint',
             state=SprintState.IDLE.value,
             sprint_data=SprintData(self._get_time).to_dict(),
-            stats_global=SprintStats(user=None, sprints=0, words=0, time=0, wins=0).to_dict(),
-            stats_user={}
+            stats_global=SprintStats().to_dict(),
+            stats_users={}
         )
 
         self.channel_id = self.config.get('sprint', 'channel')
@@ -432,7 +542,10 @@ class WritingSprint:
             em.set_author(name=embed_info.author)
 
         for name, val, inline in embed_info.strings:
-            em.add_field(name=name, value=val.format(*args, **kwargs), inline=inline)
+            try:
+                em.add_field(name=name, value=val.format(*args, **kwargs), inline=inline)
+            except (ValueError, KeyError) as e:
+                raise type(e)("Error processing field {!r}".format(name)) from e
 
         await self.bot.send_message(dest, embed_info.msg.format(*args, **kwargs), embed=em)
         try:
@@ -693,8 +806,8 @@ class WritingSprint:
         sprint.finalize_time = sprint.end_time + self.finalize
 
         # For now, warnings only in the last 1 minute, if sprint at least 10 minutes
-        if sprint.duration >= 600:
-            sprint.warn_times.append(sprint.end_time - 60)
+        # if sprint.duration >= 600:
+        #     sprint.warn_times.append(sprint.end_time - 60)
         self.sprint_data = sprint
 
         # Set up events
@@ -877,11 +990,33 @@ class WritingSprint:
         Show the leaderboards.
         """
         logger.info("leader: {}".format(message_log_str(ctx.message)))
-        # TODO
+        entry_user_map = {uid: SprintStats.from_dict(d)
+                          for uid, d in self.state.get('sprint', 'stats_users').items()}
+        entries_by_t = sorted(entry_user_map.items(), key=lambda e: e[1].time, reverse=True)
+        entries_by_w = sorted(entry_user_map.items(), key=lambda e: e[1].words, reverse=True)
+        entries_by_wpm = sorted(entry_user_map.items(), key=lambda e: e[1].wpm_mean, reverse=True)
+        entries_by_wins = sorted(entry_user_map.items(), key=lambda e: e[1].wins, reverse=True)
+
+        list_by_t = ["<@{}>: {:.1f} hours".format(uid, s.time/3600)
+                     for uid, s in entries_by_t[:self.MAX_LEADERS]]
+        list_by_w = ["<@{}>: {:d} words".format(uid, s.words)
+                     for uid, s in entries_by_w[:self.MAX_LEADERS]]
+        list_by_wpm = ["<@{}>: {:.1f} wpm".format(uid, s.wpm_mean)
+                       for uid, s in entries_by_wpm[:self.MAX_LEADERS]]
+        list_by_wins = ["<@{}>: {:d} wins".format(uid, s.wins)
+                       for uid, s in entries_by_wins[:self.MAX_LEADERS]]
+
+        await self._display_embed(
+            ctx.message.channel, self.DISP_EMBEDS['leader'],
+            leaders_time=format_list(list_by_t) or "None",
+            leaders_words=format_list(list_by_w) or "None",
+            leaders_wpm=format_list(list_by_wpm) or "None",
+            leaders_wins=format_list(list_by_wins) or "None"
+        )
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
-    async def stats(self, ctx, user: str=None):
+    async def stats(self, ctx, user: discord.Member=None):
         """
         Show stats, either global or per-user.
 
@@ -890,7 +1025,28 @@ class WritingSprint:
           stats.
         """
         logger.info("stats: {}".format(message_log_str(ctx.message)))
-        # TODO
+
+        if user:
+            logger.debug("stats: user: id={user.id} name={user.name}".format(user=user))
+            try:
+                stats = SprintStats.from_dict(self.state.get('sprint', 'stats_users')[user.id])
+            except KeyError:
+                await self.bot.say(self.DISP_STRINGS["err_stats_user"].format(user=user))
+            else:
+                await self._display_embed(
+                    ctx.message.channel, self.DISP_EMBEDS['stats'],
+                    user_id=user.id,
+                    stats=stats,
+                    hours=stats.time/3600
+                )
+        else:  # global stats
+            logger.debug("stats: requested global")
+            stats = SprintStats.from_dict(self.state.get('sprint', 'stats_global'))
+            await self._display_embed(
+                ctx.message.channel, self.DISP_EMBEDS['stats_global'],
+                stats=stats,
+                hours=stats.time/3600
+            )
 
     @task_handled_errors
     async def on_sprint_start(self):
@@ -978,7 +1134,7 @@ class WritingSprint:
         try:
             logger.info("Finalize done; announcing results...")
 
-            results_struct = {}
+            results_struct = {}  # type: Dict[discord.User, Tuple[int, float]]
             for u in self.sprint_data.members:
                 try:
                     wc = self.sprint_data.end[u.id] - self.sprint_data.start[u.id]
@@ -995,11 +1151,19 @@ class WritingSprint:
 
             if results_list:
                 winner, winner_info = results_list[0]
+                winner_id = winner.id
                 winner_name = winner.name
                 winner_wc = winner_info[0]
             else:
+                winner_id = None
                 winner_name = 'nobody'
                 winner_wc = 0
+
+            # update stats with this sprint
+            self.update_stats(results_struct, winner_id)
+
+            await remove_role_from_all(self.bot, self.channel.server, self.role_sprint)
+            logger.debug("Removed all users from {} role".format(self.role_sprint_name))
 
             await self._display_embed(
                 self.channel, self.DISP_EMBEDS['on_sprint_results'],
@@ -1010,16 +1174,47 @@ class WritingSprint:
                 notif=self.role_sprint_mention
             )
 
-            # TODO: save stats
-
-            await remove_role_from_all(self.bot, self.channel.server, self.role_sprint)
-            logger.debug("Removed all users from {} role".format(self.role_sprint_name))
-
         finally:
             logger.debug("Resetting sprint state...")
             self.set_state(SprintState.IDLE)
             self.sprint_data = SprintData(self._get_time)
-            self._save_sprint()
+            self._save_sprint()  # also calls self.state.write() - OK for stats too
+
+    def update_stats(self, results: Dict[discord.User, Tuple[int, float]], winner_id: str):
+        """
+        Update stats with the current sprint_data (should be a finished sprint!).
+        Won't save - you need to call self.state.write()
+        """
+        duration = int(round(self.sprint_data.duration))
+        total_words = 0
+        total_rate = 0
+
+        stats_users_map = self.state.get('sprint', 'stats_users')
+        for u, result in results.items():
+            try:
+                stats_user = SprintStats.from_dict(stats_users_map[u.id])
+            except KeyError:
+                stats_user = SprintStats()
+            stats_user.update(
+                words=result[0],
+                rate=result[1],
+                time=duration,
+                winner=(winner_id == u.id)
+            )
+            total_words += result[0]
+            total_rate += result[1]
+            stats_users_map[u.id] = stats_user.to_dict()
+
+        stats_global = SprintStats.from_dict(self.state.get('sprint', 'stats_global'))
+        stats_global.update(
+            words=total_words,
+            rate=total_rate,
+            time=duration,
+            winner=False  # not meaningful for global stats
+        )
+
+        self.state.set('sprint', 'stats_global', stats_global.to_dict())
+        self.state.set('sprint', 'stats_users', stats_users_map)
 
     @start.error
     @stop.error

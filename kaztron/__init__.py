@@ -1,17 +1,13 @@
 # kaztron
 from collections import OrderedDict
 
-__version__ = "2.0rc1"
+__version__ = "2.1a1.dev2"
 
 bot_info = {
     "version": __version__,
     "changelog":
-        "+ Internal rewrite for maintainability & reliability\n"
-        "+ Modnotes\n"
-        "+ Spotlight queue management and Host role management features\n"
-        "+ Refactor of command UI and usability improvements\n"
-        "+ Improved logging facilities\n"
-        "- Various bugfixes - see git history",
+        "+ Writing Sprints\n"
+        "+ Role Management Commands",
     "links": OrderedDict()
 }
 bot_info["links"]["Manual"] = "https://worldbuilding.github.io/kaztron/"
