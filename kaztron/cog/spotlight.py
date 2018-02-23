@@ -11,6 +11,7 @@ from discord.ext import commands
 import dateparser
 from datetime import datetime
 
+from kaztron.cog.role_man import RoleManager
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only
@@ -395,6 +396,36 @@ class Spotlight:
         if self.dest_spotlight is None:
             raise ValueError("Spotlight channel '{}' not found".format(id_spotlight))
 
+        roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
+        if roleman:
+            try:
+                roleman.add_managed_role(
+                    role_name=self.role_audience_name,
+                    join="join",
+                    leave="leave",
+                    join_msg=self.msg_join,
+                    leave_msg=self.msg_leave,
+                    join_err=self.msg_join_err,
+                    leave_err=self.msg_leave_err,
+                    join_doc="Join the Spotlight Audience. This allows you to be pinged by "
+                             "moderators or the Spotlight Host for news about the spotlight (like "
+                             "the start of a new spotlight, or a newly released schedule).\n\n"
+                             "To leave the Spotlight Audience, use `.spotlight leave`.",
+                    leave_doc="Leave the Spotlight Audience. See `.help spotlight join` for more "
+                              "information.\n\n"
+                              "To join the Spotlight Audience, use `.spotlight join`.",
+                    group=self.spotlight,
+                    cog_instance=self,
+                    ignore_extra=False
+                )
+            except discord.ClientException:
+                logger.warning("`sprint follow` command already defined - "
+                               "this is OK if client reconnected")
+        else:
+            err_msg = "Cannot find RoleManager - is it enabled in config?"
+            logger.error(err_msg)
+            await self.bot.send_message(self.dest_output, err_msg)
+
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
 
@@ -407,46 +438,6 @@ class Spotlight:
         await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
                             'Use `{1}` or `{1} <subcommand>` for instructions.')
             .format(command_list, get_help_str(ctx)))
-
-    @spotlight.command(pass_context=True)
-    async def join(self, ctx):
-        """
-        Join the Spotlight Audience. This allows you to be pinged by moderators or the Spotlight
-        Host for news about the spotlight (like the start of a new spotlight, or a newly released
-        schedule).
-
-        To leave the Spotlight Audience, use `.spotlight leave`.
-        """
-        logger.debug("join: " + message_log_str(ctx.message)[:64])
-        role = get_named_role(ctx.message.server, self.role_audience_name)
-
-        if role not in ctx.message.author.roles:
-            await self.bot.add_roles(ctx.message.author, role)
-            logger.info("join: Gave role {} to user {}"
-                .format(self.role_audience_name, ctx.message.author))
-            await self.bot.send_message(ctx.message.author, self.msg_join)
-        else:
-            await self.bot.send_message(ctx.message.author, self.msg_join_err)
-        await self.bot.delete_message(ctx.message)
-
-    @spotlight.command(pass_context=True)
-    async def leave(self, ctx):
-        """
-        Leave the Spotlight Audience. See `.help spotlight join` for more information.
-
-        To join the Spotlight Audience, use `.spotlight join`.
-        """
-        logger.debug("leave: " + message_log_str(ctx.message)[:64])
-        role = get_named_role(ctx.message.server, self.role_audience_name)
-
-        if role in ctx.message.author.roles:
-            await self.bot.remove_roles(ctx.message.author, role)
-            logger.info("leave: Removed role {} from user {}"
-                .format(self.role_audience_name, ctx.message.author))
-            await self.bot.send_message(ctx.message.author, self.msg_leave)
-        else:
-            await self.bot.send_message(ctx.message.author, self.msg_leave_err)
-        await self.bot.delete_message(ctx.message)
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['l'])
     @mod_only()
