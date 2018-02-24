@@ -609,8 +609,8 @@ class Spotlight:
         Arguments:
         * list_index: Optional, int. The numerical index of a spotlight application, as shown with
         .spotlight list. If this is not provided, the currently selected application will be used
-        (so you don't have to specify this argument if you're using `.spotlight roll` or
-        `.spotlight set`, for example).
+        (so you don't have to specify this argument if you're using `.spotlight roll`,
+        `.spotlight select` or `.spotlight queue next`, for example).
 
         Examples:
         * `.spotlight queue add` - Adds the currently selected application to the end of the queue.
@@ -656,8 +656,8 @@ class Spotlight:
           queue.
         * list_index: Optional, int. The numerical index of a spotlight application, as shown with
         .spotlight list. If this is not provided, the currently selected application will be used
-        (so you don't have to specify this argument if you're using `.spotlight roll` or
-        `.spotlight set`, for example).
+        (so you don't have to specify this argument if you're using `.spotlight roll`,
+        `.spotlight select` or `.spotlight queue next`, for example).
 
         Examples:
         * `.spotlight queue insert 4` - Insert the currently selected application to the 4th
