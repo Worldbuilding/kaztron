@@ -188,7 +188,7 @@ class Spotlight:
 
     APPLICATIONS_CACHE_EXPIRES_S = 60.0
 
-    LIST_HEADING = "**Spotlight Application List**"
+    LIST_HEADING = "Spotlight Application List"
     QUEUE_HEADING = "**Upcoming Spotlight Queue**"
     QUEUE_ADD_HEADING = "**Added to Queue**"
     QUEUE_INSERT_HEADING = "**Inserted into Queue**"
@@ -364,6 +364,22 @@ class Spotlight:
             await self.bot.say("**Warning:** User not on server: {} {}"
                 .format(app.user_name_only, user_mention(user_id)))
 
+    async def send_embed_list(self, title: str, contents: str):
+        contents_split = split_chunks_on(contents, Limits.EMBED_FIELD_VALUE)
+        em = discord.Embed(color=0x80AAFF, title=title)
+        sep = '-'
+        num_fields = 0
+        max_fields = (Limits.EMBED_TOTAL - len(title) - 2) \
+                     // (Limits.EMBED_FIELD_VALUE + len(sep))
+        for say_str in contents_split:
+            if num_fields >= max_fields:
+                await self.bot.say(embed=em)
+                em = discord.Embed(color=0x80AAFF, title=title)
+                num_fields = 0
+            em.add_field(name=sep, value=say_str, inline=False)
+            num_fields += 1
+        await self.bot.say(embed=em)
+
     async def on_ready(self):
         """ Load information from the server. """
         id_output = self.config.get('discord', 'channel_output')
@@ -458,11 +474,7 @@ class Spotlight:
         # cleanup for deleted records
         # We don't have a dedicated column for this, so hacky regex post-numbering it is!
         app_list_string = re.sub(r'(^|\n)\s*\d+\. None(\n|$)', '\n', app_list_string)
-        say_strings = split_chunks_on(app_list_string, Limits.MESSAGE - len(self.LIST_HEADING) - 2)
-
-        # output
-        for say_str in say_strings:
-            await self.bot.say("{}\n\n{}".format(self.LIST_HEADING, say_str))
+        await self.send_embed_list(title=self.LIST_HEADING, contents=app_list_string)
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['c'])
     @mod_only()
@@ -627,10 +639,7 @@ class Spotlight:
             app_list_string = format_list(app_strings)
         else:
             app_list_string = 'Empty'
-
-        say_strings = split_chunks_on(app_list_string, MSG_MAX_LEN - len(self.LIST_HEADING) - 2)
-        for say_str in say_strings:
-            await self.bot.say("{}\n\n{}".format(self.QUEUE_HEADING, say_str))
+        await self.send_embed_list(title=self.QUEUE_HEADING, contents=app_list_string)
 
     @queue.command(name='add', ignore_extra=False, pass_context=True, aliases=['a'])
     @mod_only()
@@ -673,8 +682,8 @@ class Spotlight:
                     .format(self.current_app_index + 1))
 
         self._write_db()
-        await self.bot.say("{}\n```{:d}. {!s}```".format(
-            self.QUEUE_ADD_HEADING, len(self.queue_data), app
+        await self.bot.say("{}: {:d}. {}".format(
+            self.QUEUE_ADD_HEADING, len(self.queue_data), app.discord_str()
         ))
 
     @queue.command(name='insert', ignore_extra=False, pass_context=True, aliases=['i'])
@@ -730,8 +739,8 @@ class Spotlight:
                     .format(queue_index, self.current_app_index + 1))
 
         self._write_db()
-        await self.bot.say("{}\n```{:d}. {!s}```".format(
-            self.QUEUE_INSERT_HEADING, queue_index, app
+        await self.bot.say("{}: {:d}. {}".format(
+            self.QUEUE_INSERT_HEADING, queue_index, app.discord_str()
         ))
 
     @queue.command(name='next', ignore_extra=False, pass_context=True, aliases=['n'])
@@ -798,7 +807,7 @@ class Spotlight:
 
         try:
             # don't use _get_app - don't want errmsgs
-            app_str = "(#{:d}) {!s}".format(list_index, self.applications[array_index])
+            app_str = "(#{:d}) {}".format(list_index, self.applications[array_index].discord_str())
         except IndexError:
             app_str = "(#{0:d}) {1}".format(list_index, self.UNKNOWN_APP_STR)
 
@@ -806,7 +815,7 @@ class Spotlight:
 
         logger.info("queue rem: removed index {0:d}".format(queue_index))
         self._write_db()
-        await self.bot.say("{}\n```{:d}. {}```".format(
+        await self.bot.say("{}: {:d}. {}".format(
             self.QUEUE_REM_HEADING, queue_index, app_str
         ))
 
