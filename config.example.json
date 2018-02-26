@@ -1,0 +1,54 @@
+{
+  "discord": {
+    "mod_roles": ["role 1", "role 2", "etc."],
+    "admin_roles": ["role 1", "role 2", "etc."],
+    "mod_channels": ["channel ID 1", "channel ID 2", "these are channels where mod/non-public commands are allowed"],
+    "admin_channels": ["channel ID 1", "channel ID 2", "admin-only channels (not automatically considered mod channels)"],
+    "playing": "status (playing ...) message here",
+    "bot_owner_id": "Bot master user ID",
+    "token": "bot auth token",
+    "channel_output": "channel ID for general bot messages (technical/audit mostly)",
+    "channel_test": "channel ID for general testing purposes (mostly unused, some commands are allowed here as well as their normal allowed channels)"
+  },
+  "core": {
+    "name": "KazTronExampleBot",
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes"],
+    "channel_request": "channel ID for requests",
+    "log_level": "INFO",
+    "log_file": "kaztron.log"
+  },
+  "spotlight": {
+    "channel": "Channel ID",
+    "audience_role": "Spotlight Audience role name",
+    "host_role": "Spotlight Host role name",
+    "spreadsheet_id": "Google Spreadsheet ID",
+    "spreadsheet_range": "Google Spreadsheet range name"
+  },
+  "welcome": {
+    "channel_welcome": "channel ID for public welcome messages",
+    "channel_rules": "channel ID for users to read rules (linked to in welcome msg)"
+  },
+  "filter": {
+    "channel_warning": "channel ID for MODERATOR filter warning/delete notifications"
+  },
+  "dice": {
+    "channel_dice": "channel ID where dice are allowed"
+  },
+  "role_man": {
+    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
+    "role_voice": "Name of the role to assign while in voice channels"
+  },
+  "modtools": {
+    "distinguish_map": {
+      "mod-role1": "distinguish-role1",
+      "mod-role2": "distinguish-role2"
+    },
+    "wb_images": [
+      ["url1", "artist name 1"],
+      ["url2", "artist name 2"]
+    ]
+  },
+  "modnotes": {
+    "channel_log": "channel ID - for channel to log all new records to (read-only ideally?)"
+  }
+}
