@@ -1,7 +1,8 @@
 import random
+import re
 import time
 import logging
-from typing import List, Optional, Union
+from typing import List
 from collections import deque
 
 import discord
@@ -14,9 +15,10 @@ from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only
 from kaztron.utils.decorators import error_handler
-from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits, remove_role_from_all
+from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits, remove_role_from_all, \
+    extract_user_id, user_mention, get_member
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
-from kaztron.utils.strings import format_list, get_help_str, split_code_chunks_on, natural_truncate
+from kaztron.utils.strings import format_list, get_help_str, natural_truncate, split_chunks_on
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ class SpotlightApp:
     Should only be instantiated once the bot is ready (as it attempts to retrieve user data from
     the server).
     """
+
     def __init__(self, data: List[str], bot: commands.Bot):
         self._data = data
         self.bot = bot
@@ -48,39 +51,33 @@ class SpotlightApp:
         return self._data[1]
 
     @property
+    @error_handler(IndexError, "")
+    def user_name_only(self) -> str:
+        """ User name without discriminator (if provided in the field). """
+        return self._data[1].split('#', maxsplit=1)[0]
+
+    @property
+    @error_handler(IndexError, "")
+    def user_discriminator(self) -> str:
+        """ Discriminator (the #xxxx part of an @mention in the client, if provided). """
+        return self._data[1].split('#', maxsplit=1)[1]
+
+    @property
+    @error_handler(IndexError, "")
+    def user_disp(self) -> str:
+        """ Displayed user: either a mention if possible, else their user_name_only. """
+        try:
+            s_user_id = extract_user_id(self.user_id)
+        except discord.InvalidArgument:
+            return self.user_name_only
+        else:
+            return user_mention(s_user_id)
+
+    @property
     @error_handler(ValueError, "")
     @error_handler(IndexError, "")
     def user_id(self) -> str:
         return self._data[2]
-
-    async def get_user(self, ctx: commands.Context=None)\
-            -> Union[discord.User, discord.Member, None]:
-        """
-        Return a :cls:`discord.User` or :cls:`discord.Member` class for the current user.
-        Returns None if the application's discord ID is invalid.
-
-        If possible, this method will return a cached copy of a :cls:`discord.User` if it has been
-        called previously (this won't work if the spotlight applications cache has been refreshed -
-        see the main cog class), avoiding API calls.
-
-        If ``ctx`` is provided, always fetches a :cls:`discord.Member` from the current server's
-        user cache.
-
-        :param ctx: Context. If provided, return the Member on the current server.
-        :return:
-        """
-        if ctx is None:
-            if self._is_user_cached:
-                return self._cached_user
-
-            try:
-                self._cached_user = await self.bot.get_user_info(self._data[2])
-            except (discord.NotFound, discord.HTTPException):
-                self._cached_user = None
-            self._is_user_cached = True
-            return self._cached_user
-        else:
-            return ctx.message.server.get_member(self._data[2])
 
     @property
     @error_handler(IndexError, "")
@@ -160,12 +157,14 @@ class SpotlightApp:
     def __str__(self):
         return "{} - {}".format(self.user_name, self.project)
 
-    async def str_discord(self):
-        user = await self.get_user()
-        if user:
-            return "{} - {}".format(user.mention, self.project)
+    def discord_str(self):
+        try:
+            s_user_id = extract_user_id(self.user_id)
+        except discord.InvalidArgument:
+            author_value = "{} (invalid ID)".format(self.user_name_only.strip())
         else:
-            return str(self)
+            author_value = "{} ({})".format(self.user_name_only.strip(), user_mention(s_user_id))
+        return "{} - *{}*".format(author_value, self.project.strip().replace('*', '\\*'))
 
 
 class Spotlight:
@@ -189,7 +188,7 @@ class Spotlight:
 
     APPLICATIONS_CACHE_EXPIRES_S = 60.0
 
-    LIST_HEADING = "**Spotlight Applications**"
+    LIST_HEADING = "**Spotlight Application List**"
     QUEUE_HEADING = "**Upcoming Spotlight Queue**"
     QUEUE_ADD_HEADING = "**Added to Queue**"
     QUEUE_INSERT_HEADING = "**Inserted into Queue**"
@@ -304,17 +303,22 @@ class Spotlight:
         index = self.applications.index(app) + 1
         logger.info("Displaying spotlight data for: {!s}".format(app))
 
-        user = await app.get_user()
+        try:
+            s_user_id = extract_user_id(app.user_id)
+        except discord.InvalidArgument:
+            author_value = "{} (invalid ID)".format(app.user_name_only)
+        else:
+            author_value = "{} ({})".format(user_mention(s_user_id), app.user_name_only)
 
         em = discord.Embed(color=0x80AAFF, title=app.user_name[:128])
         em.set_author(name="Spotlight Application #{:d}".format(index))
         em.add_field(name="Project Name", value=app.project, inline=True)
         em.add_field(name="Author",
-                     value=user.mention if user else (app.user_name[:128] + " (invalid ID)"),
+                     value=author_value,
                      inline=True)
 
-        if app.is_filled(app.user_reddit):
-            em.add_field(name="Reddit", value="/u/" + app.user_reddit[:128], inline=True)
+        # if app.is_filled(app.user_reddit):
+        #     em.add_field(name="Reddit", value="/u/" + app.user_reddit[:128], inline=True)
 
         em.add_field(name="Elevator Pitch",
                      value=natural_truncate(app.pitch, Limits.EMBED_FIELD_VALUE) or "None",
@@ -340,6 +344,25 @@ class Spotlight:
                          inline=True)
 
         await self.bot.send_message(destination, embed=em)
+
+    async def send_validation_warnings(self, ctx: commands.Context, app: SpotlightApp):
+        """
+        Handles validating the app (mostly existence of the user), and communicating any warnings
+        via Discord message to msg_dest.
+        """
+        try:
+            user_id = extract_user_id(app.user_id)
+        except discord.InvalidArgument:
+            logger.warning("User ID format for spotlight app is invalid: '{}'".format(app.user_id))
+            await self.bot.say("**Warning**: User ID format is invalid: '{}'".format(app.user_id))
+            return
+
+        # user not on server
+        if ctx.message.server.get_member(user_id) is None:
+            logger.warning("Spotlight app user not on server: '{}' {}"
+                .format(app.user_name_only, user_id))
+            await self.bot.say("**Warning:** User not on server: {} {}"
+                .format(app.user_name_only, user_mention(user_id)))
 
     async def on_ready(self):
         """ Load information from the server. """
@@ -420,19 +443,26 @@ class Spotlight:
         logger.info("Listing all spotlight applications for {0.author!s} in {0.channel!s}"
             .format(ctx.message))
 
-        if self.applications:
-            app_list_string = format_list([str(app) for app in self.applications])
-        else:
-            app_list_string = 'Empty'
+        # format each application as a string
+        app_str_list = []
+        for app in self.applications:
+            if app.user_name.strip() and app.project.strip() \
+                    and not app.project.strip() == 'DELETED':
+                app_str_list.append(app.discord_str())
+            else:  # deleted entries: blank username/project name or blank user/'DELETED' project
+                app_str_list.append(None)
+                continue
 
-        say_strings = split_code_chunks_on(
-            app_list_string,
-            MSG_MAX_LEN - len(self.LIST_HEADING) - 2
-        )
-        logger.info([len(s) for s in say_strings])
-        await self.bot.say("{}\n{}".format(self.LIST_HEADING, say_strings[0]))
-        for say_str in say_strings[1:]:
-            await self.bot.say(say_str)
+        # format into a string list for display
+        app_list_string = format_list(app_str_list) if app_str_list else 'Empty'
+        # cleanup for deleted records
+        # We don't have a dedicated column for this, so hacky regex post-numbering it is!
+        app_list_string = re.sub(r'(^|\n)\s*\d+\. None(\n|$)', '\n', app_list_string)
+        say_strings = split_chunks_on(app_list_string, Limits.MESSAGE - len(self.LIST_HEADING) - 2)
+
+        # output
+        for say_str in say_strings:
+            await self.bot.say("{}\n\n{}".format(self.LIST_HEADING, say_str))
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['c'])
     @mod_only()
@@ -441,9 +471,11 @@ class Spotlight:
         logger.debug("current: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         try:
-            await self.send_spotlight_info(ctx.message.channel, await self._get_current())
+            app = await self._get_current()
         except IndexError:
             return  # get_current() already handles this
+        await self.send_spotlight_info(ctx.message.channel, app)
+        await self.send_validation_warnings(ctx, app)
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['r'])
     @mod_only()
@@ -467,6 +499,7 @@ class Spotlight:
         logger.info("roll: Currently selected app {:d} {!s}"
             .format(self.current_app_index, selected_app))
         await self.send_spotlight_info(ctx.message.channel, selected_app)
+        await self.send_validation_warnings(ctx, selected_app)
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['s'])
     @mod_only()
@@ -498,6 +531,7 @@ class Spotlight:
             logger.info("set: Currently selected app: (#{:d}) {!s}"
                 .format(list_index, selected_app))
             await self.send_spotlight_info(ctx.message.channel, selected_app)
+            await self.send_validation_warnings(ctx, selected_app)
 
     @spotlight.command(pass_context=True, ignore_extra=False)
     @mod_only()
@@ -515,8 +549,6 @@ class Spotlight:
         except IndexError:
             return  # get_current() already handles this
 
-        user = await current_app.get_user(ctx)  # None if invalid
-
         try:
             role = get_named_role(ctx.message.server, self.role_audience_name)
         except ValueError:
@@ -527,29 +559,34 @@ class Spotlight:
             "**WORLD SPOTLIGHT** {2}\n\n"
             "Our next host is {0}, presenting their project, *{1}*!\n\n"
             "Welcome, {0}!".format(
-                user.mention if user else current_app.user_name,
+                current_app.user_disp,
                 current_app.project,
                 role.mention if role else ""
             )
         )
         await self.send_spotlight_info(self.dest_spotlight, current_app)
-        await self.bot.say("Application showcased: {}".format(await current_app.str_discord()))
-
-        server = ctx.message.server  # type: discord.Server
-        host_role = get_named_role(server, self.role_host_name)
+        await self.bot.say("Application showcased: {} ({}) - {}"
+            .format(current_app.user_disp, current_app.user_name_only, current_app.project)
+        )
+        await self.send_validation_warnings(ctx, current_app)
 
         # Deassign the spotlight host role
+        server = ctx.message.server  # type: discord.Server
+        host_role = get_named_role(server, self.role_host_name)
         await remove_role_from_all(self.bot, server, host_role)
 
         # Assign the role to the selected app's owner
-        if user is not None:
-            await self.bot.add_roles(user, host_role)
-            await self.bot.say("'{}' role switched to {.mention}.".format(self.role_host_name, user))
-        else:
+        try:
+            user = get_member(ctx, current_app.user_id)
+        except discord.InvalidArgument:
             logger.warning("Invalid discord ID in application: '{}'".format(current_app.user_id))
-            await self.bot.say("Can't set new Spotlight Host role: "
-                               "Application Discord ID '{0.user_id}' is invalid (app: {0!s})"
-                               .format(current_app))
+            await self.bot.say(("Can't set new Spotlight Host role: Application Discord ID "
+                                "'{0.user_id}' is invalid or user not on server")
+                .format(current_app))
+        else:
+            await self.bot.add_roles(user, host_role)
+            await self.bot.say("'{}' role switched to {.mention}."
+                .format(self.role_host_name, user))
 
     @spotlight.group(pass_context=True, invoke_without_command=True, aliases=['q'])
     @mod_only()
@@ -568,10 +605,11 @@ class Spotlight:
         for app_index in self.queue_data:
             try:
                 # don't convert this to _get_app - don't want the error msgs from that
-                app_strings.append("(#{0:d}) {1!s}"
-                    .format(app_index + 1, self.applications[app_index]))
+                app = self.applications[app_index]
             except IndexError:
-                app_strings.append("#{0:d}) {}".format(app_index, self.UNKNOWN_APP_STR))
+                app_strings.append("(#{0:d}) {1}".format(app_index, self.UNKNOWN_APP_STR))
+            else:
+                app_strings.append("(#{0:d}) {1}".format(app_index + 1, app.discord_str()))
         return app_strings
 
     @queue.command(name='list', ignore_extra=False, pass_context=True, aliases=['l'])
@@ -590,13 +628,9 @@ class Spotlight:
         else:
             app_list_string = 'Empty'
 
-        say_strings = split_code_chunks_on(
-            app_list_string,
-            MSG_MAX_LEN - len(self.LIST_HEADING) - 2
-        )
-        await self.bot.say("{}\n{}".format(self.QUEUE_HEADING, say_strings[0]))
-        for say_str in say_strings[1:]:
-            await self.bot.say(say_str)
+        say_strings = split_chunks_on(app_list_string, MSG_MAX_LEN - len(self.LIST_HEADING) - 2)
+        for say_str in say_strings:
+            await self.bot.say("{}\n\n{}".format(self.QUEUE_HEADING, say_str))
 
     @queue.command(name='add', ignore_extra=False, pass_context=True, aliases=['a'])
     @mod_only()
@@ -713,7 +747,7 @@ class Spotlight:
         old_index = self.current_app_index
         self.current_app_index = self.queue_data.popleft()
         try:
-            await self.send_spotlight_info(ctx.message.channel, await self._get_current())
+            app = await self._get_current()
         except IndexError:
             self.bot.say("Sorry, the queued index seems to have become invalid!")
             self.queue_data.appendleft(self.current_app_index)
@@ -724,6 +758,8 @@ class Spotlight:
             self.current_app_index = old_index
             raise
         else:
+            await self.send_spotlight_info(ctx.message.channel, app)
+            await self.send_validation_warnings(ctx, app)
             self._write_db()
 
     @queue.command(name='rem', ignore_extra=False, pass_context=True, aliases=['r', 'remove'])
@@ -764,7 +800,7 @@ class Spotlight:
             # don't use _get_app - don't want errmsgs
             app_str = "(#{:d}) {!s}".format(list_index, self.applications[array_index])
         except IndexError:
-            app_str = "(#{0:d}) {}".format(list_index, self.UNKNOWN_APP_STR)
+            app_str = "(#{0:d}) {1}".format(list_index, self.UNKNOWN_APP_STR)
 
         del self.queue_data[queue_array_index]
 
