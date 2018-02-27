@@ -7,7 +7,8 @@ bot_info = {
     "version": __version__,
     "changelog":
         "+ Writing Sprints\n"
-        "+ Role Management Commands",
+        "+ Role Management Commands\n"
+        "+ Spotlight: Added date tracking to queue",
     "links": OrderedDict()
 }
 bot_info["links"]["Manual"] = "https://worldbuilding.github.io/kaztron/"
