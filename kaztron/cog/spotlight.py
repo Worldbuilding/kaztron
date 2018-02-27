@@ -310,8 +310,7 @@ class Spotlight:
         else:
             author_value = "{} ({})".format(user_mention(s_user_id), app.user_name_only)
 
-        em = discord.Embed(color=0x80AAFF, title=app.user_name[:128])
-        em.set_author(name="Spotlight Application #{:d}".format(index))
+        em = discord.Embed(color=0x80AAFF, title="Spotlight Summary")
         em.add_field(name="Project Name", value=app.project, inline=True)
         em.add_field(name="Author",
                      value=author_value,
@@ -344,6 +343,7 @@ class Spotlight:
                          inline=True)
 
         await self.bot.send_message(destination, embed=em)
+        await self.bot.say("Spotlight ID #{:d}: {!s}".format(index, app))
 
     async def send_validation_warnings(self, ctx: commands.Context, app: SpotlightApp):
         """
