@@ -310,11 +310,9 @@ class Spotlight:
         else:
             author_value = "{} ({})".format(user_mention(s_user_id), app.user_name_only)
 
-        em = discord.Embed(color=0x80AAFF, title="Spotlight Summary")
+        em = discord.Embed(color=0x80AAFF)
         em.add_field(name="Project Name", value=app.project, inline=True)
-        em.add_field(name="Author",
-                     value=author_value,
-                     inline=True)
+        em.add_field(name="Author", value=author_value, inline=True)
 
         # if app.is_filled(app.user_reddit):
         #     em.add_field(name="Reddit", value="/u/" + app.user_reddit[:128], inline=True)
