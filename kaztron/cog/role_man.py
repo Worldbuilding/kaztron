@@ -73,6 +73,7 @@ class RoleManager:
             leave_aliases: Iterable[str] = tuple(),
             group: commands.Group = None,
             cog_instance=None,
+            checks=tuple(),
             **kwargs
     ):
         """
@@ -92,6 +93,7 @@ class RoleManager:
         :param leave_doc: Help string for the leave command.
         :param group: The group to add this command to. Optional.
         :param cog_instance: Cog to group this command under in the help.
+        :param checks: Check objects to apply to the command
         :param kwargs: Keyword args to pass the ``discord.ext.commands.command`` decorator. Do not
             include `name`, `aliases`, or `pass_context`. Can also include checks here, e.g., for
             if only certain users should be able to use these commands.
@@ -151,13 +153,19 @@ class RoleManager:
         _managed_role_join.__doc__ = join_doc
         _managed_role_leave.__doc__ = leave_doc
 
+        _checked_join = _managed_role_join
+        _checked_leave = _managed_role_leave
+        for check in checks:
+            _checked_join = check(_checked_join)
+            _checked_leave = check(_checked_leave)
+
         if group:
             jc = group.command(
                 name=join, aliases=join_aliases,
-                pass_context=True, **kwargs)(_managed_role_join)
+                pass_context=True, **kwargs)(_checked_join)
             lc = group.command(
                 name=leave, aliases=leave_aliases,
-                pass_context=True, **kwargs)(_managed_role_leave)
+                pass_context=True, **kwargs)(_checked_leave)
         else:
             jc = commands.command(
                 name=join, aliases=join_aliases,
