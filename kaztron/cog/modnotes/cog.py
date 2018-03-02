@@ -218,7 +218,6 @@ class ModNotes:
     @mod_only()
     @mod_channels()
     async def add(self, ctx, user: str, type_: str, *, note_contents):
-        # WARNING: BE CAREFUL OF THIS DOCSTRING! Must be <1992 chars (w/o indent) for .help
         """
         [MOD ONLY] Add a new note.
 
@@ -259,6 +258,10 @@ class ModNotes:
         BlitheringIdiot plagiarism situation from exploding
             Create a record for an event 2 hours ago.
         """
+
+        # !!! WARNING !!!
+        # WARNING: BE CAREFUL OF THE DOCSTRING ABOVE! Must be <1992 chars (w/o indent) for .help
+
         logger.info("notes add: {}".format(message_log_str(ctx.message)))
 
         # load/preprocess positional arguments and defaults
