@@ -222,8 +222,7 @@ class ModNotes:
 
         [MOD ONLY] Add a new note.
 
-        If the <user> is not already known in the database, an entry will be created, using their
-        current nickname as the canonical name. There is no need to create the user in advance.
+        Attachments in the same message as the command are appended to the note.
 
         Arguments:
         * <user>: Required. The user to whom the note applies. See `.help notes`.
@@ -285,6 +284,7 @@ class ModNotes:
         except ValueError as e:
             raise commands.BadArgument(e.args[0]) from e
 
+        # Parse and validate the contents of the kwargs
         for key, arg in kwargs.items():
             if key.lower() in time_keywords:
                 if timestamp is None:
@@ -304,6 +304,13 @@ class ModNotes:
                             raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
                     raise commands.BadArgument("Several `expires`` arguments (+ synonyms) found.")
+
+        # if any attachments, include a URL to it in the note
+        if ctx.message.attachments:
+            note_contents = "{0}\n\n{1}".format(
+                note_contents,
+                '\n'.join(a['url'] for a in ctx.message.attachments)
+            )
 
         if len(note_contents) > self.EMBED_FIELD_LEN:
             raise commands.BadArgument('Note contents too long: '
