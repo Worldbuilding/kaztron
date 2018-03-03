@@ -79,18 +79,18 @@ class ModToolsCog:
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def whois(self, ctx, user_id: int):
+    async def whois(self, ctx, user: discord.Member):
         """
-        [MOD ONLY] Finds a Discord user from their Discord ID.
+        [MOD ONLY] Finds a Discord user from their ID, name, or name with discriminator.
+
+        Warning: If the user is in the channel where you use this command, the user will receive a
+        notification.
 
         Arguments:
-        * user_id: The ID number of the user.
+        * user_: An ID number, name, name with discriminator, etc. of a user to find.
         """
-        user_id = str(user_id)  # int conversion to validate format, but we need string ultimately
-        logger.info("finduser: {}".format(message_log_str(ctx.message)))
-        user = discord.User(id=user_id)
-        logger.info("finduser: user lookup: {!s}={!s}".format(user_id, user))
-        await self.bot.say("ID {} is user {}".format(user_id, user.mention))
+        logger.info("whois: found {}. {}".format(user, message_log_str(ctx.message)))
+        await self.bot.say("Found user {0.mention} with ID {0.id}".format(user))
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
