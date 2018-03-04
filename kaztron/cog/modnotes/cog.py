@@ -316,7 +316,7 @@ class ModNotes:
         await self.show_records(self.ch_log, user=db_user, records=[record],
                                 box_title='New Moderation Record', page=None, total_pages=1,
                                 short=True)
-        await self.bot.say("Note added.")
+        await self.bot.say("Added note #{:04d}.".format(record.record_id))
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
