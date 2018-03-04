@@ -13,8 +13,8 @@ from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args, \
-    get_command_str, get_usage_str
+from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, \
+    parse_keyword_args, get_command_str, get_usage_str
 
 from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
 from kaztron.cog.modnotes import controller as c
@@ -31,6 +31,9 @@ class ModNotes:
     EMBED_FIELD_LEN = Limits.EMBED_FIELD_VALUE - len(EMBED_SEPARATOR)
 
     DATEPARSER_SETTINGS = {'TIMEZONE': 'UTC', 'TO_TIMEZONE': 'UTC'}
+
+    KW_TIME = ('timestamp', 'starts', 'start', 'time')
+    KW_EXPIRE = ('expires', 'expire', 'ends', 'end')
 
     def __init__(self, bot):
         self.bot = bot  # type: commands.Bot
@@ -189,14 +192,8 @@ class ModNotes:
         [MOD ONLY] Show all watches currently in effect (i.e. non-expired watch, int, warn records).
 
         Arguments:
-        * user: Required. The user for whom to find moderation notes. This can be an @mention, a
-          Discord ID (numerical only), or a KazTron ID (starts with *).
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
           Default: 1.
-
-        Example:
-            .notes @User#1234
-            .notes 330178495568436157 3
         """
         logger.info("notes watches: {}".format(message_log_str(ctx.message)))
         watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
@@ -212,6 +209,32 @@ class ModNotes:
             user=None, records=db_records[start_index:end_index],
             page=page, total_pages=total_pages, total_records=len(db_records),
             box_title='Active Watches', short=True
+        )
+
+    @notes.command(aliases=['temp'], pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def temps(self, ctx, page: int=1):
+        """
+        [MOD ONLY] Show all tempbans currently in effect (i.e. non-expired temp records).
+
+        Arguments:
+        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
+          Default: 1.
+        """
+        logger.info("notes temps: {}".format(message_log_str(ctx.message)))
+        db_records = c.query_unexpired_records(types=RecordType.temp)
+        total_pages = int(math.ceil(len(db_records) / self.NOTES_PAGE_SIZE))
+        page = max(1, min(total_pages, page))
+
+        start_index = (page-1)*self.NOTES_PAGE_SIZE
+        end_index = start_index + self.NOTES_PAGE_SIZE
+
+        await self.show_records(
+            ctx.message.channel,
+            user=None, records=db_records[start_index:end_index],
+            page=page, total_pages=total_pages, total_records=len(db_records),
+            box_title='Active Temporary Bans', short=True
         )
 
     @notes.command(pass_context=True, aliases=['a'])
@@ -276,24 +299,22 @@ class ModNotes:
                 .format(type_, ', '.join(t.name for t in RecordType))) from e
 
         # Parse and load kwargs from the note_contents, if present
-        time_keywords = ('timestamp', 'starts', 'start', 'time')
-        expire_keywords = ('expires', 'expire', 'ends', 'end')
         try:
             kwargs, note_contents = \
-                parse_keyword_args(time_keywords + expire_keywords, note_contents)
+                parse_keyword_args(self.KW_TIME + self.KW_EXPIRE, note_contents)
         except ValueError as e:
             raise commands.BadArgument(e.args[0]) from e
 
         # Parse and validate the contents of the kwargs
         for key, arg in kwargs.items():
-            if key.lower() in time_keywords:
+            if key.lower() in self.KW_TIME:
                 if timestamp is None:
                     timestamp = dateparser.parse(arg, settings=self.DATEPARSER_SETTINGS)
                     if timestamp is None:  # dateparser failed to parse
                         raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
                     raise commands.BadArgument("Several `timestamp`` arguments (+ synonyms) found.")
-            elif key.lower() in expire_keywords:
+            elif key.lower() in self.KW_EXPIRE:
                 if not is_expires_set:
                     is_expires_set = True  # to detect multiple args
                     if arg.lower() in ('none', 'never'):
@@ -303,7 +324,7 @@ class ModNotes:
                         if expires is None:  # dateparser failed to parse
                             raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
-                    raise commands.BadArgument("Several `expires`` arguments (+ synonyms) found.")
+                    raise commands.BadArgument("Several `expires` arguments (+ synonyms) found.")
 
         # if any attachments, include a URL to it in the note
         if ctx.message.attachments:
