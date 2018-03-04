@@ -1,6 +1,9 @@
 import dateparser
 
+import discord
 from discord.ext import commands
+
+from kaztron.utils.discord import extract_user_id
 
 
 class NaturalDateConverter(commands.Converter):
@@ -16,3 +19,16 @@ class NaturalDateConverter(commands.Converter):
             raise commands.BadArgument("Argument {!r} could not be parsed as a date string"
                 .format(self.argument))
         return date
+
+
+class MemberConverter2(commands.MemberConverter):
+    """
+    Member converter with slightly more tolerant ID inputs permitted.
+    """
+    def convert(self):
+        try:
+            s_user_id = extract_user_id(self.argument)
+        except discord.InvalidArgument:
+            s_user_id = self.argument
+        self.argument = s_user_id
+        super().convert()
