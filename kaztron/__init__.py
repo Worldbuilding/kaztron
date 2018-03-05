@@ -1,13 +1,14 @@
 # kaztron
 from collections import OrderedDict
 
-__version__ = "2.1a1.dev3"
+__version__ = "2.1a1.dev4"
 
 bot_info = {
     "version": __version__,
     "changelog":
         "++ Writing Sprints\n"
         "++ Role Management Commands\n"
+        "++ Reminder feature\n"
         "+ Modnotes: `add` command now allows file and image attachments\n"
         "+ Modtools: Expanded whois to search by name, name+discriminator, or ID\n"
         "+ Spotlight: Added date tracking to queue",

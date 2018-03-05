@@ -12,10 +12,13 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "sprint"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
-    "log_file": "kaztron.log"
+    "log_file": "kaztron.log",
+    "date_format": "%Y-%m-%d",
+    "datetime_format": "%Y-%m-%d %H:%M",
+    "datetime_seconds_format": "%Y-%m-%d %H:%M:%S"
   },
   "spotlight": {
     "channel": "Channel ID",

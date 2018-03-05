@@ -1,15 +1,14 @@
 import asyncio
 import copy
 import enum
-import functools
 import logging
+import math
 from collections import deque
 from datetime import datetime, timedelta
 from functools import total_ordering
 from typing import Dict, List, Callable, Tuple, Deque
 
 import discord
-import math
 from discord.ext import commands
 
 from kaztron.cog.role_man import RoleManager
@@ -17,6 +16,7 @@ from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.errors import UnauthorizedUserError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
+from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import get_help_str, format_list
@@ -262,23 +262,6 @@ class EmbedInfo:
                 ('msg', self.msg),
             ] + [(title, value) for title, value, _ in self.strings]
         ))
-
-
-def task_handled_errors(func):
-    """
-    Decorator for custom tasks. Any raised exceptions will call the KazTron general error handler.
-    """
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        # noinspection PyBroadException
-        try:
-            return await func(*args, **kwargs)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            core_cog = args[0].bot.get_cog("CoreCog")
-            await core_cog.on_error(func.__name__)
-    return wrapper
 
 
 class WritingSprint:

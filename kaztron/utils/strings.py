@@ -5,6 +5,8 @@ from typing import List, Union, Dict, Iterable
 import discord
 from discord.ext import commands
 
+from kaztron.config import get_kaztron_config
+
 
 def format_list(list_) -> str:
     """
@@ -180,7 +182,6 @@ def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], s
     :param keywords: Valid keywords
     :param args: String argument to parse
     :return: (Dict of kwargs, remaining part of args)
-    :
     """
     kwargs = {}
     matches = _KWARG_RE.match(args)
@@ -194,3 +195,74 @@ def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], s
             raise ValueError('Unknown keyword `{}`'.format(key))
         matches = _KWARG_RE.match(args)
     return kwargs, args.strip()
+
+
+def format_datetime(dt: datetime.datetime, seconds=False) -> str:
+    """
+    Format a datetime object as a datetime (as specified in config).
+    :param dt: The datetime object to format.
+    :param seconds: Whether or not to display seconds (this determines which config format to use).
+    :return:
+    """
+    format_key = 'datetime_format' if not seconds else 'datetime_seconds_format'
+    return dt.strftime(get_kaztron_config().get('core', format_key))
+
+
+def format_date(d: Union[datetime.datetime, datetime.date]) -> str:
+    """
+    Format a datetime object as a date (as specified in config).
+
+    :param d: The date or datetime object to format.
+    :return:
+    """
+    return d.strftime(get_kaztron_config().get('core', 'date_format'))
+
+
+def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
+    """
+    Format a timedelta object into "x days y hours" etc. format.
+
+    This is ugly. Sorry.
+
+    :param delta: The delta to format.
+    :param timespec: One of "days", "hours", "minutes", "seconds", "microseconds" - the level of
+        resolution to show.
+    :return:
+    """
+    str_parts = []
+
+    timespec_list = ['days', 'hours', 'minutes', 'seconds', 'microseconds']
+    timespec_prio = timespec_list.index(timespec)
+
+    # get a resolution object to round against
+    if timespec == 'days':
+        res = datetime.timedelta(days=1)
+    elif timespec == 'hours':
+        res = datetime.timedelta(hours=1)
+    elif timespec == 'minutes':
+        res = datetime.timedelta(minutes=1)
+    elif timespec == 'seconds':
+        res = datetime.timedelta(seconds=1)
+
+    # round
+    delta = (delta + res/2) // res * res
+
+    # split up seconds into hours, minutes, seconds
+    # (because timedelta only stores days and seconds???)
+    rem = delta
+    hours, rem = divmod(rem, datetime.timedelta(hours=1))
+    minutes, rem = divmod(rem, datetime.timedelta(minutes=1))
+    seconds, rem = divmod(rem, datetime.timedelta(seconds=1))
+
+    if delta.days:
+        str_parts.append("{:d} days".format(delta.days))
+    if hours and timespec_prio >= timespec_list.index('hours'):
+        str_parts.append("{:d} hours".format(hours))
+    if minutes and timespec_prio >= timespec_list.index('minutes'):
+        str_parts.append("{:d} minutes".format(minutes))
+    if (seconds or delta.microseconds) and timespec_prio >= timespec_list.index('microseconds'):
+        str_parts.append("{:.6f} seconds".format(seconds + delta.microseconds/1e6))
+    elif seconds and timespec_prio >= timespec_list.index('seconds'):
+        str_parts.append("{:d} seconds".format(seconds))
+
+    return ' '.join(str_parts)

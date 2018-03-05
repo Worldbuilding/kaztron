@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 import logging
 import math
@@ -30,7 +29,11 @@ class ModNotes:
     EMBED_SEPARATOR = '\n{}'.format('\\_'*16)
     EMBED_FIELD_LEN = Limits.EMBED_FIELD_VALUE - len(EMBED_SEPARATOR)
 
-    DATEPARSER_SETTINGS = {'TIMEZONE': 'UTC', 'TO_TIMEZONE': 'UTC'}
+    DATEPARSER_SETTINGS = {
+        'TIMEZONE': 'UTC',
+        'TO_TIMEZONE': 'UTC',
+        'RETURN_AS_TIMEZONE_AWARE': False
+    }
 
     KW_TIME = ('timestamp', 'starts', 'start', 'time')
     KW_EXPIRE = ('expires', 'expire', 'ends', 'end')
