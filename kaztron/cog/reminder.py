@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime
+from functools import reduce
 from typing import List, Optional, Callable, Awaitable
 
 import dateparser
@@ -11,7 +12,7 @@ from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import Limits
 from kaztron.utils.logging import message_log_str, exc_log_str
-from kaztron.utils.strings import format_datetime, format_timedelta
+from kaztron.utils.strings import format_datetime, format_timedelta, format_list
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class ReminderCog:
         'TO_TIMEZONE': 'UTC',
         'RETURN_AS_TIMEZONE_AWARE': False
     }
+    MAX_PER_USER = 10
 
     def __init__(self, bot):
         self.bot = bot
@@ -102,7 +104,7 @@ class ReminderCog:
             autoinc=0
         )
         self.reminders = []  # type: List[ReminderData]
-        self.reminder_tasks = []  # type: List[asyncio.Task]
+        self.ready = False
 
     def _load_reminders(self):
         logger.info("Loading reminders from persisted state...")
@@ -113,6 +115,8 @@ class ReminderCog:
             self.reminders.append(ReminderData.from_dict(reminder_data))
 
     def _save_reminders(self):
+        if not self.ready:
+            return
         self.state.set(self.CFG_SECTION, 'reminders', [r.to_dict() for r in self.reminders])
         self.state.write()
 
@@ -120,6 +124,7 @@ class ReminderCog:
         self._load_reminders()
         for reminder in self.reminders:
             reminder.start_timer(self.bot.loop, self.on_reminder_expired)
+        self.ready = True
 
     @commands.group(pass_context=True, invoke_without_command=True, aliases=['remind'])
     async def reminder(self, ctx: commands.Context, *, args: str):
@@ -132,11 +137,11 @@ class ReminderCog:
         TIP: You should double-check the reminder time in the confirmation PM, to make sure your
         timespec was interpreted correctly.
 
-        **Usage:** `.remind <timespec><:|,> <message>`
+        **Usage:** `.remind <timespec>: <message>`
 
         **Arguments:**
-        * `<timespec><:|,>`: A time in the future to send you a reminder, followed by either a colon
-          or comma and a space. This can be an absolute date and time `2018-03-07 12:00:00`, a
+        * `<timespec>: `: A time in the future to send you a reminder, followed by a colon
+          and a space. This can be an absolute date and time `2018-03-07 12:00:00`, a
           relative time `in 2h 30m` (the space between hours and minutes, or other different units,
           is important), or combinations of the two (`tomorrow at 1pm`). Times are in UTC+0000,
           unless you specify your time zone (e.g. `12:00:00 UTC-5`).
@@ -144,17 +149,31 @@ class ReminderCog:
 
         **Examples:**
         .remind in 2 hours: Feed the dog
-        .remind on 24 december at 4:50pm, Grandma's christmas call
+        .remind on 24 december at 4:50pm: Grandma's christmas call
         .remind tomorrow at 8am: Start Spotlight
         """
 
         logger.info("reminder: {}".format(message_log_str(ctx.message)))
-        timespec_s, msg = re.split(r':\s+', args, maxsplit=1)
+
+        if not self.ready:
+            raise discord.DiscordException("Bot not ready")
+
+        # check existing count
+        n = reduce(lambda c, r: c+1 if r.user_id == ctx.message.author.id else c, self.reminders, 0)
+        if n >= self.MAX_PER_USER:
+            logger.warning("Cannot add reminder: user {} at limit".format(ctx.message.author))
+            await self.bot.say("Oops! You already have too many future reminders! "
+                         "The limit is 10 per person.")
+            return
+
+        timespec_s, msg = re.split(r':\s+|,', args, maxsplit=1)
         timestamp = datetime.utcnow()
         timespec = dateparser.parse(timespec_s, settings=self.DATEPARSER_SETTINGS)
 
         if timespec is None:
             raise commands.BadArgument("timespec", timespec_s[:64])
+        elif timespec <= timestamp:
+            raise commands.BadArgument("past")
 
         new_id = self.state.get(self.CFG_SECTION, 'autoinc', default=0, converter=int)
         reminder = ReminderData(
@@ -178,9 +197,12 @@ class ReminderCog:
     async def reminder_error(self, exc, ctx):
         if isinstance(exc, commands.BadArgument) and exc.args[0] == 'timespec':
             logger.error("Passed unknown timespec: {}".format(exc.args[1]))
-            await self.bot.send_message(
-                ctx.message.author,
+            await self.bot.say(
                 "Sorry, I don't understand the timespec '{}'".format(exc.args[1])
+            )
+        elif isinstance(exc, commands.BadArgument) and exc.args[0] == 'past':
+            await self.bot.say(
+                "Oops! You can't set a reminder in the past!"
             )
         else:
             core_cog = self.bot.get_cog("CoreCog")
@@ -207,6 +229,10 @@ class ReminderCog:
     async def list(self, ctx: commands.Context):
         """ Lists all future reminders you've requested. """
         logger.info("reminder list: {}".format(message_log_str(ctx.message)))
+
+        if not self.ready:
+            raise discord.DiscordException("Bot not ready")
+
         items = []
         filtered = filter(lambda r: r.user_id == ctx.message.author.id, self.reminders)
         sorted_reminders = sorted(filtered, key=lambda r: r.remind_time)
@@ -216,15 +242,21 @@ class ReminderCog:
                 format_timedelta(reminder.remind_time - datetime.utcnow()),
                 reminder.message
             ))
-        if not items:
-            items.append("None")
-        await self.bot.send_message(ctx.message.author, "**Your reminders**\n" + "\n".join(items))
+        if items:
+            reminder_list = format_list(items)
+        else:
+            reminder_list = 'None'
+        await self.bot.send_message(ctx.message.author, "**Your reminders**\n" + reminder_list)
         await self.bot.delete_message(ctx.message)
 
     @reminder.command(pass_context=True, ignore_extra=False)
     async def clear(self, ctx: commands.Context):
         """ Remove all future reminders you've requested. """
         logger.info("reminder clear: {}".format(message_log_str(ctx.message)))
+
+        if not self.ready:
+            raise discord.DiscordException("Bot not ready")
+
         self.reminders = list(filter(lambda r: r.user_id != ctx.message.author.id, self.reminders))
         self._save_reminders()
         await self.bot.say("All your reminders have been cleared.")
