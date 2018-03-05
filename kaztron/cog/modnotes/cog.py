@@ -245,7 +245,6 @@ class ModNotes:
     @mod_channels()
     async def add(self, ctx, user: str, type_: str, *, note_contents):
         """
-
         [MOD ONLY] Add a new note.
 
         Attachments in the same message as the command are appended to the note.
@@ -253,40 +252,44 @@ class ModNotes:
         Arguments:
         * <user>: Required. The user to whom the note applies. See `.help notes`.
         * <type>: Required. The type of record. One of:
-            * note: Generic note not falling under other categories.
-            * good: Noteworthy positive contributions to the community.
-            * watch: Moderation problems to watch out for.
-            * int: Moderator intervention events.
-            * warn: Formal warning issued.
-            * temp: Temporary ban issued.
-            * perma: Permanent ban issued.
-            * appeal: Formal appeal received.
+            * note: Miscellaneous note.
+            * good: Noteworthy positive contributions
+            * watch: Moderative problems to monitor
+            * int: Moderator intervention
+            * warn: Formal warning
+            * temp: Temporary ban
+            * perma: Permanent ban
+            * appeal: Formal appeal or decision
         * [OPTIONS]: Optional. Options of the form:
-            * timestamp="timespec": Sets the note's time (e.g. the time at which a note happened).
-              Default is now. Instead of `timestamp`, you can also use the synonyms `starts`,
+            * timestamp="timespec": Sets the note's time (e.g. the time of an event).
+              Default is "now". Instead of `timestamp`, you can also use the synonyms `starts`,
               `start`, `time`.
-            * expires="timespec": Sets when a note expires. This is purely documentation: for
-              example, to take note of when a temp ban ends, or a permaban appeal is available, etc.
+            * expires="timespec": Sets when a note expires. This is purely documentation. For
+              example, when a temp ban ends, or a permaban appeal is available, etc.
               Default is no expiration. Instead of `expires`, you can also use the synonyms
               `expire`, `ends` or `end`.
             * The timespec is "smart". You can type a date and time (like "3 Dec 2017 5PM"), or
               relative times in natural language ("10 minutes ago", "in 2 days", "now"). Just make
-              sure not to forget quotation marks.
+              sure not to forget quotation marks. No days of the week.
         * <note_contents>: The remainder of the command message is stored as the note text.
 
         Example:
 
         .notes add @BlitheringIdiot#1234 perma Repeated plagiarism.
-            This creates a record timestamped for right now, with no expiry date.
+            Create a record timestamped for right now, with no expiry date.
 
         .notes add @BlitheringIdiot#1234 temp expires="in 7 days" Insulting users, altercation with
         intervening mod.
-            This creates a record timestamped for right now, that expires in 7 days.
+            Create a record timestamped for right now, that expires in 7 days.
 
         .notes add @CalmPerson#4187 good timestamp="2 hours ago" Cool-headed, helped keep the
         BlitheringIdiot plagiarism situation from exploding
-            This creates a record for an event 2 hours ago.
+            Create a record for an event 2 hours ago.
         """
+
+        # !!! WARNING !!!
+        # WARNING: BE CAREFUL OF THE DOCSTRING ABOVE! Must be <1992 chars (w/o indent) for .help
+
         logger.info("notes add: {}".format(message_log_str(ctx.message)))
 
         # load/preprocess positional arguments and defaults
@@ -347,7 +350,7 @@ class ModNotes:
         await self.show_records(self.ch_log, user=db_user, records=[record],
                                 box_title='New Moderation Record', page=None, total_pages=1,
                                 short=True)
-        await self.bot.say("Note added.")
+        await self.bot.say("Added note #{:04d}.".format(record.record_id))
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()

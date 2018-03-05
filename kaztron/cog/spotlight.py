@@ -50,19 +50,19 @@ class SpotlightApp:
     @property
     @error_handler(IndexError, "")
     def user_name(self) -> str:
-        return self._data[1]
+        return self._data[1].strip()
 
     @property
     @error_handler(IndexError, "")
     def user_name_only(self) -> str:
         """ User name without discriminator (if provided in the field). """
-        return self._data[1].split('#', maxsplit=1)[0]
+        return self._data[1].split('#', maxsplit=1)[0].strip()
 
     @property
     @error_handler(IndexError, "")
     def user_discriminator(self) -> str:
         """ Discriminator (the #xxxx part of an @mention in the client, if provided). """
-        return self._data[1].split('#', maxsplit=1)[1]
+        return self._data[1].split('#', maxsplit=1)[1].strip()
 
     @property
     @error_handler(IndexError, "")
@@ -71,7 +71,7 @@ class SpotlightApp:
         try:
             s_user_id = extract_user_id(self.user_id)
         except discord.InvalidArgument:
-            return self.user_name_only
+            return self.user_name_only.strip()
         else:
             return user_mention(s_user_id)
 
@@ -79,17 +79,17 @@ class SpotlightApp:
     @error_handler(ValueError, "")
     @error_handler(IndexError, "")
     def user_id(self) -> str:
-        return self._data[2]
+        return self._data[2].strip()
 
     @property
     @error_handler(IndexError, "")
     def user_reddit(self) -> str:
-        return self._data[3]
+        return self._data[3].strip()
 
     @property
     @error_handler(IndexError, "")
     def project(self) -> str:
-        return self._data[4]
+        return self._data[4].strip()
 
     @property
     @error_handler(IndexError, "")
@@ -163,10 +163,10 @@ class SpotlightApp:
         try:
             s_user_id = extract_user_id(self.user_id)
         except discord.InvalidArgument:
-            author_value = "{} (invalid ID)".format(self.user_name_only.strip())
+            author_value = "{} (invalid ID)".format(self.user_name_only)
         else:
-            author_value = "{} ({})".format(self.user_name_only.strip(), user_mention(s_user_id))
-        return "{} - *{}*".format(author_value, self.project.strip().replace('*', '\\*'))
+            author_value = "{} ({})".format(self.user_name_only, user_mention(s_user_id))
+        return "{} - *{}*".format(author_value, self.project.replace('*', '\\*'))
 
 
 class Spotlight:
@@ -325,12 +325,9 @@ class Spotlight:
         else:
             author_value = "{} ({})".format(user_mention(s_user_id), app.user_name_only)
 
-        em = discord.Embed(color=0x80AAFF, title=app.user_name[:128])
-        em.set_author(name="Spotlight Application #{:d}".format(index))
+        em = discord.Embed(color=0x80AAFF)
         em.add_field(name="Project Name", value=app.project, inline=True)
-        em.add_field(name="Author",
-                     value=author_value,
-                     inline=True)
+        em.add_field(name="Author", value=author_value, inline=True)
 
         # if app.is_filled(app.user_reddit):
         #     em.add_field(name="Reddit", value="/u/" + app.user_reddit[:128], inline=True)
@@ -359,6 +356,7 @@ class Spotlight:
                          inline=True)
 
         await self.bot.send_message(destination, embed=em)
+        await self.bot.say("Spotlight ID #{:d}: {!s}".format(index, app))
 
     async def send_validation_warnings(self, ctx: commands.Context, app: SpotlightApp):
         """
@@ -470,8 +468,7 @@ class Spotlight:
         # format each application as a string
         app_str_list = []
         for app in self.applications:
-            if app.user_name.strip() and app.project.strip() \
-                    and not app.project.strip() == 'DELETED':
+            if app.user_name and app.project and not app.project == 'DELETED':
                 app_str_list.append(app.discord_str())
             else:  # deleted entries: blank username/project name or blank user/'DELETED' project
                 app_str_list.append(None)

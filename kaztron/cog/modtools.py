@@ -243,13 +243,13 @@ class ModToolsCog:
           random image is shown.
         """
         if index is None:
-            index = random.randint(0, len(self.wb_images))
+            index = random.randint(0, len(self.wb_images) - 1)
             logger.debug("wb: random image = {:d}".format(index))
 
         try:
             image_data = self.wb_images[index]
         except IndexError:
-            logger.warning("wb: Invalid index: {}".format(message_log_str(ctx.message)))
+            logger.warning("wb: Invalid index: {}. {}".format(index, message_log_str(ctx.message)))
             await self.bot.say("{} (wb) That image doesn't exist! Valid index range: 0-{:d}"
                 .format(ctx.message.author.mention, len(self.wb_images) - 1))
         else:
