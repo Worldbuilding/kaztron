@@ -5,15 +5,9 @@ __version__ = "2.1a1.dev4"
 
 bot_info = {
     "version": __version__,
-    "changelog":
-        "++ Writing Sprints\n"
-        "++ Role Management Commands\n"
-        "++ Reminder feature\n"
-        "+ Modnotes: `add` command now allows file and image attachments\n"
-        "+ Modtools: Expanded whois to search by name, name+discriminator, or ID\n"
-        "+ Spotlight: Added date tracking to queue",
     "links": OrderedDict()
 }
+bot_info["links"]["Changelog"] = "https://github.com/Worldbuilding/KazTron/releases/tag/v" + __version__
 bot_info["links"]["Manual"] = "https://worldbuilding.github.io/kaztron/"
 bot_info["links"]["GitHub"] = "https://github.com/Worldbuilding/KazTron"
 bot_info["links"]["Bugs/Issues"] = "https://github.com/Worldbuilding/KazTron/issues"
