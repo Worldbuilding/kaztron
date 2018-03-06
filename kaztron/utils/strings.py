@@ -243,13 +243,18 @@ def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
         res = datetime.timedelta(minutes=1)
     elif timespec == 'seconds':
         res = datetime.timedelta(seconds=1)
+    elif timespec == 'microseconds':
+        res = None
+    else:
+        raise ValueError("Invalid timespec")
 
     # round
-    delta = (delta + res/2) // res * res
+    if res:
+        delta = (delta + res/2) // res * res
 
     # split up seconds into hours, minutes, seconds
     # (because timedelta only stores days and seconds???)
-    rem = delta
+    rem = datetime.timedelta(seconds=delta.seconds, microseconds=delta.microseconds)
     hours, rem = divmod(rem, datetime.timedelta(hours=1))
     minutes, rem = divmod(rem, datetime.timedelta(minutes=1))
     seconds, rem = divmod(rem, datetime.timedelta(seconds=1))
