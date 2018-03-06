@@ -247,7 +247,10 @@ class ReminderCog:
         else:
             reminder_list = 'None'
         await self.bot.send_message(ctx.message.author, "**Your reminders**\n" + reminder_list)
-        await self.bot.delete_message(ctx.message)
+        try:
+            await self.bot.delete_message(ctx.message)
+        except discord.Forbidden:
+            pass  # no permission or in a PM; oh well, this is not critical
 
     @reminder.command(pass_context=True, ignore_extra=False)
     async def clear(self, ctx: commands.Context):
