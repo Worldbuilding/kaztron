@@ -36,6 +36,10 @@ class SprintRunningError(RuntimeError):
     pass
 
 
+def format_seconds(seconds: float, timespec='seconds'):
+    return format_timedelta(timedelta(microseconds=int(seconds*1e6)), timespec=timespec)
+
+
 @total_ordering
 class SprintState(enum.Enum):
     IDLE = 0
@@ -292,10 +296,10 @@ class WritingSprint:
                 # don't change the order of these - status command uses indices to decide on them
                 ("Placeholder", "Placeholder", not INLINE),
                 ("Started by", "{founder}", INLINE),
-                ("Starts in", "{delay:.0f} minutes", INLINE),
-                ("Duration", "{duration:.0f} minutes", INLINE),
-                ("Remaining", "{remaining!s}", INLINE),
-                ("Results in", "{finalize!s}", INLINE),
+                ("Starts in", "{delay}", INLINE),
+                ("Duration", "{duration}", INLINE),
+                ("Remaining", "{remaining}", INLINE),
+                ("Results in", "{finalize}", INLINE),
                 ("Participants", "{participants}", INLINE)
             ]
         ),
@@ -306,8 +310,8 @@ class WritingSprint:
                 "Type `.w join <initial_wordcount>` to join! {notif}",
             strings=[
                 ("Started by", "{founder}", INLINE),
-                ("Starts in", "{delay:.0f} minutes", INLINE),
-                ("Duration", "{duration:.0f} minutes", INLINE),
+                ("Starts in", "{delay}", INLINE),
+                ("Duration", "{duration}", INLINE),
             ]
         ),
         "stop": EmbedInfo(
@@ -325,7 +329,7 @@ class WritingSprint:
             msg="**The sprint is starting!** Get to writing! {notif}",
             strings=[
                 ("Started by", "{founder}", INLINE),
-                ("Duration", "{duration:.0f} minutes", INLINE),
+                ("Duration", "{duration}", INLINE),
                 ("Participants", "{participants}", INLINE)
             ]
         ),
@@ -335,7 +339,7 @@ class WritingSprint:
             msg="**Sprint reminder!** {remaining!s} left. You better still be writing! {notif}",
             strings=[
                 ("Started by", "{founder}", INLINE),
-                ("Time remaining", "{remaining!s}", INLINE),
+                ("Time remaining", "{remaining}", INLINE),
                 ("Participants", "{participants}", INLINE)
             ]
         ),
@@ -346,7 +350,7 @@ class WritingSprint:
                 "Report your final wordcount with `.w c <wordcount>`! {notif}",
             strings=[
                 ("Started by", "{founder}", INLINE),
-                ("Results in", "{finalize:.0f} minutes", INLINE),
+                ("Results in", "{finalize}", INLINE),
                 ("Participants", "{participants}", INLINE)
             ]
         ),
@@ -359,7 +363,7 @@ class WritingSprint:
                 "On to the next sprint! {notif}",
             strings=[
                 ("Started by", "{founder}", INLINE),
-                ("Duration", "{duration:.0f} minutes", INLINE),
+                ("Duration", "{duration}", INLINE),
                 ("Final results", "{participants}", INLINE)
             ]
         ),
@@ -380,9 +384,9 @@ class WritingSprint:
             msg="",
             strings=[
                 ("Sprints", "{stats.sprints:.0f}", INLINE),
-                ("Total time",  "{hours:.1f} hours", INLINE),
+                ("Total time",  "{total_time}", INLINE),
                 ("Total words", "{stats.words:.0f} words", INLINE),
-                ("Average sprint", "{stats.time_mean:.1f} minutes", INLINE),
+                ("Average sprint", "{average_time}", INLINE),
                 ("Average cumulative productivity",
                  "{stats.wpm_mean:.1f} wpm overall (σ = {stats.wpm_stdev:.1f})", INLINE)
             ]
@@ -395,9 +399,9 @@ class WritingSprint:
                 ("User Stats", "<@{user_id}>", not INLINE),
                 ("Sprints", "{stats.sprints:.0f}", INLINE),
                 ("Wins", "{stats.wins:.0f} ({stats.win_rate:.0%})", INLINE),
-                ("Total time",  "{hours:.1f} hours", INLINE),
+                ("Total time",  "{total_time}", INLINE),
                 ("Total words", "{stats.words:.0f} words", INLINE),
-                ("Average sprint", "{stats.time_mean:.1f} minutes", INLINE),
+                ("Average sprint", "{average_time}", INLINE),
                 ("Average speed",
                  "{stats.wpm_mean:.1f} wpm (σ = {stats.wpm_stdev:.1f})", INLINE),
             ]
@@ -684,7 +688,7 @@ class WritingSprint:
                             'For help with sprints, type `{1}` or `{1} <subcommand>`.')
             .format(command_list, get_help_str(ctx)))
 
-    @sprint.command(pass_context=True, ignore_extra=False)
+    @sprint.command(pass_context=True, ignore_extra=False, aliases=['?'])
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
     async def status(self, ctx: commands.Context):
         """
@@ -729,10 +733,10 @@ class WritingSprint:
         await self._display_embed(
             ctx.message.channel, em_data,
             founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-            delay=self.sprint_data.starts_in/60,
-            duration=self.sprint_data.duration/60,
-            remaining=format_timedelta(timedelta(seconds=int(self.sprint_data.remaining))),
-            finalize=format_timedelta(timedelta(seconds=int(self.sprint_data.remaining_finalize))),
+            delay=format_seconds(self.sprint_data.starts_in),
+            duration=format_seconds(self.sprint_data.duration),
+            remaining=format_seconds(self.sprint_data.remaining),
+            finalize=format_seconds(self.sprint_data.remaining_finalize),
             participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
         )
 
@@ -802,9 +806,13 @@ class WritingSprint:
         self.state_task = self.bot.loop.create_task(self.on_sprint_start())
 
         self._update_roles()
-        await self._display_embed(self.channel, self.DISP_EMBEDS['start'],
+        await self._display_embed(
+            self.channel, self.DISP_EMBEDS['start'],
             founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-            duration=duration, delay=delay, notif=self.role_follow_mention)
+            duration=format_seconds(duration_s),
+            delay=format_seconds(delay_s),
+            notif=self.role_follow_mention
+        )
 
         self._save_sprint()
 
@@ -1025,7 +1033,8 @@ class WritingSprint:
                     ctx.message.channel, self.DISP_EMBEDS['stats'],
                     user_id=user.id,
                     stats=stats,
-                    hours=stats.time/3600
+                    average_time=format_seconds(stats.time_mean),
+                    total_time=format_seconds(stats.time, timespec='minutes')
                 )
         else:  # global stats
             logger.debug("stats: requested global")
@@ -1033,7 +1042,8 @@ class WritingSprint:
             await self._display_embed(
                 ctx.message.channel, self.DISP_EMBEDS['stats_global'],
                 stats=stats,
-                hours=stats.time/3600
+                average_time=format_seconds(stats.time_mean),
+                total_time=format_seconds(stats.time, timespec='minutes')
             )
 
     @task_handled_errors
@@ -1054,7 +1064,7 @@ class WritingSprint:
             await self._display_embed(
                 self.channel, self.DISP_EMBEDS['on_sprint_start'],
                 founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-                duration=self.sprint_data.duration/60,
+                duration=format_seconds(self.sprint_data.duration),
                 notif=self.role_sprint_mention,
                 participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
             )
@@ -1078,7 +1088,7 @@ class WritingSprint:
                 await self._display_embed(
                     self.channel, self.DISP_EMBEDS['on_sprint_warning'],
                     founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-                    remaining=format_timedelta(timedelta(seconds=int(self.sprint_data.remaining))),
+                    remaining=format_seconds(self.sprint_data.remaining),
                     notif=self.role_sprint_mention,
                     participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
                 )
@@ -1104,7 +1114,7 @@ class WritingSprint:
             await self._display_embed(
                 self.channel, self.DISP_EMBEDS['on_sprint_end'],
                 founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-                finalize=self.finalize/60,
+                finalize=format_seconds(self.finalize),
                 notif=self.role_sprint_mention,
                 participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
             )
@@ -1157,7 +1167,7 @@ class WritingSprint:
                 self.channel, self.DISP_EMBEDS['on_sprint_results'],
                 founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
                 winner=winner_name, wc=winner_wc,
-                duration=self.sprint_data.duration/60,
+                duration=format_seconds(self.sprint_data.duration),
                 participants=results_str if results_str else 'None',
                 notif=self.role_sprint_mention
             )

@@ -260,14 +260,20 @@ def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
     seconds, rem = divmod(rem, datetime.timedelta(seconds=1))
 
     if delta.days:
-        str_parts.append("{:d} days".format(delta.days))
+        str_parts.append("{:d} day{}".format(delta.days, 's' if abs(delta.days) != 1 else ''))
     if hours and timespec_prio >= timespec_list.index('hours'):
-        str_parts.append("{:d} hours".format(hours))
+        str_parts.append("{:d} hour{}".format(hours, 's' if abs(hours) != 1 else ''))
     if minutes and timespec_prio >= timespec_list.index('minutes'):
-        str_parts.append("{:d} minutes".format(minutes))
+        str_parts.append("{:d} minute{}".format(minutes, 's' if abs(minutes) != 1 else ''))
     if (seconds or delta.microseconds) and timespec_prio >= timespec_list.index('microseconds'):
-        str_parts.append("{:.6f} seconds".format(seconds + delta.microseconds/1e6))
+        f_seconds = seconds + delta.microseconds/1e6
+        str_parts.append("{:.6f} second{}".format(f_seconds, 's' if f_seconds != 1.0 else ''))
     elif seconds and timespec_prio >= timespec_list.index('seconds'):
-        str_parts.append("{:d} seconds".format(seconds))
+        str_parts.append("{:d} second{}".format(seconds, 's' if seconds != 1 else ''))
+
+    if not str_parts:
+        if timespec == 'microseconds':
+            timespec = 'seconds'
+        str_parts.append("0 {}".format(timespec))
 
     return ' '.join(str_parts)
