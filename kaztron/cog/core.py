@@ -20,6 +20,7 @@ class CoreCog:
         self.config = get_kaztron_config()
         self.ch_request = discord.Object(self.config.get('core', 'channel_request'))
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
+        self.name = self.config.get("core", "name", "KazTron")
 
     async def on_ready(self):
         logger.debug("on_ready")
@@ -29,9 +30,10 @@ class CoreCog:
             await self.bot.change_presence(game=discord.Game(name=playing))
 
         startup_info = (
-            "Logged in as {} (id:{})".format(self.bot.user.name, self.bot.user.id),
+            "Bot name {}".format(self.name),
             "KazTron version {}".format(kaztron.__version__),
-            "discord.py version {}".format(discord.__version__)
+            "discord.py version {}".format(discord.__version__),
+            "Logged in as {} (id:{})".format(self.bot.user.name, self.bot.user.id),
         )
 
         for msg in startup_info:
@@ -43,7 +45,7 @@ class CoreCog:
         try:
             await self.bot.send_message(
                 self.dest_output,
-                "**KazTron has (re)connected**\n" + '\n'.join(startup_info)
+                "**{} is running**\n".format(self.name) + '\n'.join(startup_info)
             )
         except discord.HTTPException:
             logger.exception("Error sending startup information to output channel")
@@ -211,8 +213,7 @@ class CoreCog:
                 ("[ERROR] Unknown error while trying to process command {}\n"
                  "Error: {!s}\n\nSee logs for details").format(cmd_string, exc))
 
-    @commands.command(pass_context=True,
-        description="[MOD ONLY] Provide bot info. Useful for testing but responsivity too.")
+    @commands.command(pass_context=True)
     @mod_only()
     async def info(self, ctx):
         """
@@ -223,11 +224,15 @@ class CoreCog:
         Arguments: None.
         """
         logger.debug("info(): {!s}".format(message_log_str(ctx.message)))
-        em = discord.Embed(color=0x80AAFF)
-        em.set_author(name="KazTron v{}".format(kaztron.bot_info["version"]))
-        em.add_field(name="Changelog", value=kaztron.bot_info["changelog"], inline=False)
+        em = discord.Embed(color=0x80AAFF, title=self.name)
+        em.add_field(name="Logged in as",
+                     value="{!s}".format(self.bot.user.mention))
+        em.add_field(name="KazTron version",
+                     value="v{}".format(kaztron.bot_info["version"]), inline=True)
+        em.add_field(name="discord.py version",
+            value="v{}".format(discord.__version__), inline=True)
         for title, url in kaztron.bot_info["links"].items():
-            em.add_field(name=title, value="[Link]({})".format(url), inline=True)
+            em.add_field(name=title, value="[{0}]({1})".format(title, url), inline=True)
         await self.bot.say(embed=em)
 
     @commands.command(pass_context=True, aliases=['bug', 'issue'])
