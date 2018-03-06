@@ -98,9 +98,9 @@ class ModNotes:
             record_fields = OrderedDict()
 
             rec_title = "Record #{:04d}".format(rec.record_id)
-            record_fields[rec_title] = get_timestamp_str(rec.timestamp) + ' UTC'
+            record_fields[rec_title] = get_timestamp_str(rec.timestamp)
             if rec.expires:
-                expire_str = get_timestamp_str(rec.expires) + ' UTC'
+                expire_str = get_timestamp_str(rec.expires)
                 if rec.expires <= datetime.utcnow():
                     record_fields['Expires'] = expire_str + '\n**EXPIRED**'
                 else:

@@ -164,7 +164,7 @@ def get_timestamp_str(dt: Union[discord.Message, datetime.datetime]) -> str:
     """
     if isinstance(dt, discord.Message):
         dt = dt.timestamp
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
+    return format_datetime(dt, seconds=True) + ' UTC'
 
 
 def none_wrapper(value, default=""):

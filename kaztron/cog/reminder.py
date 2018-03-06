@@ -162,8 +162,8 @@ class ReminderCog:
         n = reduce(lambda c, r: c+1 if r.user_id == ctx.message.author.id else c, self.reminders, 0)
         if n >= self.MAX_PER_USER:
             logger.warning("Cannot add reminder: user {} at limit".format(ctx.message.author))
-            await self.bot.say("Oops! You already have too many future reminders! "
-                         "The limit is 10 per person.")
+            await self.bot.say(("Oops! You already have too many future reminders! "
+                         "The limit is {:d} per person.").format(self.MAX_PER_USER))
             return
 
         timespec_s, msg = re.split(r':\s+|,', args, maxsplit=1)
@@ -188,7 +188,7 @@ class ReminderCog:
         self.reminders.append(reminder)
         self._save_reminders()
         logger.info("Set reminder: {!r}".format(reminder))
-        await self.bot.say("Got it! I'll remind you by PM at {} (in {!s}).".format(
+        await self.bot.say("Got it! I'll remind you by PM at {} UTC (in {!s}).".format(
             format_datetime(reminder.remind_time),
             format_timedelta(reminder.remind_time - datetime.utcnow())
         ))
@@ -215,7 +215,7 @@ class ReminderCog:
         try:
             await self.bot.send_message(
                 user,
-                "**Reminder** At {}, you asked me to send you a reminder: {}".format(
+                "**Reminder** At {} UTC, you asked me to send you a reminder: {}".format(
                     format_datetime(reminder.timestamp),
                     reminder.message
                 )
@@ -237,7 +237,7 @@ class ReminderCog:
         filtered = filter(lambda r: r.user_id == ctx.message.author.id, self.reminders)
         sorted_reminders = sorted(filtered, key=lambda r: r.remind_time)
         for reminder in sorted_reminders:
-            items.append("At {} (in {}): {}".format(
+            items.append("At {} UTC (in {}): {}".format(
                 format_datetime(reminder.remind_time),
                 format_timedelta(reminder.remind_time - datetime.utcnow()),
                 reminder.message

@@ -19,7 +19,7 @@ from kaztron.utils.checks import in_channels_cfg
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import get_help_str, format_list
+from kaztron.utils.strings import get_help_str, format_list, format_timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -731,8 +731,8 @@ class WritingSprint:
             founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
             delay=self.sprint_data.starts_in/60,
             duration=self.sprint_data.duration/60,
-            remaining=timedelta(seconds=int(self.sprint_data.remaining)),
-            finalize=timedelta(seconds=int(self.sprint_data.remaining_finalize)),
+            remaining=format_timedelta(timedelta(seconds=int(self.sprint_data.remaining))),
+            finalize=format_timedelta(timedelta(seconds=int(self.sprint_data.remaining_finalize))),
             participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
         )
 
@@ -1078,7 +1078,7 @@ class WritingSprint:
                 await self._display_embed(
                     self.channel, self.DISP_EMBEDS['on_sprint_warning'],
                     founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-                    remaining=timedelta(seconds=int(self.sprint_data.remaining)),
+                    remaining=format_timedelta(timedelta(seconds=int(self.sprint_data.remaining))),
                     notif=self.role_sprint_mention,
                     participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
                 )

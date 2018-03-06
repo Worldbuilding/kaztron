@@ -20,7 +20,8 @@ from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits, remove_role_from_all, \
     extract_user_id, user_mention, get_member
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
-from kaztron.utils.strings import format_list, get_help_str, natural_truncate, split_chunks_on
+from kaztron.utils.strings import format_list, get_help_str, natural_truncate, split_chunks_on, \
+    format_date
 
 logger = logging.getLogger(__name__)
 
@@ -631,7 +632,7 @@ class Spotlight:
 
             app_strings.append(self.QUEUE_ENTRY_FMT.format(
                 id=app_index+1,
-                date=date.fromtimestamp(queue_item['timestamp']).isoformat(),
+                date=format_date(date.fromtimestamp(queue_item['timestamp'])),
                 app=app_str)
             )
 
@@ -723,7 +724,7 @@ class Spotlight:
             msg=self.QUEUE_ADD_HEADING,
             i=queue_index+1,
             id=queue_item['index'] + 1,
-            date=dt.date().isoformat(),
+            date=format_date(dt),
             app=app.discord_str()
         ))
 
@@ -746,7 +747,7 @@ class Spotlight:
         old_index = self.current_app_index
         queue_item = self.queue_data.popleft()
         self.current_app_index = queue_item['index']
-        date_str = date.fromtimestamp(queue_item['timestamp']).isoformat()
+        date_str = format_date(date.fromtimestamp(queue_item['timestamp']))
         try:
             app = await self._get_current()
         except IndexError:
@@ -824,7 +825,7 @@ class Spotlight:
             msg=self.QUEUE_EDIT_HEADING,
             i=new_queue_index,
             id=list_index,
-            date=dt.date().isoformat(),
+            date=format_date(dt),
             app=app_str
         ))
 
@@ -877,7 +878,7 @@ class Spotlight:
             msg=self.QUEUE_REM_HEADING,
             i=queue_index,
             id=list_index,
-            date=date.fromtimestamp(queue_item['timestamp']).isoformat(),
+            date=format_date(date.fromtimestamp(queue_item['timestamp'])),
             app=app_str
         ))
 
