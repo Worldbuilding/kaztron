@@ -4,8 +4,10 @@ from typing import Union
 import discord
 from discord.ext import commands
 
+from kaztron import KazCog
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
+from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits
 from kaztron.utils.logging import message_log_str
@@ -15,7 +17,7 @@ from kaztron.utils.strings import format_list, get_command_str, get_help_str, ge
 logger = logging.getLogger(__name__)
 
 
-class WordFilter:
+class WordFilter(KazCog):
 
     display_filter_types = ['warn', 'del']
 
@@ -47,14 +49,9 @@ class WordFilter:
     }
 
     def __init__(self, bot):
+        super().__init__(bot)
         self.bot = bot
-        self.config = get_kaztron_config()
-        try:
-            self.filter_cfg = get_runtime_config()
-        except OSError as e:
-            logger.error(str(e))
-            raise RuntimeError("Failed to load runtime config") from e
-        self.filter_cfg.set_defaults(
+        self.state.set_defaults(
             'filter',
             warn=[],
             delete=[],
@@ -68,7 +65,7 @@ class WordFilter:
     def _load_filter_rules(self):
         for filter_type, engine in self.engines.items():
             logger.debug("Reloading {} rules".format(filter_type))
-            engine.load_rules(self.filter_cfg.get("filter", filter_type, []))
+            engine.load_rules(self.state.get("filter", filter_type, []))
 
     async def on_ready(self):
         """
@@ -80,7 +77,7 @@ class WordFilter:
         dest_warning_id = self.config.get('filter', 'channel_warning')
         self.dest_warning = self.bot.get_channel(dest_warning_id)
 
-        self.dest_current = self.bot.get_channel(self.filter_cfg.get('filter', 'channel'))
+        self.dest_current = self.bot.get_channel(self.state.get('filter', 'channel'))
 
         # validation
         if self.dest_output is None:
@@ -91,13 +88,15 @@ class WordFilter:
 
         if self.dest_current is None:
             self.dest_current = self.dest_warning
-            self.filter_cfg.set('filter', 'channel', str(self.dest_warning.id))
+            self.state.set('filter', 'channel', str(self.dest_warning.id))
 
+        await super().on_ready()
+
+    @ready_only
     async def on_message(self, message):
         """
         Message handler. Check all non-mod messages for filtered words.
         """
-
         is_mod = check_role(self.config.get("discord", "mod_roles", []) +
                             self.config.get("discord", "admin_roles", []), message)
         is_pm = isinstance(message.channel, discord.PrivateChannel)
@@ -185,7 +184,7 @@ class WordFilter:
 
             logger.info("filter_list: listing '{}' list for {}"
                 .format(validated_type, ctx.message.author))
-            filter_list = self.filter_cfg.get("filter", validated_type)
+            filter_list = self.state.get("filter", validated_type)
             if filter_list:
                 list_str = format_list(filter_list)
             else:
@@ -225,8 +224,8 @@ class WordFilter:
             return
         else:
             # not a copy - can modify directly
-            self.filter_cfg.get("filter", validated_type).append(word)
-            self.filter_cfg.write()
+            self.state.get("filter", validated_type).append(word)
+            self.state.write()
 
             logger.info("add: {}: Added {!r} to the {} list."
                 .format(ctx.message.author, word, validated_type))
@@ -257,7 +256,7 @@ class WordFilter:
             # error messages and logging already managed
             return
         else:
-            filter_list = self.filter_cfg.get("filter", validated_type)
+            filter_list = self.state.get("filter", validated_type)
             try:
                 # not a copy - can modify directly
                 filter_list.remove(word)
@@ -268,7 +267,7 @@ class WordFilter:
                 return
 
             else:  # no exceptions
-                self.filter_cfg.write()
+                self.state.write()
 
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, word, validated_type))
@@ -301,7 +300,7 @@ class WordFilter:
             return
         else:
             cfg_index = index - 1
-            filter_list = self.filter_cfg.get("filter", validated_type)
+            filter_list = self.state.get("filter", validated_type)
             try:
                 # not a copy - can modify directly
                 del_value = filter_list[cfg_index]
@@ -314,7 +313,7 @@ class WordFilter:
                 return
 
             else:  # no exceptions
-                self.filter_cfg.write()
+                self.state.write()
 
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, del_value, validated_type))
@@ -344,8 +343,8 @@ class WordFilter:
             self.dest_current = self.dest_output
         else:
             self.dest_current = self.dest_warning
-        self.filter_cfg.set('filter', 'channel', str(self.dest_current.id))
-        self.filter_cfg.write()
+        self.state.set('filter', 'channel', str(self.dest_current.id))
+        self.state.write()
 
         logger.info("switch(): Changed filter warning channel to #{}"
             .format(self.dest_current.name))

@@ -1,5 +1,6 @@
 # kaztron
 from collections import OrderedDict
+from .kazcog import KazCog
 
 __version__ = "2.1a1.dev4"
 

@@ -6,7 +6,6 @@ import discord
 
 import kaztron
 from kaztron.errors import *
-from kaztron.config import get_kaztron_config
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str
 from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_str, \
@@ -15,13 +14,33 @@ from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_s
 logger = logging.getLogger(__name__)
 
 
-class CoreCog:
+class CoreCog(kaztron.KazCog):
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
+        super().__init__(bot)
         self.ch_request = discord.Object(self.config.get('core', 'channel_request'))
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
         self.name = self.config.get("core", "name", "KazTron")
+
+        self.bot.event(self.on_error)  # register this as a global event handler, not just local
+        self.bot.add_check(self.check_bot_ready)
+        self.ready_cogs = set()
+
+    def check_bot_ready(self, ctx: commands.Context):
+        """ Check if bot is ready. Used as a global check. """
+        if ctx.cog is not None:
+            if ctx.cog in self.ready_cogs:
+                return True
+        elif self in self.ready_cogs or not isinstance(ctx.cog, kaztron.KazCog):
+            return True
+        raise BotNotReady()
+
+    def set_cog_ready(self, cog):
+        """
+        Called by the kaztron.KazCog base to signal it has executed its on_ready handler and is
+        ready to receive commands.
+        """
+        logger.info("Cog ready: {}".format(type(cog).__name__))
+        self.ready_cogs.add(cog)
 
     async def on_ready(self):
         logger.debug("on_ready")
@@ -51,6 +70,8 @@ class CoreCog:
         except discord.HTTPException:
             logger.exception("Error sending startup information to output channel")
 
+        await super().on_ready()
+
     async def on_error(self, event, *args, **kwargs):
         exc_info = sys.exc_info()
         if exc_info[0] is KeyboardInterrupt:
@@ -58,6 +79,9 @@ class CoreCog:
             raise exc_info[1]
         elif exc_info[0] is asyncio.CancelledError:
             raise exc_info[1]
+        elif exc_info[0] is BotNotReady:
+            logger.warning("Event {} called before on_ready: ignoring".format(event))
+            return
 
         log_msg = "Error occurred in {}({}, {})".format(
             event,
@@ -197,6 +221,12 @@ class CoreCog:
                 "Missing argument(s) for the command `{}`.\n\n**Usage:** `{}`\n\nUse `{}` for help."
                     .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
+
+        elif isinstance(exc, BotNotReady):
+            logger.warning("Attempted to use command while bot is booting: {}".format(cmd_string))
+            await self.bot.send_message(
+                ctx.message.channel, "Sorry, I'm still booting up! Try again in a few seconds."
+            )
 
         elif isinstance(exc, commands.CommandNotFound):
             msg = "Unknown command: {}".format(cmd_string)
