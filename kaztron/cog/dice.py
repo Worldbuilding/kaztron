@@ -4,7 +4,7 @@ import random
 import discord
 from discord.ext import commands
 
-from kaztron import errors
+from kaztron import errors, KazCog
 from kaztron.config import get_kaztron_config
 from kaztron.utils.checks import in_channels
 from kaztron.utils.logging import message_log_str
@@ -12,7 +12,7 @@ from kaztron.utils.logging import message_log_str
 logger = logging.getLogger(__name__)
 
 
-class DiceCog:
+class DiceCog(KazCog):
     config = get_kaztron_config()
     ch_allowed_list = (
         config.get('dice', 'channel_dice'),
@@ -21,13 +21,14 @@ class DiceCog:
     )
 
     def __init__(self, bot):
-        self.bot = bot
+        super().__init__(bot)
         self.ch_dice = None
 
     async def on_ready(self):
         self.ch_dice = self.bot.get_channel(self.config.get('dice', 'channel_dice'))
         if self.ch_dice is None:
             raise ValueError("Channel {} not found".format(self.config.get('dice', 'channel_dice')))
+        await super().on_ready()
 
     @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
     @in_channels(ch_allowed_list)
@@ -80,7 +81,7 @@ class DiceCog:
         roll_results = [random.choice(dice) for _ in range(4)]
         total = sum(roll_results)
         rolls_str = [str_map[roll] for roll in roll_results]
-        await self.bot.say("{!s}\n**Sum:** {:d}".format(rolls_str, total))
+        await self.bot.say("[{}]\n**Sum:** {:d}".format(' '.join(rolls_str), total))
         logger.info("Rolled FATE dice: {!r} (sum={})".format(rolls_str, total))
 
     @roll.error

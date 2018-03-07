@@ -69,5 +69,5 @@ def ready_only(func):
         if args[0].is_ready:
             await func(*args, **kwargs)
         else:
-            raise BotNotReady()
+            raise BotNotReady(type(args[0]).__name__)
     return wrapper

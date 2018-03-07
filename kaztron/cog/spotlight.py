@@ -11,6 +11,7 @@ from discord.ext import commands
 import dateparser
 from datetime import datetime, date, timedelta
 
+from kaztron import KazCog
 from kaztron.cog.role_man import RoleManager
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver import gsheets
@@ -170,7 +171,7 @@ class SpotlightApp:
         return "{} - *{}*".format(author_value, self.project.replace('*', '\\*'))
 
 
-class Spotlight:
+class Spotlight(KazCog):
     msg_join = \
         "You are now a part of the World Spotlight audience. You can be pinged by the "\
         "moderators or the host for spotlight-related news (like the start of a "\
@@ -202,15 +203,8 @@ class Spotlight:
     UNKNOWN_APP_STR = "Unknown - Index out of bounds"
 
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
-        try:
-            self.db = get_runtime_config()
-        except OSError as e:
-            logger.error(str(e))
-            raise RuntimeError("Failed to load runtime config") from e
-
-        self.db.set_defaults('spotlight', current=-1, queue=[])
+        super().__init__(bot)
+        self.state.set_defaults('spotlight', current=-1, queue=[])
 
         self.dest_output = None
         self.dest_spotlight = None
@@ -223,8 +217,8 @@ class Spotlight:
         self.applications = []
         self.applications_last_refresh = 0
 
-        self.current_app_index = int(self.db.get('spotlight', 'current', -1))
-        self.queue_data = deque(self.db.get('spotlight', 'queue', []))
+        self.current_app_index = int(self.state.get('spotlight', 'current', -1))
+        self.queue_data = deque(self.state.get('spotlight', 'queue', []))
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
@@ -238,9 +232,9 @@ class Spotlight:
 
     def _write_db(self):
         """ Write all data to the dynamic configuration file. """
-        self.db.set('spotlight', 'current', self.current_app_index)
-        self.db.set('spotlight', 'queue', list(self.queue_data))
-        self.db.write()
+        self.state.set('spotlight', 'current', self.current_app_index)
+        self.state.set('spotlight', 'queue', list(self.queue_data))
+        self.state.write()
 
     def _upgrade_queue_v21(self):
         new_queue = deque()
@@ -444,6 +438,8 @@ class Spotlight:
 
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
+
+        await super().on_ready()
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):

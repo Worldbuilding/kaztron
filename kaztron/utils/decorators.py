@@ -19,7 +19,8 @@ def error_handler(ErrorType, return_value):
 
 def task_handled_errors(func):
     """
-    Decorator for custom tasks. Any raised exceptions will call the KazTron general error handler.
+    Decorator for custom tasks. Can *only* wrap coroutines. Any raised exceptions will call the
+    KazTron general error handler.
     """
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):

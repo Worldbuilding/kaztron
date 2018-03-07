@@ -30,9 +30,12 @@ class CoreCog(kaztron.KazCog):
         if ctx.cog is not None:
             if ctx.cog in self.ready_cogs:
                 return True
+            else:
+                raise BotNotReady(type(ctx.cog).__name__)
         elif self in self.ready_cogs or not isinstance(ctx.cog, kaztron.KazCog):
             return True
-        raise BotNotReady()
+        else:
+            raise BotNotReady(type(self).__name__)
 
     def set_cog_ready(self, cog):
         """
@@ -223,9 +226,15 @@ class CoreCog(kaztron.KazCog):
             # No need to log user errors to mods
 
         elif isinstance(exc, BotNotReady):
-            logger.warning("Attempted to use command while bot is booting: {}".format(cmd_string))
+            try:
+                cog_name = exc.args[0]
+            except IndexError:
+                cog_name = 'unknown'
+            logger.warning("Attempted to use command while cog is not ready: {}".format(cmd_string))
             await self.bot.send_message(
-                ctx.message.channel, "Sorry, I'm still booting up! Try again in a few seconds."
+                ctx.message.channel,
+                "Sorry, I'm still loading the {} module! Try again in a few seconds."
+                    .format(cog_name)
             )
 
         elif isinstance(exc, commands.CommandNotFound):

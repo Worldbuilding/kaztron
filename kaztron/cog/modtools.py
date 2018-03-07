@@ -6,10 +6,13 @@ from typing import Iterable
 import discord
 from discord.ext import commands
 
+from kaztron import KazCog
 from kaztron.cog.modnotes.model import RecordType
 from kaztron.cog.modnotes import controller as c, model
 from kaztron.config import get_kaztron_config
+from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
+from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import get_named_role
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import parse_keyword_args
@@ -17,10 +20,9 @@ from kaztron.utils.strings import parse_keyword_args
 logger = logging.getLogger(__name__)
 
 
-class ModToolsCog:
+class ModToolsCog(KazCog):
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
+        super().__init__(bot)
         self.distinguish_map = self.config.get("modtools", "distinguish_map", {})
         self.wb_images = self.config.get("modtools", "wb_images", [])
         self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
@@ -43,7 +45,9 @@ class ModToolsCog:
 
         logger.debug("Starting task...")
         self.tempban_task = self.bot.loop.create_task(self.update_tempban_tick())
+        await super().on_ready()
 
+    @ready_only
     async def on_member_joined(self, member: discord.Member):
         await self.update_tempbans()
 
@@ -116,7 +120,7 @@ class ModToolsCog:
     async def update_tempban_tick(self):
         logger.info("Starting update_tempban_tick...")
         while not self.bot.is_closed:
-            await self.update_tempbans()
+            await task_handled_errors(self.update_tempbans())
             logger.debug("Waiting an hour for next tempban check...")
             await asyncio.sleep(3600)
 
@@ -189,7 +193,7 @@ class ModToolsCog:
         **Examples:**
         .tempban @BlitheringIdiot#1234 Was being a blithering idiot.
             Issues a 7-day ban.
-        .tempban @BlitheringIdiot#1234 expires="in 3 days Was being a slight blithering idiot only.
+        .tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight blithering idiot only.
             Issues a 3-day ban.
         """
         logger.debug("tempban: {}".format(message_log_str(ctx.message)))

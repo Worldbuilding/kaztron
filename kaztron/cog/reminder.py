@@ -8,6 +8,8 @@ from typing import List, Optional, Callable, Awaitable
 import dateparser
 import discord
 from discord.ext import commands
+
+from kaztron import KazCog
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import Limits
@@ -47,6 +49,7 @@ class ReminderData:
             a ReminderData instance as its first parameter.
         :return: The created Task object
         """
+        @task_handled_errors
         async def timer_event():
             wait_time = (self.remind_time - datetime.utcnow()).total_seconds()
             logger.debug("Starting timer for {!r} ({!s})".format(self, wait_time))
@@ -81,7 +84,7 @@ class ReminderData:
         )
 
 
-class ReminderCog:
+class ReminderCog(KazCog):
     CFG_SECTION = 'reminder'
     DATEPARSER_SETTINGS = {
         'TIMEZONE': 'UTC',
@@ -91,13 +94,7 @@ class ReminderCog:
     MAX_PER_USER = 10
 
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
-        try:
-            self.state = get_runtime_config()
-        except OSError as e:
-            logger.error(str(e))
-            raise RuntimeError("Failed to load runtime config") from e
+        super().__init__(bot)
         self.state.set_defaults(
             self.CFG_SECTION,
             reminders=[],
@@ -125,6 +122,7 @@ class ReminderCog:
         for reminder in self.reminders:
             reminder.start_timer(self.bot.loop, self.on_reminder_expired)
         self.ready = True
+        await super().on_ready()
 
     @commands.group(pass_context=True, invoke_without_command=True, aliases=['remind'])
     async def reminder(self, ctx: commands.Context, *, args: str):

@@ -50,7 +50,6 @@ class WordFilter(KazCog):
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.bot = bot
         self.state.set_defaults(
             'filter',
             warn=[],

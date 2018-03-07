@@ -11,6 +11,7 @@ from typing import Dict, List, Callable, Tuple, Deque
 import discord
 from discord.ext import commands
 
+from kaztron import KazCog
 from kaztron.cog.role_man import RoleManager
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.errors import UnauthorizedUserError
@@ -268,7 +269,7 @@ class EmbedInfo:
         ))
 
 
-class WritingSprint:
+class WritingSprint(KazCog):
     """
     Welcome to writing sprints, where everything's made up and the words don't matter!
 
@@ -455,13 +456,7 @@ class WritingSprint:
     TICK_INTERVAL = 15
 
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
-        try:
-            self.state = get_runtime_config()
-        except OSError as e:
-            logger.error(str(e))
-            raise RuntimeError("Failed to load runtime config") from e
+        super().__init__(bot)
         self.state.set_defaults(
             'sprint',
             state=SprintState.IDLE.value,
@@ -658,6 +653,8 @@ class WritingSprint:
                 self.state_task = self.bot.loop.create_task(self.on_sprint_end())
         elif state is SprintState.COLLECT_RESULTS:
             self.state_task = self.bot.loop.create_task(self.on_sprint_results())
+
+        await super().on_ready()
 
     @commands.group(invoke_without_command=True, pass_context=True, aliases=['w'])
     @in_channels_cfg('sprint', 'channel')

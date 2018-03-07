@@ -7,7 +7,8 @@ from typing import List, Optional
 import dateparser
 import discord
 from discord.ext import commands
-from kaztron.config import get_kaztron_config
+
+from kaztron import KazCog
 from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention
@@ -21,7 +22,7 @@ from kaztron.cog.modnotes import controller as c
 logger = logging.getLogger(__name__)
 
 
-class ModNotes:
+class ModNotes(KazCog):
     NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
 
@@ -39,10 +40,22 @@ class ModNotes:
     KW_EXPIRE = ('expires', 'expire', 'ends', 'end')
 
     def __init__(self, bot):
-        self.bot = bot  # type: commands.Bot
-        self.config = get_kaztron_config()
+        super().__init__(bot)
         self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
         self.ch_log = discord.Object(self.config.get('modnotes', 'channel_log'))
+
+    async def on_ready(self):
+        id_output = self.ch_output.id
+        self.ch_output = self.bot.get_channel(id_output)
+        if self.ch_output is None:
+            raise ValueError("Output channel {} not found".format(id_output))
+
+        id_log = self.ch_log.id
+        self.ch_log = self.bot.get_channel(id_log)
+        if self.ch_log is None:
+            raise ValueError("Modnotes channel {} not found".format(id_log))
+
+        await super().on_ready()
 
     @staticmethod
     def format_display_user(db_user: User):

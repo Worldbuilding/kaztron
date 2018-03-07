@@ -5,7 +5,9 @@ from typing import Union, Iterable
 import discord
 from discord.ext import commands
 
+from kaztron import KazCog
 from kaztron.config import get_kaztron_config
+from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import get_named_role
 from kaztron.utils.logging import message_log_str
@@ -14,10 +16,9 @@ from kaztron.utils.strings import get_help_str, get_command_str
 logger = logging.getLogger(__name__)
 
 
-class RoleManager:
+class RoleManager(KazCog):
     def __init__(self, bot):
-        self.bot = bot  # type: discord.Client
-        self.config = get_kaztron_config()
+        super().__init__(bot)
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
         self.voice_channel_ids = self.config.get('role_man', 'channels_voice', [])
         self.role_voice_name = self.config.get('role_man', 'role_voice', "")
@@ -33,9 +34,11 @@ class RoleManager:
             self.voice_feature = False
             err_msg = "Voice role management is disabled (incomplete config)."
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, "[WARNING] " + err_msg)
+            await self.bot.send_message(self.dest_output, "**Warning:** " + err_msg)
 
         self.setup_all_config_roles()
+
+        await super().on_ready()
 
     async def on_voice_state_update(self, before: discord.Member, after: discord.Member):
         """ Assigns "in voice" role to members who join voice channels. """
@@ -177,7 +180,6 @@ class RoleManager:
         if not cog_instance:
             cog_instance = self
 
-        # TODO: will this work?
         jc.instance = cog_instance
         lc.instance = cog_instance
 
