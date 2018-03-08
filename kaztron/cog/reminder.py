@@ -118,10 +118,10 @@ class ReminderCog(KazCog):
         self.state.write()
 
     async def on_ready(self):
-        self._load_reminders()
-        for reminder in self.reminders:
-            reminder.start_timer(self.bot.loop, self.on_reminder_expired)
-        self.ready = True
+        if not self.reminders:
+            self._load_reminders()
+            for reminder in self.reminders:
+                reminder.start_timer(self.bot.loop, self.on_reminder_expired)
         await super().on_ready()
 
     @commands.group(pass_context=True, invoke_without_command=True, aliases=['remind'])
@@ -152,9 +152,6 @@ class ReminderCog(KazCog):
         """
 
         logger.info("reminder: {}".format(message_log_str(ctx.message)))
-
-        if not self.ready:
-            raise discord.DiscordException("Bot not ready")
 
         # check existing count
         n = reduce(lambda c, r: c+1 if r.user_id == ctx.message.author.id else c, self.reminders, 0)
@@ -220,16 +217,16 @@ class ReminderCog(KazCog):
             )
         except discord.errors.DiscordException as e:
             logger.error("Error sending reminder: {}".format(exc_log_str(e)))
-        self.reminders.remove(reminder)
+            reminder.remind_time += 30  # try again a little later
+            reminder.start_timer(self.bot.loop, self.on_reminder_expired)
+        else:
+            self.reminders.remove(reminder)
         self._save_reminders()
 
     @reminder.command(ignore_extra=False, pass_context=True)
     async def list(self, ctx: commands.Context):
         """ Lists all future reminders you've requested. """
         logger.info("reminder list: {}".format(message_log_str(ctx.message)))
-
-        if not self.ready:
-            raise discord.DiscordException("Bot not ready")
 
         items = []
         filtered = filter(lambda r: r.user_id == ctx.message.author.id, self.reminders)
@@ -254,9 +251,6 @@ class ReminderCog(KazCog):
     async def clear(self, ctx: commands.Context):
         """ Remove all future reminders you've requested. """
         logger.info("reminder clear: {}".format(message_log_str(ctx.message)))
-
-        if not self.ready:
-            raise discord.DiscordException("Bot not ready")
 
         self.reminders = list(filter(lambda r: r.user_id != ctx.message.author.id, self.reminders))
         self._save_reminders()

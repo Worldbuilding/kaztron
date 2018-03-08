@@ -8,8 +8,8 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.modnotes.model import RecordType
+from kaztron.cog.modnotes.cog import ModNotes
 from kaztron.cog.modnotes import controller as c, model
-from kaztron.config import get_kaztron_config
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.decorators import task_handled_errors
@@ -28,8 +28,8 @@ class ModToolsCog(KazCog):
         self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
         self.ch_mod = discord.Object(self.config.get("modtools", "channel_mod"))
         self.role_name = self.config.get("modtools", "tempban_role")
-        self.cog_modnotes = None
-        self.tempban_task = None
+        self.cog_modnotes = None  # type: ModNotes
+        self.tempban_task = None  # type: asyncio.Task
 
     async def on_ready(self):
         logger.debug("Getting modnotes cog")
@@ -44,6 +44,8 @@ class ModToolsCog(KazCog):
             raise RuntimeError("Can't find ModNotes cog")
 
         logger.debug("Starting task...")
+        if self.tempban_task:
+            self.tempban_task.cancel()
         self.tempban_task = self.bot.loop.create_task(self.update_tempban_tick())
         await super().on_ready()
 

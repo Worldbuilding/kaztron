@@ -642,6 +642,9 @@ class WritingSprint(KazCog):
                 logger.exception("Error sending error to {}".format(self.dest_output_id))
 
         logger.info("Restoring task for current state...")
+        if self.state_task:  # in case this isn't the first time on_ready is called (reconnect)
+            self.state_task.cancel()
+
         if state is SprintState.IDLE:
             logger.info("No sprint, no task needs restoring.")
         elif state is SprintState.PREPARE:
