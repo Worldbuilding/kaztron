@@ -3,6 +3,12 @@ import re
 import discord
 from discord.ext import commands
 
+from kaztron.config import get_kaztron_config
+
+import logging
+
+logger = logging.getLogger('kaztron.discord')
+
 MSG_MAX_LEN = 2000
 
 
@@ -50,6 +56,25 @@ def get_named_role(server: discord.Server, role_name: str) -> discord.Role:
     if role is None:
         raise ValueError("Role '{!s}' not found.".format(role_name))
     return role
+
+
+def check_mod(ctx: commands.Context):
+    """
+    Check if the sender of a command is a mod or admin (as defined by the
+    roles in the "discord" -> "mod_roles" and "discord" -> "admin_roles" configs).
+    """
+    config = get_kaztron_config()
+    return check_role(config.get("discord", "mod_roles", []), ctx.message) or \
+        check_role(config.get("discord", "admin_roles", []), ctx.message)
+
+
+def check_admin(ctx: commands.Context):
+    """
+    Check if the sender of a command is an admin (as defined by the
+    roles in the "discord" -> "admin_roles" config).
+    """
+    config = get_kaztron_config()
+    return check_role(config.get("discord", "admin_roles", []), ctx.message)
 
 
 async def remove_role_from_all(client: discord.Client, server: discord.Server, role: discord.Role):

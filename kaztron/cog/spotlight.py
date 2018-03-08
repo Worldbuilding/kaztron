@@ -9,16 +9,20 @@ import discord
 from discord.ext import commands
 
 import dateparser
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
+from kaztron import KazCog
+from kaztron.cog.role_man import RoleManager
 from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only
+from kaztron.utils.converter import NaturalDateConverter
 from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits, remove_role_from_all, \
     extract_user_id, user_mention, get_member
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
-from kaztron.utils.strings import format_list, get_help_str, natural_truncate, split_chunks_on
+from kaztron.utils.strings import format_list, get_help_str, natural_truncate, split_chunks_on, \
+    format_date
 
 logger = logging.getLogger(__name__)
 
@@ -48,19 +52,19 @@ class SpotlightApp:
     @property
     @error_handler(IndexError, "")
     def user_name(self) -> str:
-        return self._data[1]
+        return self._data[1].strip()
 
     @property
     @error_handler(IndexError, "")
     def user_name_only(self) -> str:
         """ User name without discriminator (if provided in the field). """
-        return self._data[1].split('#', maxsplit=1)[0]
+        return self._data[1].split('#', maxsplit=1)[0].strip()
 
     @property
     @error_handler(IndexError, "")
     def user_discriminator(self) -> str:
         """ Discriminator (the #xxxx part of an @mention in the client, if provided). """
-        return self._data[1].split('#', maxsplit=1)[1]
+        return self._data[1].split('#', maxsplit=1)[1].strip()
 
     @property
     @error_handler(IndexError, "")
@@ -69,7 +73,7 @@ class SpotlightApp:
         try:
             s_user_id = extract_user_id(self.user_id)
         except discord.InvalidArgument:
-            return self.user_name_only
+            return self.user_name_only.strip()
         else:
             return user_mention(s_user_id)
 
@@ -77,17 +81,17 @@ class SpotlightApp:
     @error_handler(ValueError, "")
     @error_handler(IndexError, "")
     def user_id(self) -> str:
-        return self._data[2]
+        return self._data[2].strip()
 
     @property
     @error_handler(IndexError, "")
     def user_reddit(self) -> str:
-        return self._data[3]
+        return self._data[3].strip()
 
     @property
     @error_handler(IndexError, "")
     def project(self) -> str:
-        return self._data[4]
+        return self._data[4].strip()
 
     @property
     @error_handler(IndexError, "")
@@ -161,13 +165,13 @@ class SpotlightApp:
         try:
             s_user_id = extract_user_id(self.user_id)
         except discord.InvalidArgument:
-            author_value = "{} (invalid ID)".format(self.user_name_only.strip())
+            author_value = "{} (invalid ID)".format(self.user_name_only)
         else:
-            author_value = "{} ({})".format(self.user_name_only.strip(), user_mention(s_user_id))
-        return "{} - *{}*".format(author_value, self.project.strip().replace('*', '\\*'))
+            author_value = "{} ({})".format(self.user_name_only, user_mention(s_user_id))
+        return "{} - *{}*".format(author_value, self.project.replace('*', '\\*'))
 
 
-class Spotlight:
+class Spotlight(KazCog):
     msg_join = \
         "You are now a part of the World Spotlight audience. You can be pinged by the "\
         "moderators or the host for spotlight-related news (like the start of a "\
@@ -191,21 +195,16 @@ class Spotlight:
     LIST_HEADING = "Spotlight Application List"
     QUEUE_HEADING = "**Upcoming Spotlight Queue**"
     QUEUE_ADD_HEADING = "**Added to Queue**"
-    QUEUE_INSERT_HEADING = "**Inserted into Queue**"
+    QUEUE_EDIT_HEADING = "**Edited in Queue**"
     QUEUE_REM_HEADING = "**Removed from Queue**"
+    QUEUE_ENTRY_FMT = '(#{id:d}) [{date}] {app}'
+    QUEUE_CHANGED_FMT = '{msg}: {i:d}. ' + QUEUE_ENTRY_FMT
 
     UNKNOWN_APP_STR = "Unknown - Index out of bounds"
 
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
-        try:
-            self.db = get_runtime_config()
-        except OSError as e:
-            logger.error(str(e))
-            raise RuntimeError("Failed to load runtime config") from e
-
-        self.db.set_defaults('spotlight', current=-1, queue=[])
+        super().__init__(bot)
+        self.state.set_defaults('spotlight', current=-1, queue=[])
 
         self.dest_output = None
         self.dest_spotlight = None
@@ -218,8 +217,8 @@ class Spotlight:
         self.applications = []
         self.applications_last_refresh = 0
 
-        self.current_app_index = int(self.db.get('spotlight', 'current', -1))
-        self.queue_data = deque(self.db.get('spotlight', 'queue', []))
+        self.current_app_index = int(self.state.get('spotlight', 'current', -1))
+        self.queue_data = deque(self.state.get('spotlight', 'queue', []))
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
@@ -233,9 +232,20 @@ class Spotlight:
 
     def _write_db(self):
         """ Write all data to the dynamic configuration file. """
-        self.db.set('spotlight', 'current', self.current_app_index)
-        self.db.set('spotlight', 'queue', list(self.queue_data))
-        self.db.write()
+        self.state.set('spotlight', 'current', self.current_app_index)
+        self.state.set('spotlight', 'queue', list(self.queue_data))
+        self.state.write()
+
+    def _upgrade_queue_v21(self):
+        new_queue = deque()
+        cur_date = datetime.utcnow()
+        if self.queue_data and not isinstance(self.queue_data[0], dict):
+            logger.info("Upgrading queue to version 2.1")
+            for queue_index in self.queue_data:
+                new_queue.append({'index': queue_index, 'timestamp': cur_date.timestamp()})
+                cur_date += timedelta(days=1)
+            self.queue_data = new_queue
+            self._write_db()
 
     async def _get_current(self) -> SpotlightApp:
         """
@@ -310,12 +320,9 @@ class Spotlight:
         else:
             author_value = "{} ({})".format(user_mention(s_user_id), app.user_name_only)
 
-        em = discord.Embed(color=0x80AAFF, title=app.user_name[:128])
-        em.set_author(name="Spotlight Application #{:d}".format(index))
+        em = discord.Embed(color=0x80AAFF)
         em.add_field(name="Project Name", value=app.project, inline=True)
-        em.add_field(name="Author",
-                     value=author_value,
-                     inline=True)
+        em.add_field(name="Author", value=author_value, inline=True)
 
         # if app.is_filled(app.user_reddit):
         #     em.add_field(name="Reddit", value="/u/" + app.user_reddit[:128], inline=True)
@@ -344,6 +351,7 @@ class Spotlight:
                          inline=True)
 
         await self.bot.send_message(destination, embed=em)
+        await self.bot.say("Spotlight ID #{:d}: {!s}".format(index, app))
 
     async def send_validation_warnings(self, ctx: commands.Context, app: SpotlightApp):
         """
@@ -395,8 +403,43 @@ class Spotlight:
         if self.dest_spotlight is None:
             raise ValueError("Spotlight channel '{}' not found".format(id_spotlight))
 
+        roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
+        if roleman:
+            try:
+                roleman.add_managed_role(
+                    role_name=self.role_audience_name,
+                    join="join",
+                    leave="leave",
+                    join_msg=self.msg_join,
+                    leave_msg=self.msg_leave,
+                    join_err=self.msg_join_err,
+                    leave_err=self.msg_leave_err,
+                    join_doc="Join the Spotlight Audience. This allows you to be pinged by "
+                             "moderators or the Spotlight Host for news about the spotlight (like "
+                             "the start of a new spotlight, or a newly released schedule).\n\n"
+                             "To leave the Spotlight Audience, use `.spotlight leave`.",
+                    leave_doc="Leave the Spotlight Audience. See `.help spotlight join` for more "
+                              "information.\n\n"
+                              "To join the Spotlight Audience, use `.spotlight join`.",
+                    group=self.spotlight,
+                    cog_instance=self,
+                    ignore_extra=False
+                )
+            except discord.ClientException:
+                logger.warning("`sprint follow` command already defined - "
+                               "this is OK if client reconnected")
+        else:
+            err_msg = "Cannot find RoleManager - is it enabled in config?"
+            logger.error(err_msg)
+            await self.bot.send_message(self.dest_output, err_msg)
+
+        # convert queue from v2.0 queue
+        self._upgrade_queue_v21()
+
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
+
+        await super().on_ready()
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):
@@ -407,46 +450,6 @@ class Spotlight:
         await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
                             'Use `{1}` or `{1} <subcommand>` for instructions.')
             .format(command_list, get_help_str(ctx)))
-
-    @spotlight.command(pass_context=True)
-    async def join(self, ctx):
-        """
-        Join the Spotlight Audience. This allows you to be pinged by moderators or the Spotlight
-        Host for news about the spotlight (like the start of a new spotlight, or a newly released
-        schedule).
-
-        To leave the Spotlight Audience, use `.spotlight leave`.
-        """
-        logger.debug("join: " + message_log_str(ctx.message)[:64])
-        role = get_named_role(ctx.message.server, self.role_audience_name)
-
-        if role not in ctx.message.author.roles:
-            await self.bot.add_roles(ctx.message.author, role)
-            logger.info("join: Gave role {} to user {}"
-                .format(self.role_audience_name, ctx.message.author))
-            await self.bot.send_message(ctx.message.author, self.msg_join)
-        else:
-            await self.bot.send_message(ctx.message.author, self.msg_join_err)
-        await self.bot.delete_message(ctx.message)
-
-    @spotlight.command(pass_context=True)
-    async def leave(self, ctx):
-        """
-        Leave the Spotlight Audience. See `.help spotlight join` for more information.
-
-        To join the Spotlight Audience, use `.spotlight join`.
-        """
-        logger.debug("leave: " + message_log_str(ctx.message)[:64])
-        role = get_named_role(ctx.message.server, self.role_audience_name)
-
-        if role in ctx.message.author.roles:
-            await self.bot.remove_roles(ctx.message.author, role)
-            logger.info("leave: Removed role {} from user {}"
-                .format(self.role_audience_name, ctx.message.author))
-            await self.bot.send_message(ctx.message.author, self.msg_leave)
-        else:
-            await self.bot.send_message(ctx.message.author, self.msg_leave_err)
-        await self.bot.delete_message(ctx.message)
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['l'])
     @mod_only()
@@ -462,8 +465,7 @@ class Spotlight:
         # format each application as a string
         app_str_list = []
         for app in self.applications:
-            if app.user_name.strip() and app.project.strip() \
-                    and not app.project.strip() == 'DELETED':
+            if app.user_name and app.project and not app.project == 'DELETED':
                 app_str_list.append(app.discord_str())
             else:  # deleted entries: blank username/project name or blank user/'DELETED' project
                 app_str_list.append(None)
@@ -614,15 +616,26 @@ class Spotlight:
 
     def _get_queue_list(self):
         app_strings = []
-        for app_index in self.queue_data:
+        for queue_item in self.queue_data:
+            app_index = queue_item['index']
             try:
                 # don't convert this to _get_app - don't want the error msgs from that
                 app = self.applications[app_index]
             except IndexError:
-                app_strings.append("(#{0:d}) {1}".format(app_index, self.UNKNOWN_APP_STR))
+                app_str = self.UNKNOWN_APP_STR
             else:
-                app_strings.append("(#{0:d}) {1}".format(app_index + 1, app.discord_str()))
+                app_str = app.discord_str()
+
+            app_strings.append(self.QUEUE_ENTRY_FMT.format(
+                id=app_index+1,
+                date=format_date(date.fromtimestamp(queue_item['timestamp'])),
+                app=app_str)
+            )
+
         return app_strings
+
+    def sort_queue(self):
+        self.queue_data = deque(sorted(self.queue_data, key=lambda o: o['timestamp']))
 
     @queue.command(name='list', ignore_extra=False, pass_context=True, aliases=['l'])
     @mod_only()
@@ -643,25 +656,41 @@ class Spotlight:
 
     @queue.command(name='add', ignore_extra=False, pass_context=True, aliases=['a'])
     @mod_only()
-    async def queue_add(self, ctx, list_index: int=None):
+    async def queue_add(self, ctx, datespec: NaturalDateConverter, list_index: int=None):
         """
-        [MOD ONLY] Add a spotlight application to the end of the queue of upcoming spotlights. You
-        can either use the currently selected spotlight, or specify an index number for the
+        [MOD ONLY] Add a spotlight application scheduled for a given date.
+
+        You can either use the currently selected spotlight, or specify an index number for the
         spotlight application to add.
 
+        NOTE: KazTron will not take any action on the scheduled date. It is purely informational,
+        intended for the bot operator, as well as determining the order of the queue.
+
+        TIP: You can add the same Spotlight application to the queue multiple times (e.g. on
+        different dates). To edit the date instead, use `.spotlight queue edit`.
+
         Arguments:
+        * `<datespec>`: Required, string. A string identifying the date. If the datespec contains
+          spaces, quotation marks are *required*. The datespec can be:
+            * An exact date: 2017-12-25, "25 December 2017", "December 25, 2017"
+            * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
+              the week ("next Tuesday").
         * list_index: Optional, int. The numerical index of a spotlight application, as shown with
-        .spotlight list. If this is not provided, the currently selected application will be used
-        (so you don't have to specify this argument if you're using `.spotlight roll`,
-        `.spotlight select` or `.spotlight queue next`, for example).
+          .spotlight list. If this is not provided, the currently selected application will be used
+          (so you don't have to specify this argument if you're using `.spotlight roll`,
+          `.spotlight select` or `.spotlight queue next`, for example).
 
         Examples:
-        * `.spotlight queue add` - Adds the currently selected application to the end of the queue.
-        * `.spotlight queue add 13` - Adds application #13 to the end of the queue.
+        * `.spotlight queue add 2017-12-25` - Adds the currently selected application, scheduled on
+          25 December 2017.
+        * `.spotlight queue add "in 3 days" 13` - Adds application #13, scheduled
         """
         logger.debug("queue add: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
+        dt = datespec  # type: datetime
+        add_timestamp = dt.timestamp()
+
         if list_index is not None:
             array_index = list_index - 1
             try:
@@ -669,79 +698,37 @@ class Spotlight:
             except IndexError:
                 return  # already handled by _get_app
             else:
-                self.queue_data.append(array_index)
-                logger.info("queue add: added #{:d} from passed arg".format(list_index))
+                queue_item = {'index': array_index, 'timestamp': add_timestamp}
+                self.queue_data.append(queue_item)
+                logger.info("queue add: added #{:d} from passed arg at {}"
+                    .format(list_index, dt.isoformat(' ')))
         else:  # no list_index passed
             try:
                 app = await self._get_current()
             except IndexError:
                 return  # already handled by _get_current
             else:
-                self.queue_data.append(self.current_app_index)
-                logger.info("queue add: added #{:d} from current select"
-                    .format(self.current_app_index + 1))
+                queue_item = {'index': self.current_app_index, 'timestamp': add_timestamp}
+                self.queue_data.append(queue_item)
+                logger.info("queue add: added #{:d} from current select at {}"
+                    .format(self.current_app_index + 1, dt.isoformat(' ')))
 
+        self.sort_queue()
+        queue_index = self.queue_data.index(queue_item)  # find the new position now
         self._write_db()
-        await self.bot.say("{}: {:d}. {}".format(
-            self.QUEUE_ADD_HEADING, len(self.queue_data), app.discord_str()
+        await self.bot.say(self.QUEUE_CHANGED_FMT.format(
+            msg=self.QUEUE_ADD_HEADING,
+            i=queue_index+1,
+            id=queue_item['index'] + 1,
+            date=format_date(dt),
+            app=app.discord_str()
         ))
 
-    @queue.command(name='insert', ignore_extra=False, pass_context=True, aliases=['i'])
+    @queue.command(name='insert', pass_context=True, hidden=True, aliases=['i'])
     @mod_only()
-    async def queue_insert(self, ctx, queue_index: int, list_index: int=None):
-        """
-        [MOD ONLY] Insert a spotlight application into the queue of upcoming spotlights. You can
-        either use the currently selected spotlight, or specify an index number for the spotlight
-        application to add.
-
-        Arguments:
-        * queue_index: Required, int. The numerical position at which to insert this entry in the
-          queue.
-        * list_index: Optional, int. The numerical index of a spotlight application, as shown with
-        .spotlight list. If this is not provided, the currently selected application will be used
-        (so you don't have to specify this argument if you're using `.spotlight roll`,
-        `.spotlight select` or `.spotlight queue next`, for example).
-
-        Examples:
-        * `.spotlight queue insert 4` - Insert the currently selected application to the 4th
-          position in the queue.
-        * `.spotlight queue add 1 13` - Adds application #13 to the front of the queue.
-        """
+    async def queue_insert(self, ctx):
         logger.debug("queue insert: {}".format(message_log_str(ctx.message)))
-        self._load_applications()
-
-        queue_array_index = queue_index - 1
-
-        if not (0 <= queue_array_index <= len(self.queue_data)):
-            raise commands.BadArgument(
-                ("{0:d} is not a valid queue index! "
-                 "Currently valid values are 1 to {1:d} inclusive.")
-                .format(queue_index, len(self.queue_data)+1))
-
-        if list_index is not None:
-            array_index = list_index - 1
-            try:
-                app = await self._get_app(array_index)
-            except IndexError:
-                return  # already handled by _get_app
-            else:
-                self.queue_data.insert(queue_array_index, array_index)
-                logger.info("queue insert: inserted #{1:d} at {0:d} from passed arg"
-                    .format(queue_index, list_index))
-        else:  # no list_index passed
-            try:
-                app = await self._get_current()
-            except IndexError:
-                return  # already handled by _get_current
-            else:
-                self.queue_data.insert(queue_array_index, self.current_app_index)
-                logger.info("queue insert: inserted #{1:d} at {0:d} from current select"
-                    .format(queue_index, self.current_app_index + 1))
-
-        self._write_db()
-        await self.bot.say("{}: {:d}. {}".format(
-            self.QUEUE_INSERT_HEADING, queue_index, app.discord_str()
-        ))
+        await self.bot.say("**Error**: This command is no longer supported (>= 2.1).")
 
     @queue.command(name='next', ignore_extra=False, pass_context=True, aliases=['n'])
     @mod_only()
@@ -754,22 +741,89 @@ class Spotlight:
         logger.debug("queue next: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         old_index = self.current_app_index
-        self.current_app_index = self.queue_data.popleft()
+        queue_item = self.queue_data.popleft()
+        self.current_app_index = queue_item['index']
+        date_str = format_date(date.fromtimestamp(queue_item['timestamp']))
         try:
             app = await self._get_current()
         except IndexError:
             self.bot.say("Sorry, the queued index seems to have become invalid!")
-            self.queue_data.appendleft(self.current_app_index)
+            self.queue_data.appendleft(queue_item)
             self.current_app_index = old_index
             return  # get_current() already handles this
         except:
-            self.queue_data.appendleft(self.current_app_index)
+            self.queue_data.appendleft(queue_item)
             self.current_app_index = old_index
             raise
         else:
             await self.send_spotlight_info(ctx.message.channel, app)
+            await self.bot.say("**Scheduled for:** {}".format(date_str))
             await self.send_validation_warnings(ctx, app)
             self._write_db()
+
+    @queue.command(name='edit', ignore_extra=False, pass_context=True, aliases=['e'])
+    @mod_only()
+    async def queue_edit(self, ctx, queue_index: int, datespec: NaturalDateConverter):
+        """
+        [MOD ONLY] Change the scheduled date of a spotlight application in the queue.
+
+        This command takes a QUEUE INDEX, not by spotlight number. Check the index with
+        `.spotlight queue list`.
+
+        Note: KazTron will not take any action on the scheduled date. It is purely informational,
+        intended for the bot operator, as well as determining the order of the queue.
+
+        Arguments:
+        * `<queue_index>`: Required, int. The numerical position in the queue, as shown with
+          `.spotlight queue list` ([1.8.1](#181-list-shorthand-l)).
+        * `<datespec>`: Required, string. A string identifying the date. This can be:
+            * An exact date: 2017-12-25, "25 December 2017", "December 25, 2017" (with quotes)
+            * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
+              the week ("next Tuesday").
+
+        Examples:
+            `.spotlight queue edit 3 2017-12-31` - Changes the date of the 3rd queued application to
+                31 December 2017.
+        """
+        logger.debug("queue edit: {}".format(message_log_str(ctx.message)))
+        self._load_applications()
+
+        if queue_index is not None:
+            queue_array_index = queue_index - 1
+
+            if not (0 <= queue_array_index < len(self.queue_data)):
+                raise commands.BadArgument(
+                    ("{0:d} is not a valid queue index! "
+                     "Currently valid values are 1 to {1:d} inclusive.")
+                         .format(queue_index, len(self.queue_data)))
+        else:
+            queue_array_index = -1  # last item
+
+        queue_item = self.queue_data[queue_array_index]
+        array_index = queue_item['index']
+        list_index = array_index + 1  # user-facing
+
+        dt = datespec  # type: datetime
+        queue_item['timestamp'] = dt.timestamp()  # same mutable object as in queue_data
+        self.sort_queue()
+        new_queue_index = self.queue_data.index(queue_item) + 1
+
+        try:
+            # don't use _get_app - don't want errmsgs
+            app_str = self.applications[array_index].discord_str()
+        except IndexError:
+            app_str = self.UNKNOWN_APP_STR
+
+        logger.info("queue edit: changed item {:d} to date {}"
+            .format(queue_index, dt.isoformat(' ')))
+        self._write_db()
+        await self.bot.say(self.QUEUE_CHANGED_FMT.format(
+            msg=self.QUEUE_EDIT_HEADING,
+            i=new_queue_index,
+            id=list_index,
+            date=format_date(dt),
+            app=app_str
+        ))
 
     @queue.command(name='rem', ignore_extra=False, pass_context=True, aliases=['r', 'remove'])
     @mod_only()
@@ -802,21 +856,26 @@ class Spotlight:
         else:
             queue_array_index = -1  # last item
 
-        array_index = self.queue_data[queue_array_index]
+        queue_item = self.queue_data[queue_array_index]
+        array_index = queue_item['index']
         list_index = array_index + 1  # user-facing
 
         try:
             # don't use _get_app - don't want errmsgs
-            app_str = "(#{:d}) {}".format(list_index, self.applications[array_index].discord_str())
+            app_str = self.applications[array_index].discord_str()
         except IndexError:
-            app_str = "(#{0:d}) {1}".format(list_index, self.UNKNOWN_APP_STR)
+            app_str = self.UNKNOWN_APP_STR
 
         del self.queue_data[queue_array_index]
 
         logger.info("queue rem: removed index {0:d}".format(queue_index))
         self._write_db()
-        await self.bot.say("{}: {:d}. {}".format(
-            self.QUEUE_REM_HEADING, queue_index, app_str
+        await self.bot.say(self.QUEUE_CHANGED_FMT.format(
+            msg=self.QUEUE_REM_HEADING,
+            i=queue_index,
+            id=list_index,
+            date=format_date(date.fromtimestamp(queue_item['timestamp'])),
+            app=app_str
         ))
 
     @list.error
@@ -826,6 +885,7 @@ class Spotlight:
     @showcase.error
     @queue_list.error
     @queue_add.error
+    @queue_edit.error
     @queue_insert.error
     @queue_next.error
     @queue_rem.error

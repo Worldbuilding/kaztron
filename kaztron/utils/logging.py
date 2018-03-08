@@ -1,3 +1,4 @@
+import copy
 import traceback
 import logging
 
@@ -9,6 +10,17 @@ def setup_logging(logger, config):
     from kaztron.config import log_level
     cfg_level = config.get("core", "log_level", converter=log_level)
     logger.setLevel(cfg_level)
+
+    # Specific packages
+    cfg_packages = {  # defaults
+        "sqlalchemy.engine": "WARN",
+        "websockets.protocol": "INFO",
+        "discord": "INFO"
+    }
+    cfg_packages.update(config.get("core", "log_dependencies"))
+
+    for name, s_value in cfg_packages.items():
+        logging.getLogger(name).setLevel(max(log_level(s_value), cfg_level))
 
     # File handler
     fh = logging.FileHandler(config.get("core", "log_file"))
@@ -22,9 +34,6 @@ def setup_logging(logger, config):
     ch.setLevel(max(cfg_level, logging.INFO))  # never below INFO - avoid cluttering console
     ch.setFormatter(ch_formatter)
     logger.addHandler(ch)
-
-    # SQLalchemy
-    logging.getLogger('sqlalchemy.engine').setLevel(min(logging.INFO, cfg_level))
 
 
 def message_log_str(message: discord.Message) -> str:

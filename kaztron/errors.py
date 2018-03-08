@@ -1,6 +1,10 @@
 from discord.ext import commands
 
 
+class BotNotReady(commands.CommandError):
+    pass
+
+
 class UnauthorizedUserError(commands.CommandError):
     pass
 

@@ -79,7 +79,7 @@ class KaztronConfig:
         """
         Write the current config data to the configured file.
         :raises OSError: Error opening or writing file.
-        :raise RuntimeError: configuration is set as read-only
+        :raise ReadOnlyError: configuration is set as read-only
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
@@ -165,7 +165,7 @@ class KaztronConfig:
         :param section: Section of the config file
         :param key: Key name to store
         :param value: Value to store at the given section and key
-        :raise RuntimeError: configuration is set as read-only
+        :raise ReadOnlyError: configuration is set as read-only
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))

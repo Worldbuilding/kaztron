@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import sys
@@ -5,7 +6,6 @@ import discord
 
 import kaztron
 from kaztron.errors import *
-from kaztron.config import get_kaztron_config
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str
 from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_str, \
@@ -14,12 +14,36 @@ from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_s
 logger = logging.getLogger(__name__)
 
 
-class CoreCog:
+class CoreCog(kaztron.KazCog):
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
+        super().__init__(bot)
         self.ch_request = discord.Object(self.config.get('core', 'channel_request'))
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
+        self.name = self.config.get("core", "name", "KazTron")
+
+        self.bot.event(self.on_error)  # register this as a global event handler, not just local
+        self.bot.add_check(self.check_bot_ready)
+        self.ready_cogs = set()
+
+    def check_bot_ready(self, ctx: commands.Context):
+        """ Check if bot is ready. Used as a global check. """
+        if ctx.cog is not None:
+            if ctx.cog in self.ready_cogs:
+                return True
+            else:
+                raise BotNotReady(type(ctx.cog).__name__)
+        elif self in self.ready_cogs or not isinstance(ctx.cog, kaztron.KazCog):
+            return True
+        else:
+            raise BotNotReady(type(self).__name__)
+
+    def set_cog_ready(self, cog):
+        """
+        Called by the kaztron.KazCog base to signal it has executed its on_ready handler and is
+        ready to receive commands.
+        """
+        logger.info("Cog ready: {}".format(type(cog).__name__))
+        self.ready_cogs.add(cog)
 
     async def on_ready(self):
         logger.debug("on_ready")
@@ -29,9 +53,10 @@ class CoreCog:
             await self.bot.change_presence(game=discord.Game(name=playing))
 
         startup_info = (
-            "Logged in as {} (id:{})".format(self.bot.user.name, self.bot.user.id),
+            "Bot name {}".format(self.name),
             "KazTron version {}".format(kaztron.__version__),
-            "discord.py version {}".format(discord.__version__)
+            "discord.py version {}".format(discord.__version__),
+            "Logged in as {} (id:{})".format(self.bot.user.name, self.bot.user.id),
         )
 
         for msg in startup_info:
@@ -43,16 +68,23 @@ class CoreCog:
         try:
             await self.bot.send_message(
                 self.dest_output,
-                "**KazTron has (re)connected**\n" + '\n'.join(startup_info)
+                "**{} is running**\n".format(self.name) + '\n'.join(startup_info)
             )
         except discord.HTTPException:
             logger.exception("Error sending startup information to output channel")
+
+        await super().on_ready()
 
     async def on_error(self, event, *args, **kwargs):
         exc_info = sys.exc_info()
         if exc_info[0] is KeyboardInterrupt:
             logger.warning("Interrupted by user (SIGINT)")
             raise exc_info[1]
+        elif exc_info[0] is asyncio.CancelledError:
+            raise exc_info[1]
+        elif exc_info[0] is BotNotReady:
+            logger.warning("Event {} called before on_ready: ignoring".format(event))
+            return
 
         log_msg = "Error occurred in {}({}, {})".format(
             event,
@@ -193,6 +225,18 @@ class CoreCog:
                     .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
+        elif isinstance(exc, BotNotReady):
+            try:
+                cog_name = exc.args[0]
+            except IndexError:
+                cog_name = 'unknown'
+            logger.warning("Attempted to use command while cog is not ready: {}".format(cmd_string))
+            await self.bot.send_message(
+                ctx.message.channel,
+                "Sorry, I'm still loading the {} module! Try again in a few seconds."
+                    .format(cog_name)
+            )
+
         elif isinstance(exc, commands.CommandNotFound):
             msg = "Unknown command: {}".format(cmd_string)
             # avoid some natural language things that start with period (ellipsis, etc.)
@@ -211,8 +255,7 @@ class CoreCog:
                 ("[ERROR] Unknown error while trying to process command {}\n"
                  "Error: {!s}\n\nSee logs for details").format(cmd_string, exc))
 
-    @commands.command(pass_context=True,
-        description="[MOD ONLY] Provide bot info. Useful for testing but responsivity too.")
+    @commands.command(pass_context=True)
     @mod_only()
     async def info(self, ctx):
         """
@@ -223,11 +266,15 @@ class CoreCog:
         Arguments: None.
         """
         logger.debug("info(): {!s}".format(message_log_str(ctx.message)))
-        em = discord.Embed(color=0x80AAFF)
-        em.set_author(name="KazTron v{}".format(kaztron.bot_info["version"]))
-        em.add_field(name="Changelog", value=kaztron.bot_info["changelog"], inline=False)
+        em = discord.Embed(color=0x80AAFF, title=self.name)
+        em.add_field(name="Logged in as",
+                     value="{!s}".format(self.bot.user.mention))
+        em.add_field(name="KazTron version",
+                     value="v{}".format(kaztron.bot_info["version"]), inline=True)
+        em.add_field(name="discord.py version",
+            value="v{}".format(discord.__version__), inline=True)
         for title, url in kaztron.bot_info["links"].items():
-            em.add_field(name=title, value="[Link]({})".format(url), inline=True)
+            em.add_field(name=title, value="[{0}]({1})".format(title, url), inline=True)
         await self.bot.say(embed=em)
 
     @commands.command(pass_context=True, aliases=['bug', 'issue'])

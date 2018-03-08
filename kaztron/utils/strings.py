@@ -5,6 +5,8 @@ from typing import List, Union, Dict, Iterable
 import discord
 from discord.ext import commands
 
+from kaztron.config import get_kaztron_config
+
 
 def format_list(list_) -> str:
     """
@@ -162,7 +164,7 @@ def get_timestamp_str(dt: Union[discord.Message, datetime.datetime]) -> str:
     """
     if isinstance(dt, discord.Message):
         dt = dt.timestamp
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
+    return format_datetime(dt, seconds=True) + ' UTC'
 
 
 def none_wrapper(value, default=""):
@@ -180,7 +182,6 @@ def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], s
     :param keywords: Valid keywords
     :param args: String argument to parse
     :return: (Dict of kwargs, remaining part of args)
-    :
     """
     kwargs = {}
     matches = _KWARG_RE.match(args)
@@ -194,3 +195,85 @@ def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], s
             raise ValueError('Unknown keyword `{}`'.format(key))
         matches = _KWARG_RE.match(args)
     return kwargs, args.strip()
+
+
+def format_datetime(dt: datetime.datetime, seconds=False) -> str:
+    """
+    Format a datetime object as a datetime (as specified in config).
+    :param dt: The datetime object to format.
+    :param seconds: Whether or not to display seconds (this determines which config format to use).
+    :return:
+    """
+    format_key = 'datetime_format' if not seconds else 'datetime_seconds_format'
+    return dt.strftime(get_kaztron_config().get('core', format_key))
+
+
+def format_date(d: Union[datetime.datetime, datetime.date]) -> str:
+    """
+    Format a datetime object as a date (as specified in config).
+
+    :param d: The date or datetime object to format.
+    :return:
+    """
+    return d.strftime(get_kaztron_config().get('core', 'date_format'))
+
+
+def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
+    """
+    Format a timedelta object into "x days y hours" etc. format.
+
+    This is ugly. Sorry.
+
+    :param delta: The delta to format.
+    :param timespec: One of "days", "hours", "minutes", "seconds", "microseconds" - the level of
+        resolution to show.
+    :return:
+    """
+    str_parts = []
+
+    timespec_list = ['days', 'hours', 'minutes', 'seconds', 'microseconds']
+    timespec_prio = timespec_list.index(timespec)
+
+    # get a resolution object to round against
+    if timespec == 'days':
+        res = datetime.timedelta(days=1)
+    elif timespec == 'hours':
+        res = datetime.timedelta(hours=1)
+    elif timespec == 'minutes':
+        res = datetime.timedelta(minutes=1)
+    elif timespec == 'seconds':
+        res = datetime.timedelta(seconds=1)
+    elif timespec == 'microseconds':
+        res = None
+    else:
+        raise ValueError("Invalid timespec")
+
+    # round
+    if res:
+        delta = (delta + res/2) // res * res
+
+    # split up seconds into hours, minutes, seconds
+    # (because timedelta only stores days and seconds???)
+    rem = datetime.timedelta(seconds=delta.seconds, microseconds=delta.microseconds)
+    hours, rem = divmod(rem, datetime.timedelta(hours=1))
+    minutes, rem = divmod(rem, datetime.timedelta(minutes=1))
+    seconds, rem = divmod(rem, datetime.timedelta(seconds=1))
+
+    if delta.days:
+        str_parts.append("{:d} day{}".format(delta.days, 's' if abs(delta.days) != 1 else ''))
+    if hours and timespec_prio >= timespec_list.index('hours'):
+        str_parts.append("{:d} hour{}".format(hours, 's' if abs(hours) != 1 else ''))
+    if minutes and timespec_prio >= timespec_list.index('minutes'):
+        str_parts.append("{:d} minute{}".format(minutes, 's' if abs(minutes) != 1 else ''))
+    if (seconds or delta.microseconds) and timespec_prio >= timespec_list.index('microseconds'):
+        f_seconds = seconds + delta.microseconds/1e6
+        str_parts.append("{:.6f} second{}".format(f_seconds, 's' if f_seconds != 1.0 else ''))
+    elif seconds and timespec_prio >= timespec_list.index('seconds'):
+        str_parts.append("{:d} second{}".format(seconds, 's' if seconds != 1 else ''))
+
+    if not str_parts:
+        if timespec == 'microseconds':
+            timespec = 'seconds'
+        str_parts.append("0 {}".format(timespec))
+
+    return ' '.join(str_parts)

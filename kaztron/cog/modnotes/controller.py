@@ -6,6 +6,7 @@ import discord
 
 from kaztron.driver import database as db
 from kaztron.cog.modnotes.model import *
+from kaztron.utils.discord import extract_user_id
 from kaztron.utils.strings import get_timestamp_str
 
 logger = logging.getLogger(__name__)
@@ -65,29 +66,16 @@ async def query_user(bot, id_: str):
     db_id = None
 
     # Parse the passed ID
-    if id_.isnumeric():
-        discord_id = id_
-    elif id_.startswith('<@') and id_.endswith('>'):
-        discord_id = id_[2:-1]
-
-        # Handle nickname ! and role & mentions
-        if not discord_id:
-            raise ValueError('Invalid Discord user ID format: no ID in mention')
-        elif discord_id[0] == '&':
-            raise ValueError('Invalid Discord user ID format: mention must be user, not role')
-        elif discord_id[0] == '!':
-            discord_id = discord_id[1:]
-
-        # Discord IDs are stored as strings but must always be numeric values
-        if not discord_id.isnumeric():
-            raise ValueError('Invalid Discord user ID format: must be numeric')
-    elif id_.startswith('*'):
+    if id_.startswith('*'):
         try:
             db_id = int(id_[1:])
         except ValueError:
-            raise ValueError('Invalid KazTron user ID: everything after `*` must be numeric')
+            raise ValueError('Invalid KazTron user ID: must be "*" followed by a number')
     else:
-        raise ValueError('Invalid user ID format')
+        try:
+            discord_id = extract_user_id(id_)
+        except discord.InvalidArgument:
+            raise ValueError('Invalid Discord user ID format')
 
     # Retrieve the user depending on the passed ID type
     if discord_id:

@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 import logging
 import math
@@ -8,13 +7,14 @@ from typing import List, Optional
 import dateparser
 import discord
 from discord.ext import commands
-from kaztron.config import get_kaztron_config
+
+from kaztron import KazCog
 from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, parse_keyword_args, \
-    get_command_str, get_usage_str
+from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, \
+    parse_keyword_args, get_command_str, get_usage_str
 
 from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
 from kaztron.cog.modnotes import controller as c
@@ -22,7 +22,7 @@ from kaztron.cog.modnotes import controller as c
 logger = logging.getLogger(__name__)
 
 
-class ModNotes:
+class ModNotes(KazCog):
     NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
 
@@ -30,13 +30,32 @@ class ModNotes:
     EMBED_SEPARATOR = '\n{}'.format('\\_'*16)
     EMBED_FIELD_LEN = Limits.EMBED_FIELD_VALUE - len(EMBED_SEPARATOR)
 
-    DATEPARSER_SETTINGS = {'TIMEZONE': 'UTC', 'TO_TIMEZONE': 'UTC'}
+    DATEPARSER_SETTINGS = {
+        'TIMEZONE': 'UTC',
+        'TO_TIMEZONE': 'UTC',
+        'RETURN_AS_TIMEZONE_AWARE': False
+    }
+
+    KW_TIME = ('timestamp', 'starts', 'start', 'time')
+    KW_EXPIRE = ('expires', 'expire', 'ends', 'end')
 
     def __init__(self, bot):
-        self.bot = bot  # type: commands.Bot
-        self.config = get_kaztron_config()
+        super().__init__(bot)
         self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
         self.ch_log = discord.Object(self.config.get('modnotes', 'channel_log'))
+
+    async def on_ready(self):
+        id_output = self.ch_output.id
+        self.ch_output = self.bot.get_channel(id_output)
+        if self.ch_output is None:
+            raise ValueError("Output channel {} not found".format(id_output))
+
+        id_log = self.ch_log.id
+        self.ch_log = self.bot.get_channel(id_log)
+        if self.ch_log is None:
+            raise ValueError("Modnotes channel {} not found".format(id_log))
+
+        await super().on_ready()
 
     @staticmethod
     def format_display_user(db_user: User):
@@ -92,9 +111,9 @@ class ModNotes:
             record_fields = OrderedDict()
 
             rec_title = "Record #{:04d}".format(rec.record_id)
-            record_fields[rec_title] = get_timestamp_str(rec.timestamp) + ' UTC'
+            record_fields[rec_title] = get_timestamp_str(rec.timestamp)
             if rec.expires:
-                expire_str = get_timestamp_str(rec.expires) + ' UTC'
+                expire_str = get_timestamp_str(rec.expires)
                 if rec.expires <= datetime.utcnow():
                     record_fields['Expires'] = expire_str + '\n**EXPIRED**'
                 else:
@@ -189,14 +208,8 @@ class ModNotes:
         [MOD ONLY] Show all watches currently in effect (i.e. non-expired watch, int, warn records).
 
         Arguments:
-        * user: Required. The user for whom to find moderation notes. This can be an @mention, a
-          Discord ID (numerical only), or a KazTron ID (starts with *).
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
           Default: 1.
-
-        Example:
-            .notes @User#1234
-            .notes 330178495568436157 3
         """
         logger.info("notes watches: {}".format(message_log_str(ctx.message)))
         watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
@@ -214,54 +227,82 @@ class ModNotes:
             box_title='Active Watches', short=True
         )
 
+    @notes.command(aliases=['temp'], pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def temps(self, ctx, page: int=1):
+        """
+        [MOD ONLY] Show all tempbans currently in effect (i.e. non-expired temp records).
+
+        Arguments:
+        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
+          Default: 1.
+        """
+        logger.info("notes temps: {}".format(message_log_str(ctx.message)))
+        db_records = c.query_unexpired_records(types=RecordType.temp)
+        total_pages = int(math.ceil(len(db_records) / self.NOTES_PAGE_SIZE))
+        page = max(1, min(total_pages, page))
+
+        start_index = (page-1)*self.NOTES_PAGE_SIZE
+        end_index = start_index + self.NOTES_PAGE_SIZE
+
+        await self.show_records(
+            ctx.message.channel,
+            user=None, records=db_records[start_index:end_index],
+            page=page, total_pages=total_pages, total_records=len(db_records),
+            box_title='Active Temporary Bans', short=True
+        )
+
     @notes.command(pass_context=True, aliases=['a'])
     @mod_only()
     @mod_channels()
     async def add(self, ctx, user: str, type_: str, *, note_contents):
         """
-
         [MOD ONLY] Add a new note.
 
-        If the <user> is not already known in the database, an entry will be created, using their
-        current nickname as the canonical name. There is no need to create the user in advance.
+        Attachments in the same message as the command are appended to the note.
 
         Arguments:
         * <user>: Required. The user to whom the note applies. See `.help notes`.
         * <type>: Required. The type of record. One of:
-            * note: Generic note not falling under other categories.
-            * good: Noteworthy positive contributions to the community.
-            * watch: Moderation problems to watch out for.
-            * int: Moderator intervention events.
-            * warn: Formal warning issued.
-            * temp: Temporary ban issued.
-            * perma: Permanent ban issued.
-            * appeal: Formal appeal received.
+            * note: Miscellaneous note.
+            * good: Noteworthy positive contributions
+            * watch: Moderative problems to monitor
+            * int: Moderator intervention
+            * warn: Formal warning
+            * temp: Temporary ban
+            * perma: Permanent ban
+            * appeal: Formal appeal or decision
         * [OPTIONS]: Optional. Options of the form:
-            * timestamp="timespec": Sets the note's time (e.g. the time at which a note happened).
-              Default is now. Instead of `timestamp`, you can also use the synonyms `starts`,
+            * timestamp="timespec": Sets the note's time (e.g. the time of an event).
+              Default is "now". Instead of `timestamp`, you can also use the synonyms `starts`,
               `start`, `time`.
-            * expires="timespec": Sets when a note expires. This is purely documentation: for
-              example, to take note of when a temp ban ends, or a permaban appeal is available, etc.
+            * expires="timespec": Sets when a note expires. This is purely documentation. For
+              example, when a temp ban ends, or a permaban appeal is available, etc.
               Default is no expiration. Instead of `expires`, you can also use the synonyms
               `expire`, `ends` or `end`.
             * The timespec is "smart". You can type a date and time (like "3 Dec 2017 5PM"), or
               relative times in natural language ("10 minutes ago", "in 2 days", "now"). Just make
-              sure not to forget quotation marks.
+              sure not to forget quotation marks. No days of the week.
         * <note_contents>: The remainder of the command message is stored as the note text.
 
         Example:
 
         .notes add @BlitheringIdiot#1234 perma Repeated plagiarism.
-            This creates a record timestamped for right now, with no expiry date.
+            Create a record timestamped for right now, with no expiry date.
 
         .notes add @BlitheringIdiot#1234 temp expires="in 7 days" Insulting users, altercation with
         intervening mod.
-            This creates a record timestamped for right now, that expires in 7 days.
+            Create a record timestamped for right now, that expires in 7 days.
 
         .notes add @CalmPerson#4187 good timestamp="2 hours ago" Cool-headed, helped keep the
         BlitheringIdiot plagiarism situation from exploding
-            This creates a record for an event 2 hours ago.
+            Create a record for an event 2 hours ago.
         """
+
+        # !!! WARNING !!!
+        # WARNING: BE CAREFUL OF THE DOCSTRING ABOVE! Must be <1992 chars (w/o indent) for .help
+
         logger.info("notes add: {}".format(message_log_str(ctx.message)))
 
         # load/preprocess positional arguments and defaults
@@ -277,23 +318,22 @@ class ModNotes:
                 .format(type_, ', '.join(t.name for t in RecordType))) from e
 
         # Parse and load kwargs from the note_contents, if present
-        time_keywords = ('timestamp', 'starts', 'start', 'time')
-        expire_keywords = ('expires', 'expire', 'ends', 'end')
         try:
             kwargs, note_contents = \
-                parse_keyword_args(time_keywords + expire_keywords, note_contents)
+                parse_keyword_args(self.KW_TIME + self.KW_EXPIRE, note_contents)
         except ValueError as e:
             raise commands.BadArgument(e.args[0]) from e
 
+        # Parse and validate the contents of the kwargs
         for key, arg in kwargs.items():
-            if key.lower() in time_keywords:
+            if key.lower() in self.KW_TIME:
                 if timestamp is None:
                     timestamp = dateparser.parse(arg, settings=self.DATEPARSER_SETTINGS)
                     if timestamp is None:  # dateparser failed to parse
                         raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
                     raise commands.BadArgument("Several `timestamp`` arguments (+ synonyms) found.")
-            elif key.lower() in expire_keywords:
+            elif key.lower() in self.KW_EXPIRE:
                 if not is_expires_set:
                     is_expires_set = True  # to detect multiple args
                     if arg.lower() in ('none', 'never'):
@@ -303,7 +343,14 @@ class ModNotes:
                         if expires is None:  # dateparser failed to parse
                             raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
-                    raise commands.BadArgument("Several `expires`` arguments (+ synonyms) found.")
+                    raise commands.BadArgument("Several `expires` arguments (+ synonyms) found.")
+
+        # if any attachments, include a URL to it in the note
+        if ctx.message.attachments:
+            note_contents = "{0}\n\n{1}".format(
+                note_contents,
+                '\n'.join(a['url'] for a in ctx.message.attachments)
+            )
 
         if len(note_contents) > self.EMBED_FIELD_LEN:
             raise commands.BadArgument('Note contents too long: '
@@ -316,7 +363,7 @@ class ModNotes:
         await self.show_records(self.ch_log, user=db_user, records=[record],
                                 box_title='New Moderation Record', page=None, total_pages=1,
                                 short=True)
-        await self.bot.say("Note added.")
+        await self.bot.say("Added note #{:04d}.".format(record.record_id))
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
