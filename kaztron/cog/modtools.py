@@ -122,7 +122,7 @@ class ModToolsCog(KazCog):
     async def update_tempban_tick(self):
         logger.info("Starting update_tempban_tick...")
         while not self.bot.is_closed:
-            await task_handled_errors(self.update_tempbans())
+            await task_handled_errors(self.update_tempbans)()
             logger.debug("Waiting an hour for next tempban check...")
             await asyncio.sleep(3600)
 
