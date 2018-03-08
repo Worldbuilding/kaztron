@@ -9,7 +9,7 @@ from kaztron import KazCog
 from kaztron.config import get_kaztron_config
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only
-from kaztron.utils.discord import get_named_role
+from kaztron.utils.discord import get_named_role, remove_role_from_all
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import get_help_str, get_command_str
 
@@ -22,17 +22,33 @@ class RoleManager(KazCog):
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
         self.voice_channel_ids = self.config.get('role_man', 'channels_voice', [])
         self.role_voice_name = self.config.get('role_man', 'role_voice', "")
-        self.role_voice = None
+        self.role_voice = None  # type: discord.Role
         self.voice_feature = False
         self.managed_roles = {}
 
     async def on_ready(self):
         if self.role_voice_name and self.voice_channel_ids:
             self.voice_feature = True
-            logger.info("Voice feature enabled (config is not pre-validated)")
+
+            # find the voice role in config
+            self.role_voice = None
+            for server in self.bot.servers:  # type: discord.Server
+                self.role_voice = discord.utils.get(server.roles, name=self.role_voice_name)
+                if self.role_voice:
+                    break
+
+            if self.role_voice:
+                logger.info("In-voice role management feature enabled")
+                await self.update_all_voice_role()
+            else:
+                self.voice_feature = False
+                err_msg = "Cannot find voice role: {}" .format(self.role_voice_name)
+                logger.warning(err_msg)
+                await self.bot.send_message(self.dest_output, "**Warning:** " + err_msg)
+                # don't return here - other role_man features are not dependent on this
         else:
             self.voice_feature = False
-            err_msg = "Voice role management is disabled (incomplete config)."
+            err_msg = "In-voice role management is disabled (not configured)."
             logger.warning(err_msg)
             await self.bot.send_message(self.dest_output, "**Warning:** " + err_msg)
 
@@ -40,25 +56,44 @@ class RoleManager(KazCog):
 
         await super().on_ready()
 
+    async def update_all_voice_role(self):
+        if not self.voice_feature:
+            return
+
+        logger.debug("Collecting all members currently in voice channels {!r}"
+            .format(self.voice_channel_ids))
+        server = self.role_voice.server  # type: discord.Server
+        voice_users = []
+        for ch_id in self.voice_channel_ids:
+            channel = server.get_channel(ch_id)  # type: discord.Channel
+            try:
+                logger.debug("In channel #{}, found users [{}]"
+                    .format(channel.name, ', '.join(str(m) for m in channel.voice_members)))
+                voice_users.extend(channel.voice_members)
+            except AttributeError:
+                logger.warning("Cannot find voice channel {}".format(ch_id))
+
+        # clear the in_voice role
+        logger.info("Removing role '{}' from all members...".format(self.role_voice.name))
+        await remove_role_from_all(self.bot, server, self.role_voice)
+
+        # and add all collected members to that role
+        logger.info("Giving role '{}' to all members in voice channels [{}]..."
+            .format(self.role_voice.name, ', '.join(str(m) for m in voice_users)))
+        for member in voice_users:  # type: discord.Member
+            await self.bot.add_roles(member, self.role_voice)
+
     async def on_voice_state_update(self, before: discord.Member, after: discord.Member):
         """ Assigns "in voice" role to members who join voice channels. """
         if not self.voice_feature:
             return
 
-        # get the role
-        role_voice = get_named_role(before.server, self.role_voice_name)
-        if role_voice is None:
-            err_msg = "Cannot find voice role: {}" .format(self.role_voice_name)
-            logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, "[WARNING] " + err_msg)
-            return
-
         # determine the action to take
         if after.voice_channel and after.voice_channel.id in self.voice_channel_ids:
-            await self.bot.add_roles(after, role_voice)
+            await self.bot.add_roles(after, self.role_voice)
             logger.info("Gave '{}' role to {}".format(self.role_voice_name, after))
         else:
-            await self.bot.remove_roles(after, role_voice)
+            await self.bot.remove_roles(after, self.role_voice)
             logger.info("Took '{}' role from {}".format(self.role_voice_name, after))
 
     def add_managed_role(
