@@ -548,17 +548,17 @@ class WritingSprint(KazCog):
             self.role_follow = get_named_role(server, self.role_follow_name)
             self.role_follow_mention = self.role_follow.mention
         except ValueError:
-            logger.warning("Cannot find role: " + self.role_follow_name)
             self.role_follow = None
             self.role_follow_mention = ''
+            raise
 
         try:
             self.role_sprint = get_named_role(server, self.role_sprint_name)
             self.role_sprint_mention = self.role_sprint.mention
         except ValueError:
-            logger.warning("Cannot find role: " + self.role_sprint_name)
             self.role_sprint = None
             self.role_sprint_mention = ''
+            raise
 
     async def _cancel_sprint(self, msg: str=None):
         """
@@ -594,11 +594,12 @@ class WritingSprint(KazCog):
         self.channel = self.bot.get_channel(self.channel_id)
         if self.channel is None:
             err_msg = "Channel does not exist: {}".format(self.channel_id)
-            logger.warning(err_msg)
+            logger.error(err_msg)
             try:
                 await self.bot.send_message(self.dest_output, err_msg)
             except discord.HTTPException:
                 logger.exception("Error sending error to {}".format(self.dest_output_id))
+            return
 
         state = self.get_state()
         if state is not SprintState.IDLE:
@@ -635,7 +636,7 @@ class WritingSprint(KazCog):
                                "this is OK if client reconnected")
         else:
             err_msg = "Cannot find RoleManager - is it enabled in config?"
-            logger.error(err_msg)
+            logger.warning(err_msg)
             try:
                 await self.bot.send_message(self.dest_output, err_msg)
             except discord.HTTPException:
