@@ -110,8 +110,8 @@ class SprintStats:
 
     @property
     def time_mean(self):
-        """ Time per sprint, average, in minutes. """
-        return (self.time / 60 / self.sprints) if self.sprints > 0 else 0
+        """ Time per sprint, average, in seconds. """
+        return (self.time / self.sprints) if self.sprints > 0 else 0
 
     @property
     def win_rate(self):
