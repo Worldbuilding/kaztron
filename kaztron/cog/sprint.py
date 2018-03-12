@@ -20,7 +20,7 @@ from kaztron.utils.checks import in_channels_cfg
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import get_help_str, format_list, format_timedelta
+from kaztron.utils.strings import get_help_str, format_list, format_timedelta, format_date
 
 logger = logging.getLogger(__name__)
 
@@ -389,7 +389,8 @@ class WritingSprint(KazCog):
                 ("Total words", "{stats.words:.0f} words", INLINE),
                 ("Average sprint", "{average_time}", INLINE),
                 ("Average cumulative productivity",
-                 "{stats.wpm_mean:.1f} wpm overall (σ = {stats.wpm_stdev:.1f})", INLINE)
+                 "{stats.wpm_mean:.1f} wpm overall (σ = {stats.wpm_stdev:.1f})", INLINE),
+                ("Since", "{since}", INLINE)
             ]
         ),
         "stats": EmbedInfo(
@@ -405,6 +406,7 @@ class WritingSprint(KazCog):
                 ("Average sprint", "{average_time}", INLINE),
                 ("Average speed",
                  "{stats.wpm_mean:.1f} wpm (σ = {stats.wpm_stdev:.1f})", INLINE),
+                ("Since", "{since}", INLINE)
             ]
         ),
     }
@@ -462,7 +464,8 @@ class WritingSprint(KazCog):
             state=SprintState.IDLE.value,
             sprint_data=SprintData(self._get_time).to_dict(),
             stats_global=SprintStats().to_dict(),
-            stats_users={}
+            stats_users={},
+            stats_since=datetime.utcnow().timestamp()
         )
 
         self.channel_id = self.config.get('sprint', 'channel')
@@ -1023,6 +1026,8 @@ class WritingSprint(KazCog):
         """
         logger.info("stats: {}".format(message_log_str(ctx.message)))
 
+        stats_since = datetime.utcfromtimestamp(self.state.get('sprint', 'stats_since'))
+
         if user:
             logger.debug("stats: user: id={user.id} name={user.name}".format(user=user))
             try:
@@ -1035,7 +1040,8 @@ class WritingSprint(KazCog):
                     user_id=user.id,
                     stats=stats,
                     average_time=format_seconds(stats.time_mean),
-                    total_time=format_seconds(stats.time, timespec='minutes')
+                    total_time=format_seconds(stats.time, timespec='minutes'),
+                    since=format_date(stats_since)
                 )
         else:  # global stats
             logger.debug("stats: requested global")
@@ -1044,7 +1050,8 @@ class WritingSprint(KazCog):
                 ctx.message.channel, self.DISP_EMBEDS['stats_global'],
                 stats=stats,
                 average_time=format_seconds(stats.time_mean),
-                total_time=format_seconds(stats.time, timespec='minutes')
+                total_time=format_seconds(stats.time, timespec='minutes'),
+                since=format_date(stats_since)
             )
 
     @task_handled_errors
