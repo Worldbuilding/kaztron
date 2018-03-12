@@ -6,6 +6,7 @@ import discord
 
 from kaztron.driver import database as db
 from kaztron.cog.modnotes.model import *
+from kaztron.driver.database import make_error_handler_decorator
 from kaztron.utils.discord import extract_user_id
 from kaztron.utils.strings import get_timestamp_str
 
@@ -22,27 +23,15 @@ class UserNotFound(RuntimeError):
     pass
 
 
-def on_error_rollback(func):
-    """
-    Decorator for database operations. Any raised exceptions will cause a rollback, and then be
-    re-raised.
-    """
-    def db_safe_exec(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.error('Error ({!s}) - rolling back'.format(e))
-            session.rollback()
-            raise
-    return db_safe_exec
-
-
 def init_db():
     global engine, session
     engine = db.make_sqlite_engine(db_file)
     Session.configure(bind=engine)
     session = Session()
     Base.metadata.create_all(engine)
+
+
+on_error_rollback = make_error_handler_decorator(session, logger)
 
 
 async def query_user(bot, id_: str):

@@ -1,4 +1,6 @@
 # noinspection PyUnresolvedReferences
+import functools
+
 from sqlalchemy import *
 from sqlalchemy import event
 # noinspection PyUnresolvedReferences
@@ -24,3 +26,21 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+def make_error_handler_decorator(session, logger):
+    def on_error_rollback(func):
+        """
+        Decorator for database operations. Any raised exceptions will cause a rollback, and then be
+        re-raised.
+        """
+        @functools.wraps(func)
+        def db_safe_exec(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error('Error ({!s}) - rolling back'.format(e))
+                session.rollback()
+                raise
+        return db_safe_exec
+    return on_error_rollback
