@@ -1151,7 +1151,7 @@ class WritingSprint(KazCog):
             if results_list:
                 winner, winner_info = results_list[0]
                 winner_id = winner.id
-                winner_name = winner.name
+                winner_name = winner.mention
                 winner_wc = winner_info[0]
             else:
                 winner_id = None
