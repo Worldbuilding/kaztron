@@ -158,7 +158,11 @@ class ReminderCog(KazCog):
                          "The limit is {:d} per person.").format(self.MAX_PER_USER))
             return
 
-        timespec_s, msg = re.split(r':\s+|,', args, maxsplit=1)
+        try:
+            timespec_s, msg = re.split(r':\s+|,', args, maxsplit=1)
+        except ValueError:
+            raise commands.BadArgument("message")
+
         timestamp = datetime.utcnow()
         timespec = dateparser.parse(timespec_s, settings=self.DATEPARSER_SETTINGS)
 
@@ -191,6 +195,12 @@ class ReminderCog(KazCog):
         elif isinstance(exc, commands.BadArgument) and exc.args[0] == 'past':
             await self.bot.say(
                 "Oops! You can't set a reminder in the past!"
+            )
+        elif isinstance(exc, commands.BadArgument) and exc.args[0] == 'message':
+            await self.bot.say(
+                "You need to specify a message for your reminder! "
+                "Separate it from the timespec with a colon *and* space: "
+                "`.reminder in 10 minutes: message`"
             )
         else:
             core_cog = self.bot.get_cog("CoreCog")
@@ -248,7 +258,13 @@ class ReminderCog(KazCog):
     async def clear(self, ctx: commands.Context):
         """ Remove all future reminders you've requested. """
         logger.info("reminder clear: {}".format(message_log_str(ctx.message)))
-        self.reminders = list(filter(lambda r: r.user_id != ctx.message.author.id, self.reminders))
+        reminders_to_keep = []
+        for reminder in self.reminders:
+            if reminder.user_id == ctx.message.author.id:
+                reminder.task.cancel()
+            else:
+                reminders_to_keep.append(reminder)
+        self.reminders = reminders_to_keep
         self._save_reminders()
         await self.bot.say("All your reminders have been cleared.")
 
