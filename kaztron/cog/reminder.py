@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.config import get_kaztron_config, get_runtime_config
+from kaztron.utils.datetime import utctimestamp
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import Limits
 from kaztron.utils.logging import message_log_str, exc_log_str
@@ -24,13 +25,11 @@ class ReminderData:
 
     def __init__(self,
                  *,
-                 id_: int,
                  user_id: str,
                  timestamp: datetime,
                  remind_time: datetime,
                  msg: str
                  ):
-        self.id = id_
         self.user_id = user_id
         self.timestamp = timestamp
         self.remind_time = remind_time
@@ -61,25 +60,23 @@ class ReminderData:
 
     def to_dict(self):
         return {
-            'id': self.id,
             'user_id': self.user_id,
-            'timestamp': self.timestamp.timestamp(),
-            'remind_time': self.remind_time.timestamp(),
+            'timestamp': utctimestamp(self.timestamp),
+            'remind_time': utctimestamp(self.remind_time),
             'message': self.message
         }
 
     def __repr__(self):
-        return "<ReminderData(id={:d}, user_id={}, timestamp={}, remind_time={}, message={!r})>"\
-            .format(self.id, self.user_id, self.timestamp.isoformat(' '),
+        return "<ReminderData(user_id={}, timestamp={}, remind_time={}, message={!r})>"\
+            .format(self.user_id, self.timestamp.isoformat(' '),
                     self.remind_time.isoformat(' '), self.message)
 
     @classmethod
     def from_dict(cls, data: dict):
         return cls(
-            id_=data['id'],
             user_id=data['user_id'],
-            timestamp=datetime.fromtimestamp(data['timestamp']),
-            remind_time=datetime.fromtimestamp(data['remind_time']),
+            timestamp=datetime.utcfromtimestamp(data['timestamp']),
+            remind_time=datetime.utcfromtimestamp(data['remind_time']),
             msg=data['message']
         )
 
@@ -97,11 +94,9 @@ class ReminderCog(KazCog):
         super().__init__(bot)
         self.state.set_defaults(
             self.CFG_SECTION,
-            reminders=[],
-            autoinc=0
+            reminders=[]
         )
         self.reminders = []  # type: List[ReminderData]
-        self.ready = False
 
     def _load_reminders(self):
         logger.info("Loading reminders from persisted state...")
@@ -112,8 +107,10 @@ class ReminderCog(KazCog):
             self.reminders.append(ReminderData.from_dict(reminder_data))
 
     def _save_reminders(self):
-        if not self.ready:
+        if not self.is_ready:
+            logger.debug("_save_reminders: not ready, skipping")
             return
+        logger.debug("_save_reminders")
         self.state.set(self.CFG_SECTION, 'reminders', [r.to_dict() for r in self.reminders])
         self.state.write()
 
@@ -169,17 +166,13 @@ class ReminderCog(KazCog):
             raise commands.BadArgument("timespec", timespec_s[:64])
         elif timespec <= timestamp:
             raise commands.BadArgument("past")
-
-        new_id = self.state.get(self.CFG_SECTION, 'autoinc', default=0, converter=int)
         reminder = ReminderData(
-            id_=new_id,
             user_id=ctx.message.author.id,
             timestamp=timestamp,
             remind_time=timespec,
             msg=msg
         )
         reminder.start_timer(self.bot.loop, self.on_reminder_expired)
-        self.state.set(self.CFG_SECTION, 'autoinc', new_id+1)
         self.reminders.append(reminder)
         self._save_reminders()
         logger.info("Set reminder: {!r}".format(reminder))
@@ -220,7 +213,11 @@ class ReminderCog(KazCog):
             reminder.remind_time += 30  # try again a little later
             reminder.start_timer(self.bot.loop, self.on_reminder_expired)
         else:
-            self.reminders.remove(reminder)
+            try:
+                self.reminders.remove(reminder)
+            except ValueError:
+                logger.warning("on_reminder_expired: Reminder not in list of reminders - "
+                               "already removed? {!r}".format(reminder))
         self._save_reminders()
 
     @reminder.command(ignore_extra=False, pass_context=True)
@@ -251,7 +248,6 @@ class ReminderCog(KazCog):
     async def clear(self, ctx: commands.Context):
         """ Remove all future reminders you've requested. """
         logger.info("reminder clear: {}".format(message_log_str(ctx.message)))
-
         self.reminders = list(filter(lambda r: r.user_id != ctx.message.author.id, self.reminders))
         self._save_reminders()
         await self.bot.say("All your reminders have been cleared.")

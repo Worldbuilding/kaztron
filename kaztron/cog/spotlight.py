@@ -17,6 +17,7 @@ from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only
 from kaztron.utils.converter import NaturalDateConverter
+from kaztron.utils.datetime import utctimestamp
 from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, MSG_MAX_LEN, Limits, remove_role_from_all, \
     extract_user_id, user_mention, get_member
@@ -689,7 +690,7 @@ class Spotlight(KazCog):
         self._load_applications()
 
         dt = datespec  # type: datetime
-        add_timestamp = dt.timestamp()
+        add_timestamp = utctimestamp(dt)
 
         if list_index is not None:
             array_index = list_index - 1
@@ -804,7 +805,7 @@ class Spotlight(KazCog):
         list_index = array_index + 1  # user-facing
 
         dt = datespec  # type: datetime
-        queue_item['timestamp'] = dt.timestamp()  # same mutable object as in queue_data
+        queue_item['timestamp'] = utctimestamp(dt)  # same mutable object as in queue_data
         self.sort_queue()
         new_queue_index = self.queue_data.index(queue_item) + 1
 

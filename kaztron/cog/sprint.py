@@ -17,6 +17,7 @@ from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.errors import UnauthorizedUserError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
+from kaztron.utils.datetime import utctimestamp
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all
 from kaztron.utils.logging import message_log_str
@@ -162,17 +163,17 @@ class SprintData:
             'members': [u.id for u in self.members],
             'start': copy.deepcopy(self.start),
             'end': copy.deepcopy(self.end),
-            'start_time': self._datetime(self.start_time).timestamp() if self.start_time else 0,
-            'end_time': self._datetime(self.end_time).timestamp() if self.end_time else 0,
+            'start_time': utctimestamp(self._datetime(self.start_time)) if self.start_time else 0,
+            'end_time': utctimestamp(self._datetime(self.end_time)) if self.end_time else 0,
             'warn_times': [self._datetime(t).timestamp() for t in self.warn_times],
             'finalize_time': (
-                self._datetime(self.finalize_time).timestamp() if self.finalize_time else 0
+                utctimestamp(self._datetime(self.finalize_time)) if self.finalize_time else 0
             ),
         }
 
     def _loop_time(self, timestamp: float) -> float:
         now_loop = self.time_callback()
-        now_timestamp = datetime.utcnow().timestamp()
+        now_timestamp = utctimestamp(datetime.utcnow())
         return now_loop + (timestamp - now_timestamp)
 
     def _datetime(self, loop_time: float) -> datetime:
@@ -465,7 +466,7 @@ class WritingSprint(KazCog):
             sprint_data=SprintData(self._get_time).to_dict(),
             stats_global=SprintStats().to_dict(),
             stats_users={},
-            stats_since=datetime.utcnow().timestamp()
+            stats_since=utctimestamp(datetime.utcnow())
         )
 
         self.channel_id = self.config.get('sprint', 'channel')
