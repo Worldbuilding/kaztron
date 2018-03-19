@@ -7,8 +7,37 @@ import discord
 from kaztron.config import get_kaztron_config
 
 
+
 def utctimestamp(utcdt: datetime):
     return utcdt.replace(tzinfo=timezone.utc).timestamp()
+    
+
+def truncate(dt: datetime, timespec='minute'):
+    """
+    Truncate a datetime to the resolution given by 'timespec'.
+
+    :param dt: The datetime to round.
+    :param timespec: One of "month", "day", "hour", "minute", "second" - the level of resolution
+        to round to.
+    :raise ValueError: invalid timespec parameter
+    """
+    if timespec == 'month':
+        dt_replace_params = {'day': 1, 'hour': 0, 'minute': 0, 'second': 0, 'microsecond': 0}
+    elif timespec == 'day':
+        dt_replace_params = {'hour': 0, 'minute': 0, 'second': 0, 'microsecond': 0}
+    elif timespec == 'hour':
+        dt_replace_params = {'minute': 0, 'second': 0, 'microsecond': 0}
+    elif timespec == 'minute':
+        dt_replace_params = {'second': 0, 'microsecond': 0}
+    elif timespec == 'second':
+        dt_replace_params = {'microsecond': 0}
+    else:
+        raise ValueError("invalid timespec {!r}".format(timespec))
+
+    try:
+        return dt.replace(**dt_replace_params)
+    except AttributeError as e:
+        raise ValueError("invalid dt parameter {!r}".format(dt)) from e
 
 
 def format_datetime(dt: datetime, seconds=False) -> str:
