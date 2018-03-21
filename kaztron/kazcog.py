@@ -27,15 +27,17 @@ class KazCog:
 
     def __init__(self, bot: commands.Bot):
         self._bot = bot
-        self.core = None
 
     async def on_ready(self):
         """
         If overridden, the super().on_ready() call should occur at the *end* of the method, as it
         marks the cog as fully ready to receive commands.
         """
-        self.core = self.bot.get_cog('CoreCog')
         self.core.set_cog_ready(self)
+
+    @property
+    def core(self):
+        return self.bot.get_cog('CoreCog')
 
     @property
     def is_ready(self):
