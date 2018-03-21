@@ -44,3 +44,8 @@ def make_error_handler_decorator(session, logger):
                 raise
         return db_safe_exec
     return on_error_rollback
+
+
+def format_like(s: str, escape='\\') -> str:
+    """ Format and escape a string for a LIKE or ILIKE substring search. """
+    return '%{}%'.format(s.replace('%', escape+'%').replace('_', escape+'_'))

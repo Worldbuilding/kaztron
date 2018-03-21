@@ -6,7 +6,7 @@ import discord
 
 from kaztron.driver import database as db
 from kaztron.cog.modnotes.model import *
-from kaztron.driver.database import make_error_handler_decorator
+from kaztron.driver.database import make_error_handler_decorator, format_like
 from kaztron.utils.discord import extract_user_id
 from kaztron.utils.strings import get_timestamp_str
 
@@ -175,7 +175,7 @@ def search_users(search_term: str) -> List[User]:
     :param search_term: The substring to search for - should already be sanitised!
     :return:
     """
-    search_term_like = '%{}%'.format(search_term.replace('%', '\\%').replace('_', '\\_'))
+    search_term_like = format_like(search_term)
     results = session.query(User).outerjoin(UserAlias) \
         .filter(db.or_(User.name.ilike(search_term_like, escape='\\'),
                 UserAlias.name.ilike(search_term_like, escape='\\'))) \

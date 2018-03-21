@@ -12,7 +12,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log",
@@ -100,5 +100,8 @@
     "duration_min": 300,
     "duration_max": 3600,
     "finalize_time": 300
+  },
+  "quotedb": {
+    "grab_search_max": 100
   }
 }
