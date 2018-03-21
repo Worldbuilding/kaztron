@@ -1,7 +1,5 @@
 import random
-from datetime import datetime
 import logging
-from typing import List
 
 import discord
 from discord.ext import commands
@@ -10,22 +8,15 @@ from sqlalchemy import orm
 from kaztron import KazCog
 from kaztron.driver.pagination import Pagination
 from kaztron.theme import solarized
-from kaztron.driver import database as db
-from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.discord import Limits, user_mention, extract_user_id, get_command_str, \
-    get_help_str, get_usage_str
+from kaztron.utils.checks import mod_only
+from kaztron.utils.discord import Limits
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, parse_keyword_args
-from kaztron.utils.datetime import format_datetime, format_timestamp
+from kaztron.utils.datetime import format_datetime
 
 from kaztron.cog.quotedb.model import Quote
 from kaztron.cog.quotedb import controller as c, model
 
 logger = logging.getLogger(__name__)
-
-
-class QuotesNotFound:
-    pass
 
 
 class QuoteCog(KazCog):
