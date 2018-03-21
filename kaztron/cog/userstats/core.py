@@ -9,7 +9,7 @@ import hashlib
 import tempfile
 from os import path
 import os
-from typing import Union, Tuple, Optional, List
+from typing import Union, Tuple, Optional, List, Sequence
 
 import discord
 
@@ -282,12 +282,68 @@ def collect_stats(from_date: datetime, to_date: datetime):
 
 
 class Report:
-    pass  # TODO
+    def __init__(self):
+        pass
+
+    def messages(self, channel_id: str=None) -> int:
+        pass
+
+    def active_users(self, channel_id: str=None) -> int:
+        pass
+
+    def total_users(self) -> int:
+        pass
+
+    def messages_per_user(self, channel_id: str=None, inactive=False) -> Tuple[float, float]:
+        pass  # average, max
+
+    def voice_time(self, channel_id: str=None) -> int:
+        pass  # seconds
+
+    def voice_users(self, channel_id: str=None) -> int:
+        pass
+
+    def voice_time_per_user(self, channel_id: str=None) -> Tuple[float, float]:
+        pass
+
+    def joins(self) -> int:
+        pass
+
+    def parts(self) -> int:
+        pass
 
 
-def generate_report(from_date: datetime, to_date: datetime):
+class ReportGenerator:
+    def __init__(self):
+        pass
+
+    def add_data(self, row: Sequence):
+        pass
+
+    def generate(self) -> Report:
+        """ Once all data is collected, generate the report. """
+        pass
+
+    def generate_weekly(self) -> Tuple[Report]:
+        pass
+
+    def generate_hourly(self) -> Tuple[Report]:
+        pass
+
+
+def prepare_report(from_date: datetime, to_date: datetime) -> ReportGenerator:
     """
     Generate a report between two dates (including from_date but excluding to_date).
     """
-    pass  # TODO
-
+    generator = ReportGenerator()
+    filenames = list_stats_files(from_date, to_date)
+    logger.debug("Report: Files to collect: {}".format(', '.join(filenames)))
+    for file in filenames:
+        logger.info("Opening '{}' for report...".format(file))
+        try:
+            with gzip.open(file, mode='rt') as infile:
+                for row in csv.reader(infile):
+                    generator.add_data(row)
+        except FileNotFoundError:
+            logger.warning("No stats file '{}'".format(file))
+    return generator
