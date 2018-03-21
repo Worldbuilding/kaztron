@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 class QuoteCog(KazCog):
+    """
+    The Quotes Database helps you capture the best moments on the server! Store your fellow members'
+    funniest moments so that you can revisit them time and time again.
+    """
     QUOTES_PER_PAGE = 15
     EMBED_COLOR = solarized.blue
 
@@ -152,7 +156,7 @@ class QuoteCog(KazCog):
 
         Arguments:
         * user: Required. The user to find a quote for, or part of their name or nickname to search,
-            or "all". For exact user matches, see `.help quotes` for valid formats.
+            or "all". For exact user matches, see `.help quote` for valid formats.
         * search: Optional. Text to search in the quote.
 
         Examples:
@@ -180,7 +184,7 @@ class QuoteCog(KazCog):
         Retrieve a list of quotes. Reply is always PMed.
 
         Arguments:
-        * user: Required. The user to find a quote for. See `.help quotes` for valid formats.
+        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
         * page: Optional. The page number to access, if there are more than 1 pages of notes.
 
         Examples:
@@ -203,7 +207,7 @@ class QuoteCog(KazCog):
         You can use `.quote grab` instead to automatically grab a recent message.
 
         Arguments:
-        * user: Required. The user to find a quote for. See `.help quotes` for valid formats.
+        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
         * message: Required. The quote text to add.
 
         Examples:
@@ -240,10 +244,12 @@ class QuoteCog(KazCog):
         You can use `.quote add` instead to manually add the quote.
 
         Arguments:
-        * user: Required. The user to find a quote for. See `.help quotes` for valid formats.
+        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
         * search: Optional. The quote text to find among the user's recent messages.
 
         Examples:
+            .quote grab @JaneDoe
+                Quote the most recent message from @JaneDoe.
             .quote grab @JaneDoe mosh pit
                 Finds the most recent message from @JaneDoe containing "mosh pit".
         """
@@ -330,7 +336,8 @@ class QuoteCog(KazCog):
 
         THIS COMMAND CANNOT BE UNDONE.
 
-        This command only undoes `.quote add` actions. It does NOT undo `.quote rem` actions.
+        This command only undoes `.quote add` or `.quote grab` actions. It does NOT undo
+        `.quote rem` actions.
         """
         logger.info("quote undo: {}".format(message_log_str(ctx.message)))
         db_user = c.query_user(self.server, ctx.message.author.id)
@@ -348,8 +355,8 @@ class QuoteCog(KazCog):
         [MOD ONLY] Delete one or all quotes attributed to a user.
 
         Arguments:
-        * user: Required. The user to find a quote for. See `.help quotes` for valid formats.
-        * number: Optional. The ID number of the quote to delete (starting from 1), or "all".
+        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
+        * number: Required. The ID number of the quote to delete (starting from 1), or "all".
 
         Examples:
             .quote rem @JaneDoe 4 - Delete the 4th quote by JaneDoe.
