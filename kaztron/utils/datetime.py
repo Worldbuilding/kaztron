@@ -7,7 +7,6 @@ import discord
 from kaztron.config import get_kaztron_config
 
 
-
 def utctimestamp(utcdt: datetime):
     return utcdt.replace(tzinfo=timezone.utc).timestamp()
     

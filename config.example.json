@@ -106,8 +106,6 @@
   },
   "userstats": {
     "ignore_users": ["user ID 1", "user ID 2", "etc"],
-    "ignore_channels": ["channel ID 1", "channel ID 2", "etc"],
-    "data_dir": "userstats",
-    "file_format": "stats-%Y-%m-%d.csv.gz"
+    "ignore_channels": ["channel ID 1", "channel ID 2", "etc"]
   }
 }
