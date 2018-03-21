@@ -3,6 +3,8 @@ import logging
 import errno
 import copy
 
+from kaztron.driver.atomic_write import atomic_write
+
 logger = logging.getLogger("kaztron.config")
 
 
@@ -84,7 +86,7 @@ class KaztronConfig:
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
         logger.info("config({}) Writing file...".format(self.filename))
-        with open(self.filename, "w") as cfg_file:
+        with atomic_write(self.filename) as cfg_file:
             json.dump(self._data, cfg_file)
 
     def get_section(self, section: str):

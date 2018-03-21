@@ -1,5 +1,5 @@
 import datetime
-from datetime import datetime, timezone
+from datetime import datetime, date, timedelta, timezone
 from typing import Union
 
 import discord
@@ -11,7 +11,7 @@ def utctimestamp(utcdt: datetime):
     return utcdt.replace(tzinfo=timezone.utc).timestamp()
 
 
-def format_datetime(dt: datetime.datetime, seconds=False) -> str:
+def format_datetime(dt: datetime, seconds=False) -> str:
     """
     Format a datetime object as a datetime (as specified in config).
     :param dt: The datetime object to format.
@@ -22,7 +22,7 @@ def format_datetime(dt: datetime.datetime, seconds=False) -> str:
     return dt.strftime(get_kaztron_config().get('core', format_key))
 
 
-def format_date(d: Union[datetime.datetime, datetime.date]) -> str:
+def format_date(d: Union[datetime, date]) -> str:
     """
     Format a datetime object as a date (as specified in config).
 
@@ -32,7 +32,7 @@ def format_date(d: Union[datetime.datetime, datetime.date]) -> str:
     return d.strftime(get_kaztron_config().get('core', 'date_format'))
 
 
-def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
+def format_timedelta(delta: timedelta, timespec="seconds") -> str:
     """
     Format a timedelta object into "x days y hours" etc. format.
 
@@ -69,9 +69,9 @@ def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
     # split up seconds into hours, minutes, seconds
     # (because timedelta only stores days and seconds???)
     rem = datetime.timedelta(seconds=delta.seconds, microseconds=delta.microseconds)
-    hours, rem = divmod(rem, datetime.timedelta(hours=1))
-    minutes, rem = divmod(rem, datetime.timedelta(minutes=1))
-    seconds, rem = divmod(rem, datetime.timedelta(seconds=1))
+    hours, rem = divmod(rem, timedelta(hours=1))
+    minutes, rem = divmod(rem, timedelta(minutes=1))
+    seconds, rem = divmod(rem, timedelta(seconds=1))
 
     if delta.days:
         str_parts.append("{:d} day{}".format(delta.days, 's' if abs(delta.days) != 1 else ''))
@@ -93,7 +93,7 @@ def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
     return ' '.join(str_parts)
 
 
-def format_timestamp(dt: Union[discord.Message, datetime.datetime]) -> str:
+def format_timestamp(dt: Union[discord.Message, datetime]) -> str:
     """ Get the timestamp string of a message to second precision, with 'UTC' timezone string. """
     if isinstance(dt, discord.Message):
         dt = dt.timestamp
