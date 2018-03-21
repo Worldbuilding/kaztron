@@ -81,13 +81,19 @@ def atomic_write(filename, text=True, keep=True,
     """
     t = (uid, gid, mod) = (owner, group, perms)
     if any(x is None for x in t):
-        info = os.stat(filename)
-        if uid is None:
-            uid = info.st_uid
-        if gid is None:
-            gid = info.st_gid
-        if mod is None:
-            mod = stat.S_IMODE(info.st_mode)
+        try:
+            info = os.stat(filename)
+            if uid is None:
+                uid = info.st_uid
+            if gid is None:
+                gid = info.st_gid
+            if mod is None:
+                mod = stat.S_IMODE(info.st_mode)
+        except FileNotFoundError:
+            if uid is None:
+                uid = -1
+            if gid is None:
+                gid = -1
     path = os.path.dirname(filename)
     fd, tmp = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=path, text=text)
     try:
@@ -98,7 +104,8 @@ def atomic_write(filename, text=True, keep=True,
         os.replace(tmp, filename)
         tmp = None
         os.chown(filename, uid, gid)
-        os.chmod(filename, mod)
+        if mod is not None:
+            os.chmod(filename, mod)
     finally:
         if (tmp is not None) and (not keep):
             # Silently delete the temporary file. Ignore any errors.
