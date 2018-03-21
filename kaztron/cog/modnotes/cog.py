@@ -11,10 +11,11 @@ from discord.ext import commands
 from kaztron import KazCog
 from kaztron.driver import database as db
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
-from kaztron.utils.discord import Limits, user_mention
+from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, get_usage_str
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_help_str, get_timestamp_str, \
-    parse_keyword_args, get_command_str, get_usage_str
+from kaztron.utils.strings import format_list, parse_keyword_args
+
+from kaztron.utils.datetime import format_timestamp
 
 from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
 from kaztron.cog.modnotes import controller as c
@@ -111,9 +112,9 @@ class ModNotes(KazCog):
             record_fields = OrderedDict()
 
             rec_title = "Record #{:04d}".format(rec.record_id)
-            record_fields[rec_title] = get_timestamp_str(rec.timestamp)
+            record_fields[rec_title] = format_timestamp(rec.timestamp)
             if rec.expires:
-                expire_str = get_timestamp_str(rec.expires)
+                expire_str = format_timestamp(rec.expires)
                 if rec.expires <= datetime.utcnow():
                     record_fields['Expires'] = expire_str + '\n**EXPIRED**'
                 else:

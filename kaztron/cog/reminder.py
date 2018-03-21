@@ -11,11 +11,11 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.config import get_kaztron_config, get_runtime_config
-from kaztron.utils.datetime import utctimestamp
+from kaztron.utils.datetime import utctimestamp, format_datetime, format_timedelta
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import Limits
 from kaztron.utils.logging import message_log_str, exc_log_str
-from kaztron.utils.strings import format_datetime, format_timedelta, format_list
+from kaztron.utils.strings import format_list
 
 logger = logging.getLogger(__name__)
 

@@ -8,8 +8,8 @@ import kaztron
 from kaztron.errors import *
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str
-from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_str, \
-    get_command_prefix, get_usage_str
+from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str
+from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +304,7 @@ class CoreCog(kaztron.KazCog):
             em.add_field(name="Channel", value=ctx.message.channel.mention, inline=True)
         except AttributeError:  # probably a private channel
             em.add_field(name="Channel", value=ctx.message.channel, inline=True)
-        em.add_field(name="Timestamp", value=get_timestamp_str(ctx.message), inline=True)
+        em.add_field(name="Timestamp", value=format_timestamp(ctx.message), inline=True)
         em.add_field(name="Content", value=content, inline=False)
         await self.bot.send_message(self.ch_request, embed=em)
         await self.bot.say("Your issue was submitted to the bot DevOps team. "

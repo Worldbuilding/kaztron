@@ -9,9 +9,9 @@ from kaztron import KazCog
 from kaztron.config import get_kaztron_config
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only
-from kaztron.utils.discord import get_named_role, remove_role_from_all
+from kaztron.utils.discord import get_named_role, remove_role_from_all, get_command_str, \
+    get_help_str
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import get_help_str, get_command_str
 
 logger = logging.getLogger(__name__)
 

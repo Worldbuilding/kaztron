@@ -9,7 +9,7 @@ from kaztron.driver import database as db
 from kaztron.cog.quotedb.model import *
 from kaztron.driver.database import make_error_handler_decorator
 from kaztron.utils.discord import extract_user_id
-from kaztron.utils.strings import get_timestamp_str
+from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
 

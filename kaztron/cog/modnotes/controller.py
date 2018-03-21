@@ -8,7 +8,7 @@ from kaztron.driver import database as db
 from kaztron.cog.modnotes.model import *
 from kaztron.driver.database import make_error_handler_decorator, format_like
 from kaztron.utils.discord import extract_user_id
-from kaztron.utils.strings import get_timestamp_str
+from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -279,8 +279,8 @@ def insert_note(*, user: User, author: User, type_: RecordType,
     logger.debug("note: user={!r} author={!r} type={.name} timestamp={} expires={} body={!r}"
         .format(
                 user, author, type_,
-                get_timestamp_str(timestamp),
-                get_timestamp_str(expires) if expires else None,
+                format_timestamp(timestamp),
+                format_timestamp(expires) if expires else None,
                 body)
     )
     rec = Record(user=user, author=author, type=type_,
