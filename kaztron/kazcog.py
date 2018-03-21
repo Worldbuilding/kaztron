@@ -3,7 +3,7 @@ import functools
 import discord
 from discord.ext import commands
 
-from kaztron.config import get_kaztron_config, get_runtime_config
+from kaztron.config import get_kaztron_config, get_runtime_config, KaztronConfig
 from kaztron.errors import BotNotReady
 
 
@@ -34,6 +34,19 @@ class KazCog:
         marks the cog as fully ready to receive commands.
         """
         self.core.set_cog_ready(self)
+
+    def setup_custom_state(self, name, defaults=None):
+        """
+        Set up a custom state file for this cog instance. To be called by the child class.
+
+        The name specified MUST BE UNIQUE BOT-WIDE. Otherwise, concurrency issues will occur as
+        multiple KaztronConfig instances cannot handle a single file.
+
+        :param name: A simple alphanumeric name, to be used as part of the filename.
+        :param defaults: Defaults for this state file, as taken by the :cls:`KaztronConfig`
+            constructor.
+        """
+        self._state = KaztronConfig('state-' + name + '.json', defaults)
 
     @property
     def core(self):
