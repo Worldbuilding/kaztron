@@ -7,8 +7,10 @@ from typing import Tuple, Optional
 import dateparser
 import discord
 from discord.ext import commands
+from discord.ext.commands import ChannelConverter
 
-from kaztron import KazCog, utils
+import kaztron.cog.userstats.reports
+from kaztron import KazCog, utils, theme
 from kaztron.cog.userstats import core
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.kazcog import ready_only
@@ -47,7 +49,10 @@ class UserStats(KazCog):
         self.ignore_user_ids = self.config.get('userstats', 'ignore_users', [])
         self.ignore_channel_ids = self.config.get('userstats', 'ignore_channels', [])
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
+        self.last_report_dt = datetime.utcfromtimestamp(
+            self.state.get('userstats', 'last_report', 0))
         self.output_file_format = 'userstats-{}-{}.csv.gz'
+        self.report_file_format = 'report-{}-{}-{}-{}.csv.gz'
 
         self.acc = None  # type: StatsAccumulator
         self.last_acc_save = 0
@@ -116,7 +121,7 @@ class UserStats(KazCog):
         if current_hour == self.acc.period:
             return
 
-        core.init_dir()
+        core.init_stats_dir()
 
         logger.info("Closing stats accumulator for {}".format(self.acc.period.isoformat(' ')))
         filepath = core.get_filepath_for(self.acc.period)
@@ -132,8 +137,57 @@ class UserStats(KazCog):
         self.acc.start_times.update(old_start_times)
         self.save_accumulator(force=True)
 
-        # TODO: announce daily/weekly available reports and commands for it
-        # TODO: announcement including some basic activity stats?
+        await self.generate_monthly_report()
+
+    async def show_report(self, dest, report: kaztron.cog.userstats.reports.Report):
+
+        em = discord.Embed(
+            title=report.name,
+            color=theme.solarized.magenta
+        )
+        em.add_field(name="Total users", value=str(report.total_users), inline=True)
+        em.add_field(name="Active users", value=str(report.active_users), inline=True)
+        em.add_field(name="Voice users", value=str(report.voice_users), inline=True)
+        em.add_field(
+            name="Delta users",
+            value="{} (+{}|-{})".format(report.joins-report.parts, report.joins, report.parts),
+            inline=True
+        )
+        em.add_field(name="Messages", value=str(report.messages), inline=True)
+        em.add_field(
+            name="Messages/user",
+            value="{0[0]:.1f} (σ={0[1]:.1f})".format(report.messages_per_user),
+            inline=True
+        )
+        em.add_field(
+            name="Voice time",
+            value="{:.1f} man-hours".format(report.voice_time/3600),
+            inline=True
+        )
+        em.add_field(
+            name="Voice time/user",
+            value="{0[0]:.1f}h (σ={0[1]:.1f}h)"
+                  .format(tuple(v/3600 for v in report.voice_time_per_user)),
+            inline=True
+        )
+
+        await self.bot.send_message(dest, embed=em)
+
+    async def generate_monthly_report(self):
+        """ Generate this month's report, if it has not yet been generated. """
+        current_month = utils.datetime.truncate(self.acc.period, 'month')
+        if current_month > self.last_report_dt:
+            self.last_report_dt = current_month
+            self.state.set('userstats', 'last_report', utctimestamp(current_month))
+
+            start = current_month.replace(month=current_month.month-1, day=1)
+            end = current_month
+            report = kaztron.cog.userstats.reports.prepare_report(start, end)
+            report.name = "Report for {}".format(start.strftime('%B %Y'))
+            await self.show_report(self.dest_output, report)
+            await self.bot.send_message(self.dest_output,
+                "**Monthly reports now available!** Check `.help report` for help on generating "
+                "and viewing detailed reports.")
 
     @ready_only
     async def on_message(self, message: discord.Message):
@@ -221,13 +275,18 @@ class UserStats(KazCog):
         If a range of dates is specified, the data retrieved is up to and EXCLUDING the second date.
         A day starts at midnight UTC.
 
+        Note that if the range crosses month boundaries (e.g. March to April), then the unique user
+        hashes can be correlated between each other only within a given month. The same user will
+        have different hashes in different months. This is used as an anonymisation method, to avoid
+        long-term tracking of a unique, even if pseudonymised, user.
+
         This will generate and upload a CSV file, and could take some time. Please avoid calling
         this function multiple times for the same data or requesting giant ranges.
 
         Parameters:
-        * daterange. This can be a single date, or a range of dates in the form
-          `date1 to date2`. Each date can be specified as ISO format (2018-01-12), in English with
-          or without abbreviations (12 Jan 2018), or as relative times (5 days ago).
+        * daterange. This can be a single date (period of 24 hours), or a range of date/times in the
+          form `date1 to date2`. Each date can be specified as ISO format (2018-01-12), in English
+          with or without abbreviations (12 Jan 2018), or as relative times (5 days ago).
 
         Examples:
         .userstats 2018-01-12
@@ -243,12 +302,12 @@ class UserStats(KazCog):
         await self.bot.say("One moment, collecting stats for {} to {}..."
             .format(format_date(dates[0]), format_date(dates[1])))
 
-        with core.collect_stats(dates[0], dates[1]) as collect_file:
+        filename = self.output_file_format.format(
+            core.format_filename_date(dates[0]),
+            core.format_filename_date(dates[1])
+        )
+        with core.collect_stats(filename, dates[0], dates[1]) as collect_file:
             logger.info("Sending collected stats file.")
-            filename = self.output_file_format.format(
-                core.format_filename_date(dates[0]),
-                core.format_filename_date(dates[1])
-            )
             await self.bot.send_file(ctx.message.channel, collect_file, filename=filename,
                 content="User stats for {} to {}"
                         .format(format_date(dates[0]), format_date(dates[1])))
@@ -256,33 +315,94 @@ class UserStats(KazCog):
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def report(self, ctx: commands.Context, *, daterange: str):
+    async def report(self, ctx: commands.Context, type: str, channel: str=None, *, daterange: str):
         """
         Generate and show a statistics report for a date or range of dates.
 
         If a range of dates is specified, the data retrieved is up to and EXCLUDING the second date.
         A day starts at midnight UTC.
 
+        The date range cannot cross the boundary of one month (because unique users are not tracked
+        from month to month for anonymisation reasons; it's only possible to identify unique users
+        within the same month).
+
         This will read and process the raw data to generate stats, and could take some time. Please
         avoid calling this function multiple times for the same data or requesting giant ranges.
 
         Parameters:
-        * daterange. This can be a single date, or a range of dates in the form
-          `date1 to date2`. Each date can be specified as ISO format (2018-01-12), in English with
-          or without abbreviations (12 Jan 2018), or as relative times (5 days ago).
+        * type: One of "full", "weekday" or "hourly". "Weekday" and "hourly" take the raw data and
+            provide a breakdown by day of the week or hour of the day, respectively.
+        * channel: The name of a channel on the server, or "all".
+        * daterange. This can be a single date (period of 24 hours), or a range of date/times in the
+          form `date1 to date2`. Each date can be specified as ISO format (2018-01-12), in English
+          with or without abbreviations (12 Jan 2018), or as relative times (5 days ago).
 
         Examples:
-        .report 2018-01-12
-        .report yesterday
-        .report 2018-01-12 to 2018-01-14
-        .report 3 days ago to yesterday
-        .report 2018-01-01 to 7 days ago
+        .report full all 2018-01-12
+        .report full all yesterday
+        .report full #general 2018-01-12 to 2018-01-14
+        .report weekday all 3 days ago to yesterday
+        .report hourly #worldbuilding 2018-01-01 to 7 days ago
         """
         logger.debug("report: {}".format(message_log_str(ctx.message)))
+
+        types = ["full", "weekday", "hourly"]
+        if type not in types:
+            raise commands.BadArgument("Invalid type; types in {}".format(types))
         dates = self.process_daterange(daterange)
-        # TODO
+
+        if channel != 'all':
+            conv = ChannelConverter(ctx, channel)
+            channel = conv.convert()
+        else:
+            channel = None
+
+        if type == "full":
+            report = kaztron.cog.userstats.reports.prepare_report(*dates, channel=channel)
+            if not channel:
+                report.name = "Report for {} to {}"\
+                    .format(format_date(dates[0]), format_date(dates[1]))
+            else:  # channel
+                report.name = "Report for #{} from {} to {}"\
+                    .format(channel.name, format_date(dates[0]), format_date(dates[1]))
+            await self.show_report(ctx.message.channel, report)
+        elif type == "weekday":
+            filename = self.report_file_format.format(
+                type,
+                channel.name if channel is not None else 'all',
+                core.format_filename_date(dates[0]),
+                core.format_filename_date(dates[1])
+            )
+            reports = kaztron.cog.userstats.reports.prepare_weekday_report(*dates, channel=channel)
+            heads = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+            with kaztron.cog.userstats.reports.collect_report_matrix(filename, reports, heads) as collect_file:
+                logger.info("Sending collected reports file.")
+                if channel:
+                    msg = "Weekly report for {} from {} to {}"\
+                        .format(channel.name, format_date(dates[0]), format_date(dates[1]))
+                else:
+                    msg = "Weekly report for {} to {}"\
+                        .format(format_date(dates[0]), format_date(dates[1]))
+                await self.bot.send_file(
+                    ctx.message.channel, collect_file, filename=filename, content=msg)
+        elif type == "hourly":
+            filename = self.report_file_format.format(
+                type,
+                channel.name if channel is not None else 'all',
+                core.format_filename_date(dates[0]),
+                core.format_filename_date(dates[1])
+            )
+            reports = kaztron.cog.userstats.reports.prepare_hourly_report(*dates, channel=channel)
+            heads = tuple(str(i) for i in range(24))
+            with kaztron.cog.userstats.reports.collect_report_matrix(filename, reports, heads) as collect_file:
+                logger.info("Sending collected reports file.")
+                if channel:
+                    msg = "Hourly report for {} from {} to {}" \
+                        .format(channel.name, format_date(dates[0]), format_date(dates[1]))
+                else:
+                    msg = "Hourly report for {} to {}" \
+                        .format(format_date(dates[0]), format_date(dates[1]))
+                await self.bot.send_file(
+                    ctx.message.channel, collect_file, filename=filename, content=msg)
 
 
-    # TODO: AND IDEAS, NOT NECESSARILY FINAL
-    # some commands to retrieve basic activity stats for a given date or week (# active users, messages, - see the github issue w/viz's interests)
-    # global and per channel hour-by-hour stats, regenerated and stored daily???

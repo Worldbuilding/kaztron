@@ -11,4 +11,4 @@ uritemplate==3.0.0
 discord.py==0.16.12
 dateparser==0.6.0
 sqlalchemy>=1.2
-
+pytest>=3.0.0

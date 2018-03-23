@@ -171,8 +171,8 @@ class KaztronConfig:
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
-        logger.debug("config:set: file={!r} section={!r} key={!r} value={!r}"
-            .format(self.filename, section, key, value))
+        logger.debug("config:set: file={!r} section={!r} key={!r}"
+            .format(self.filename, section, key,))
 
         try:
             section_data = self._data[section]

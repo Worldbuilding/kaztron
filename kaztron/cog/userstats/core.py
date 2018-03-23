@@ -1,27 +1,27 @@
 import binascii
 import contextlib
 import csv
-import datetime
 import enum
 import gzip
-import logging
 import hashlib
-import tempfile
-from os import path
+import logging
 import os
-from typing import Union, Tuple, Optional, List, Sequence
+from datetime import datetime, timedelta
+from os import path
+from typing import Union, Tuple, Optional, List
 
 import discord
 
 from kaztron import utils
 from kaztron.utils.datetime import utctimestamp
 
-
 logger = logging.getLogger(__name__)
 
 stats_file_date_format = '%Y-%m-%d'
 stats_file_format = '{}.csv.gz'
 stats_dir = 'userstats'
+out_dir = 'tmp'
+stats_csv_headings = ('Period', 'Event', 'User hash (monthly)', 'Channel', 'Count')
 
 
 class EventType(enum.Enum):
@@ -96,7 +96,7 @@ class StatsAccumulator:
             self.data[key] = 1
 
     def capture_timed_event_start(self,
-                                  timestamp: datetime.datetime,
+                                  timestamp: datetime,
                                   type_: EventType,
                                   user: discord.Member,
                                   channel: discord.Channel):
@@ -104,7 +104,7 @@ class StatsAccumulator:
         self.start_times[key] = utctimestamp(timestamp)
 
     def capture_timed_event_end(self,
-                                timestamp: datetime.datetime,
+                                timestamp: datetime,
                                 type_: EventType,
                                 user: discord.Member,
                                 channel: discord.Channel):
@@ -154,7 +154,7 @@ class StatsAccumulator:
         # noinspection PyTypeChecker
         return [(*key, self.data[key]) for key in filter(tuple_filt, self.data.keys())]
 
-    def write_anonymised_csv(self, filepath: str, bot: discord.Client, now: datetime.datetime):
+    def write_anonymised_csv(self, filepath: str, bot: discord.Client, now: datetime):
         logger.info("Writing CSV file: {}".format(filepath))
         with gzip.open(filepath, mode='at') as csvfile:
             writer = csv.writer(csvfile)
@@ -189,7 +189,7 @@ class StatsAccumulator:
     @staticmethod
     def from_dict(data: dict):
         self = StatsAccumulator(
-            datetime.datetime.utcfromtimestamp(data['period']),
+            datetime.utcfromtimestamp(data['period']),
             salt=binascii.a2b_base64(data['salt']),
             hash_name=data['hash_name'],
             iterations=data['hash_iters']
@@ -199,12 +199,17 @@ class StatsAccumulator:
         return self
 
 
-def init_dir():
-    logger.info("Checking/making directory '{}'...".format(stats_dir))
+def init_stats_dir():
+    logger.info("Checking/making stats directory '{}'...".format(stats_dir))
     os.makedirs(stats_dir, mode=0o775, exist_ok=True)
 
 
-def get_filepath_for(dt: datetime.datetime):
+def init_out_dir():
+    logger.info("Checking/making output directory '{}'...".format(out_dir))
+    os.makedirs(out_dir, mode=0o775, exist_ok=True)
+
+
+def get_filepath_for(dt: datetime):
     filename = stats_file_format.format(dt.strftime(stats_file_date_format))
     filepath = path.join(stats_dir, filename)
     return filepath
@@ -221,12 +226,12 @@ def list_stats_files(from_date: datetime, to_date: datetime) -> List[str]:
     """
     filenames = []
     cur_date = utils.datetime.truncate(from_date, 'hour')
-    end_date = utils.datetime.truncate(to_date + datetime.timedelta(minutes=30), 'hour')
+    end_date = utils.datetime.truncate(to_date + timedelta(minutes=30), 'hour')
     while cur_date < end_date:
         filepath = get_filepath_for(cur_date)
         if filepath not in filenames:
             filenames.append(filepath)
-        cur_date += datetime.timedelta(hours=1)
+        cur_date += timedelta(hours=1)
     return filenames
 
 
@@ -236,7 +241,7 @@ def format_filename_date(dt: datetime) -> str:
 
 
 @contextlib.contextmanager
-def collect_stats(from_date: datetime, to_date: datetime):
+def collect_stats(filename: str, from_date: datetime, to_date: datetime):
     """
     Collect all stats between two datetimes (including from_date but excluding to_date) as a
     compressed CSV file, stored in a temporary file, and yields the file object.
@@ -245,105 +250,37 @@ def collect_stats(from_date: datetime, to_date: datetime):
     is intended to immediately upload or transmit the file after generation, hence returning an
     open file object.
     """
-    init_dir()
+    init_stats_dir()
+    init_out_dir()
 
     filenames = list_stats_files(from_date, to_date)
     logger.debug("Files to collect: {}".format(', '.join(filenames)))
 
-    #
-    # Using mkstemp and filename here because aiohttp 1.0.x is stupid and doesn't duck-type file-
-    # like-objects properly - fails to stream TemporaryFile, errors on trying to get a filename
-    # when opening a file descriptor. Ugh.
-    #
-    # Maybe something to revise with discord.py 1.0.0, which depends on aiohttp 2.3.0 instead
-    # Seems like aiohttp has seen this file streaming stuff reworked around Feb 2017
-    #
-    fd, filename = tempfile.mkstemp(suffix='.csv.gz', prefix='compile-', dir=stats_dir, text=False)
-    logger.info("Collecting data into temp file '{}'...".format(filename))
+    filename = path.join(out_dir, filename)
+    logger.info("Collecting data into output file '{}'...".format(filename))
     try:
-        # I know, we have an fd open already, but aiohttp 1.0.5 doesn't like open(fd)
-        # Re-opening works fine on Linux, not sure about Windows
-        with open(filename, mode='w+b') as tmpfile:
-            with gzip.open(tmpfile, mode='wt') as outfile:
-                outfile.write('Period,Event,Unique user,Channel,Count\n')
+        with open(filename, mode='w+b') as outfile:
+            with gzip.open(outfile, mode='wt') as zipfile:
+                zipfile.write(','.join(stats_csv_headings))
+                zipfile.write('\n')
                 for file in filenames:
                     logger.info("Writing '{}' to temp file...".format(file))
                     try:
                         with gzip.open(file, mode='rt') as infile:
                             for line in infile:
-                                outfile.write(line)
+                                zipfile.write(line)
                     except FileNotFoundError:
                         logger.warning("No stats file '{}'".format(file))
-            tmpfile.seek(0)
-            yield tmpfile
+            outfile.seek(0)
+            yield outfile
     finally:
-        os.close(fd)
         os.unlink(filename)
 
 
-class Report:
-    def __init__(self):
-        pass
-
-    def messages(self, channel_id: str=None) -> int:
-        pass
-
-    def active_users(self, channel_id: str=None) -> int:
-        pass
-
-    def total_users(self) -> int:
-        pass
-
-    def messages_per_user(self, channel_id: str=None, inactive=False) -> Tuple[float, float]:
-        pass  # average, max
-
-    def voice_time(self, channel_id: str=None) -> int:
-        pass  # seconds
-
-    def voice_users(self, channel_id: str=None) -> int:
-        pass
-
-    def voice_time_per_user(self, channel_id: str=None) -> Tuple[float, float]:
-        pass
-
-    def joins(self) -> int:
-        pass
-
-    def parts(self) -> int:
-        pass
+DATEPARSER_SETTINGS = {
+    'TIMEZONE': 'UTC',
+    'TO_TIMEZONE': 'UTC',
+    'RETURN_AS_TIMEZONE_AWARE': False
+}
 
 
-class ReportGenerator:
-    def __init__(self):
-        pass
-
-    def add_data(self, row: Sequence):
-        pass
-
-    def generate(self) -> Report:
-        """ Once all data is collected, generate the report. """
-        pass
-
-    def generate_weekly(self) -> Tuple[Report]:
-        pass
-
-    def generate_hourly(self) -> Tuple[Report]:
-        pass
-
-
-def prepare_report(from_date: datetime, to_date: datetime) -> ReportGenerator:
-    """
-    Generate a report between two dates (including from_date but excluding to_date).
-    """
-    generator = ReportGenerator()
-    filenames = list_stats_files(from_date, to_date)
-    logger.debug("Report: Files to collect: {}".format(', '.join(filenames)))
-    for file in filenames:
-        logger.info("Opening '{}' for report...".format(file))
-        try:
-            with gzip.open(file, mode='rt') as infile:
-                for row in csv.reader(infile):
-                    generator.add_data(row)
-        except FileNotFoundError:
-            logger.warning("No stats file '{}'".format(file))
-    return generator
