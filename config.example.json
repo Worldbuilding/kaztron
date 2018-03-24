@@ -12,7 +12,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
     "channel_request": "channel ID for requests",
     "log_level": "INFO",
     "log_file": "kaztron.log",
@@ -43,8 +43,6 @@
     "channel_dice": "channel ID where dice are allowed"
   },
   "role_man": {
-    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
-    "role_voice": "Name of the role to assign while in voice channels",
     "user_roles": {
       "role_name1": {
         "join": "join command name",
@@ -107,5 +105,10 @@
   "userstats": {
     "ignore_users": ["user ID 1", "user ID 2", "etc"],
     "ignore_channels": ["channel ID 1", "channel ID 2", "etc"]
+  },
+  "voicelog": {
+    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
+    "channel_text": "text channel ID to output voice status messages to",
+    "role_voice": "Name of the role to assign while in voice channels"
   }
 }
