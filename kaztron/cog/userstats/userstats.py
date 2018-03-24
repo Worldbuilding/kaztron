@@ -9,9 +9,8 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import ChannelConverter
 
-import kaztron.cog.userstats.reports
 from kaztron import KazCog, utils, theme
-from kaztron.cog.userstats import core
+from kaztron.cog.userstats import core, reports
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
@@ -139,7 +138,7 @@ class UserStats(KazCog):
 
         await self.generate_monthly_report()
 
-    async def show_report(self, dest, report: kaztron.cog.userstats.reports.Report):
+    async def show_report(self, dest, report: reports.Report):
 
         em = discord.Embed(
             title=report.name,
@@ -182,7 +181,7 @@ class UserStats(KazCog):
 
             start = current_month.replace(month=current_month.month-1, day=1)
             end = current_month
-            report = kaztron.cog.userstats.reports.prepare_report(start, end)
+            report = reports.prepare_report(start, end)
             report.name = "Report for {}".format(start.strftime('%B %Y'))
             await self.show_report(self.dest_output, report)
             await self.bot.send_message(self.dest_output,
@@ -358,7 +357,7 @@ class UserStats(KazCog):
             channel = None
 
         if type == "full":
-            report = kaztron.cog.userstats.reports.prepare_report(*dates, channel=channel)
+            report = reports.prepare_report(*dates, channel=channel)
             if not channel:
                 report.name = "Report for {} to {}"\
                     .format(format_date(dates[0]), format_date(dates[1]))
@@ -373,9 +372,9 @@ class UserStats(KazCog):
                 core.format_filename_date(dates[0]),
                 core.format_filename_date(dates[1])
             )
-            reports = kaztron.cog.userstats.reports.prepare_weekday_report(*dates, channel=channel)
+            week_reports = reports.prepare_weekday_report(*dates, channel=channel)
             heads = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
-            with kaztron.cog.userstats.reports.collect_report_matrix(filename, reports, heads) as collect_file:
+            with reports.collect_report_matrix(filename, week_reports, heads) as collect_file:
                 logger.info("Sending collected reports file.")
                 if channel:
                     msg = "Weekly report for {} from {} to {}"\
@@ -392,9 +391,9 @@ class UserStats(KazCog):
                 core.format_filename_date(dates[0]),
                 core.format_filename_date(dates[1])
             )
-            reports = kaztron.cog.userstats.reports.prepare_hourly_report(*dates, channel=channel)
+            hourly_reports = reports.prepare_hourly_report(*dates, channel=channel)
             heads = tuple(str(i) for i in range(24))
-            with kaztron.cog.userstats.reports.collect_report_matrix(filename, reports, heads) as collect_file:
+            with reports.collect_report_matrix(filename, hourly_reports, heads) as collect_file:
                 logger.info("Sending collected reports file.")
                 if channel:
                     msg = "Hourly report for {} from {} to {}" \
@@ -404,5 +403,3 @@ class UserStats(KazCog):
                         .format(format_date(dates[0]), format_date(dates[1]))
                 await self.bot.send_file(
                     ctx.message.channel, collect_file, filename=filename, content=msg)
-
-
