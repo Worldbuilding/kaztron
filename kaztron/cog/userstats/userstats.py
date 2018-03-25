@@ -24,8 +24,9 @@ class UserStats(KazCog):
     """
     Collects user activity statistics.
 
-    No messages or personally identifiable information is stored by this module, but only event
-    counts such as number of messages in each channel on an hour-by-hour basis.
+    No messages or personally identifiable information are stored by this module, only event counts
+    such as number of messages in each channel on an hour-by-hour basis.
+
     """
     DATEPARSER_SETTINGS = {
         'TIMEZONE': 'UTC',
@@ -179,7 +180,7 @@ class UserStats(KazCog):
             self.last_report_dt = current_month
             self.state.set('userstats', 'last_report', utctimestamp(current_month))
 
-            start = current_month.replace(month=current_month.month-1, day=1)
+            start = utils.datetime.truncate(current_month - timedelta(days=1), 'month')
             end = current_month
             report = reports.prepare_report(start, end)
             report.name = "Report for {}".format(start.strftime('%B %Y'))
@@ -264,12 +265,18 @@ class UserStats(KazCog):
 
         return dates
 
+    def default_daterange(self) -> Tuple[datetime, datetime]:
+        """ Return the default daterange (last month). """
+        end = utils.datetime.truncate(datetime.utcnow(), 'month')
+        start = utils.datetime.truncate(end - timedelta(days=1), 'month')
+        return start, end
+
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def userstats(self, ctx: commands.Context, *, daterange: str):
+    async def userstats(self, ctx: commands.Context, *, daterange: str=None):
         """
-        Retrieve a CSV dump of stats for a date or range of dates.
+        [MOD ONLY] Retrieve a CSV dump of stats for a date or range of dates.
 
         If a range of dates is specified, the data retrieved is up to and EXCLUDING the second date.
         A day starts at midnight UTC.
@@ -282,10 +289,15 @@ class UserStats(KazCog):
         This will generate and upload a CSV file, and could take some time. Please avoid calling
         this function multiple times for the same data or requesting giant ranges.
 
-        Parameters:
-        * daterange. This can be a single date (period of 24 hours), or a range of date/times in the
-          form `date1 to date2`. Each date can be specified as ISO format (2018-01-12), in English
-          with or without abbreviations (12 Jan 2018), or as relative times (5 days ago).
+        The file is compressed using gzip. Windows users should use a modern archiving programme
+        like 7zip <https://www.7-zip.org/download.html>; macOS users can open these files
+        natively. Linux users know the drill.
+
+        Arguments:
+        * daterange. Optional. This can be a single date (period of 24 hours), or a range of
+          date/times in the form `date1 to date2`. Each date can be specified as ISO format
+          (2018-01-12), in English with or without abbreviations (12 Jan 2018), or as relative times
+          (5 days ago). Default is last month.
 
         Examples:
         .userstats 2018-01-12
@@ -296,7 +308,10 @@ class UserStats(KazCog):
         """
         logger.debug("userstats: {}".format(message_log_str(ctx.message)))
 
-        dates = self.process_daterange(daterange)
+        if daterange:
+            dates = self.process_daterange(daterange)
+        else:
+            dates = self.default_daterange()
 
         await self.bot.say("One moment, collecting stats for {} to {}..."
             .format(format_date(dates[0]), format_date(dates[1])))
@@ -314,9 +329,10 @@ class UserStats(KazCog):
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def report(self, ctx: commands.Context, type: str, channel: str=None, *, daterange: str):
+    async def report(self, ctx: commands.Context, type_: str, channel: str=None,
+                     *, daterange: str=None):
         """
-        Generate and show a statistics report for a date or range of dates.
+        [MOD ONLY] Generate and show a statistics report for a date or range of dates.
 
         If a range of dates is specified, the data retrieved is up to and EXCLUDING the second date.
         A day starts at midnight UTC.
@@ -328,13 +344,18 @@ class UserStats(KazCog):
         This will read and process the raw data to generate stats, and could take some time. Please
         avoid calling this function multiple times for the same data or requesting giant ranges.
 
-        Parameters:
-        * type: One of "full", "weekday" or "hourly". "Weekday" and "hourly" take the raw data and
+        The file is compressed using gzip. Windows users should use a modern archiving programme
+        like 7zip <https://www.7-zip.org/download.html>; macOS users can open these files
+        natively. Linux users know the drill.
+
+        Arguments:
+        * type: One of "full", "weekday" or "hourly". "weekday" and "hourly" take the raw data and
             provide a breakdown by day of the week or hour of the day, respectively.
         * channel: The name of a channel on the server, or "all".
-        * daterange. This can be a single date (period of 24 hours), or a range of date/times in the
-          form `date1 to date2`. Each date can be specified as ISO format (2018-01-12), in English
-          with or without abbreviations (12 Jan 2018), or as relative times (5 days ago).
+        * daterange. Optional. This can be a single date (period of 24 hours), or a range of
+          date/times in the form `date1 to date2`. Each date can be specified as ISO format
+          (2018-01-12), in English with or without abbreviations (12 Jan 2018), or as relative times
+          (5 days ago). Default is last month.
 
         Examples:
         .report full all 2018-01-12
@@ -345,18 +366,25 @@ class UserStats(KazCog):
         """
         logger.debug("report: {}".format(message_log_str(ctx.message)))
 
+        type_ = type_.lower()
         types = ["full", "weekday", "hourly"]
-        if type not in types:
+        if type_ not in types:
             raise commands.BadArgument("Invalid type; types in {}".format(types))
-        dates = self.process_daterange(daterange)
 
-        if channel != 'all':
+        if daterange:
+            dates = self.process_daterange(daterange)
+        else:
+            dates = self.default_daterange()
+
+        if channel.lower() != 'all':
             conv = ChannelConverter(ctx, channel)
             channel = conv.convert()
         else:
             channel = None
 
-        if type == "full":
+        await self.bot.say("Preparing report, please wait...")
+
+        if type_ == "full":
             report = reports.prepare_report(*dates, channel=channel)
             if not channel:
                 report.name = "Report for {} to {}"\
@@ -365,9 +393,9 @@ class UserStats(KazCog):
                 report.name = "Report for #{} from {} to {}"\
                     .format(channel.name, format_date(dates[0]), format_date(dates[1]))
             await self.show_report(ctx.message.channel, report)
-        elif type == "weekday":
+        elif type_ == "weekday":
             filename = self.report_file_format.format(
-                type,
+                type_,
                 channel.name if channel is not None else 'all',
                 core.format_filename_date(dates[0]),
                 core.format_filename_date(dates[1])
@@ -384,9 +412,9 @@ class UserStats(KazCog):
                         .format(format_date(dates[0]), format_date(dates[1]))
                 await self.bot.send_file(
                     ctx.message.channel, collect_file, filename=filename, content=msg)
-        elif type == "hourly":
+        elif type_ == "hourly":
             filename = self.report_file_format.format(
-                type,
+                type_,
                 channel.name if channel is not None else 'all',
                 core.format_filename_date(dates[0]),
                 core.format_filename_date(dates[1])

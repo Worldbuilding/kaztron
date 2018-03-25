@@ -18,7 +18,6 @@ class VoiceLog(KazCog):
      Voice role management. Allows people in voice to be assigned a role: for example, to let
      voice users see a voice-only text channel, or change their colour when in voice, etc.
      """
-    # TODO: modify config
     def __init__(self, bot):
         super().__init__(bot)
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
