@@ -179,6 +179,7 @@ class UserStats(KazCog):
         if current_month > self.last_report_dt:
             self.last_report_dt = current_month
             self.state.set('userstats', 'last_report', utctimestamp(current_month))
+            self.state.write()
 
             start = utils.datetime.truncate(current_month - timedelta(days=1), 'month')
             end = current_month
