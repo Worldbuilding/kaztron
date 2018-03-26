@@ -214,7 +214,7 @@ def update_nicknames(user: User, member: discord.Member):
     """
     Update a user's nicknames and usernames.
     """
-    logger.info("update_nicknames: Updating names: {!r}...".format(user))
+    logger.debug("update_nicknames: Updating names: {!r}...".format(user))
     user.name = member.nick if member.nick else member.name
     user.username = member.name
     session.commit()

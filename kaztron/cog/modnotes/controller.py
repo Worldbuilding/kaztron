@@ -34,7 +34,50 @@ def init_db():
 on_error_rollback = make_error_handler_decorator(session, logger)
 
 
-async def query_user(bot, id_: str):
+async def create_user(discord_id: str, bot: discord.Client) -> User:
+    """
+    Create a database user
+    :param discord_id: The discord user ID, of the form \d+.
+    :param bot: The client instance, used to retrieve the Discord user.
+    :return:
+    """
+    # Try to find the user
+    try:
+        for server in bot.servers:
+            member = server.get_member(discord_id)  # type: discord.Member
+            if member:
+                break
+        else:  # If user has left server, see if the account still exists via the API
+            member = await bot.get_user_info(discord_id)
+    except discord.NotFound as e:
+        raise UserNotFound('Discord user not found') from e
+
+    # Check names and nicknames to build name/alias profile
+    if hasattr(member, 'nick') and member.nick:
+        name = member.nick
+        alias = member.name
+    else:
+        name = member.name
+        alias = None
+
+    # Create and store the user
+    db_user = User(discord_id=discord_id, name=name)
+    if alias:
+        db_user.aliases.append(UserAlias(user=db_user, name=alias))
+
+    try:
+        session.add(db_user)
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    else:
+        logger.debug('Created user: {!r}'.format(db_user))
+
+    return db_user
+
+
+async def query_user(bot: discord.Client, id_: str):
     """
     Find a user given an ID string passed by command, or create it if it does not exist.
 
@@ -51,66 +94,88 @@ async def query_user(bot, id_: str):
     :raises discord.HTTPException: Discord API error occurred
     :raises db.exc.MultipleResultsFound: Should never happen - database is buggered.
     """
-    discord_id = None
-    db_id = None
-
     # Parse the passed ID
     if id_.startswith('*'):
         try:
             db_id = int(id_[1:])
         except ValueError:
             raise ValueError('Invalid KazTron user ID: must be "*" followed by a number')
+        db_user = await get_user_by_db_id(db_id, bot)
     else:
         try:
             discord_id = extract_user_id(id_)
         except discord.InvalidArgument:
             raise ValueError('Invalid Discord user ID format')
+        db_user = await get_user_by_discord_id(discord_id, bot)
 
-    # Retrieve the user depending on the passed ID type
-    if discord_id:
-        logger.debug('_query_user: passed Discord ID: {}'.format(discord_id))
-        # Try to find discord_id in database
-        try:
-            db_user = session.query(User).filter_by(discord_id=discord_id).one_or_none()
-        except db.orm_exc.MultipleResultsFound:
-            logger.exception("Er, mate, I think we've got a problem here. "
-                             "The database is buggered.")
-            raise
+    for server in bot.servers:
+        member = server.get_member(db_user.discord_id)  # type: discord.Member
+        if member:
+            update_nicknames(db_user, member)
+            break
+    else:
+        logger.warning("Can't find Discord member to update nicknames for {!r}".format(db_user))
 
-        if db_user:
-            logger.debug('_query_user: found user: {!r}'.format(db_user))
-        else:  # If does not exist - make a new user in database
-            logger.debug('_query_user: user not found, creating record')
-            try:
-                user = await bot.get_user_info(discord_id)
-            except discord.NotFound as e:
-                raise UserNotFound('Discord user not found') from e
-            db_user = User(discord_id=discord_id, name=user.name)
-            try:
-                session.add(db_user)
-                session.commit()
-            except:
-                session.rollback()
-                raise
-            else:
-                logger.debug('_query_user: created user: {!r}'.format(db_user))
+    return db_user
 
-        # either way, return the dbuser
+
+async def get_user_by_discord_id(discord_id: str, bot: discord.Client) -> User:
+    """
+    Find a database user by their Discord ID, or create it if it does not exist.
+    :param discord_id: The discord ID, as a numeric string.
+    :param bot: discord.Client, used to retrieve Discord user information if needed
+    :return: The database User object
+    """
+    logger.debug('get_user_by_discord_id: passed Discord ID: {}'.format(discord_id))
+    # Try to find discord_id in database
+    try:
+        db_user = session.query(User).filter_by(discord_id=discord_id).one_or_none()
+    except db.orm_exc.MultipleResultsFound:
+        logger.exception("Er, mate, I think we've got a problem here. "
+                         "The database is buggered.")
+        raise
+
+    if db_user:
+        logger.debug('get_user_by_discord_id: found user: {!r}'.format(db_user))
+    else:  # If does not exist - make a new user in database
+        logger.debug('get_user_by_discord_id: user not found, creating record')
+        db_user = await create_user(discord_id, bot)
+    return db_user
+
+
+async def get_user_by_db_id(user_id: int, bot: discord.Client) -> User:
+    """
+    Find a database user by the database user ID.
+    :param user_id: The user ID in the databse.
+    :param bot: discord.Client, used to retrieve Discord user information if needed
+    :return: The database User object
+    """
+    logger.debug('get_user_by_db_id: passed database ID: {}'.format(user_id))
+    try:
+        db_user = session.query(User).filter_by(user_id=user_id).one()
+    except db.orm_exc.NoResultFound as e:
+        raise UserNotFound('Database user not found') from e
+    except db.orm_exc.MultipleResultsFound:
+        logger.exception("Er, mate, I think we've got a problem here. "
+                         "The database is buggered.")
+        raise
+    else:
+        logger.debug('get_user_by_db_id: found user: {!r}'.format(db_user))
         return db_user
 
-    else:  # database ID was passed
-        logger.debug('_query_user: passed database ID: {}'.format(db_id))
-        try:
-            db_user = session.query(User).filter_by(user_id=db_id).one()
-        except db.orm_exc.NoResultFound as e:
-            raise UserNotFound('Database user not found') from e
-        except db.orm_exc.MultipleResultsFound:
-            logger.exception("Er, mate, I think we've got a problem here. "
-                             "The database is buggered.")
-            raise
-        else:
-            logger.debug('_query_user: found user: {!r}'.format(db_user))
-        return db_user
+
+@on_error_rollback
+def update_nicknames(user: User, member: discord.Member):
+    """
+    Update a user's nicknames and usernames.
+    """
+    logger.debug("update_nicknames: Updating names: {!r}...".format(user))
+    if member.nick and member.nick != user.name and member.nick not in user.aliases:
+        user.aliases.append(UserAlias(user=user, name=member.nick))
+    if member.name != user.name and member.name not in user.name:
+        user.aliases.append(UserAlias(user=user, name=member.name))
+    session.commit()
+    logger.info("update_nicknames: Updated names: {!r}".format(user))
 
 
 def query_user_group(user: User) -> List[User]:
