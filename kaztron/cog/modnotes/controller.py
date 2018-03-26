@@ -313,3 +313,14 @@ def delete_removed_record(record_id: int):
     logger.info("Deleting record {!r}".format(record))
     session.delete(record)
     session.commit()
+
+
+@on_error_rollback
+def update_record(record_id: int, **kwargs) -> Record:
+    record = get_record(record_id)
+    logger.info("Updating record {!r}".format(record))
+    logger.debug("... with {!r}".format(kwargs))
+    for k, v in kwargs.items():
+        setattr(record, k, v)
+    session.commit()
+    return record

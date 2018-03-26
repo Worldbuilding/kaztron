@@ -367,6 +367,43 @@ class ModNotes(KazCog):
         await self.bot.say("Added note #{:04d} for {}."
             .format(record.record_id, user_mention(record.user.discord_id)))
 
+    @notes.command(pass_context=True, ignore_extra=False, aliases=['x', 'expire'])
+    @mod_only()
+    @mod_channels()
+    async def expires(self, ctx, note_id: int, *, timespec: str="now"):
+        """
+
+        [MOD ONLY] Change the expiration time of an existing note.
+
+        Arguments:
+        * <note_id>: Required. The ID of the note. See `.help notes`.
+        * [timespec]: Optional. The time at which the ban will expire. Default is now. Format
+        accepted is the same as `.notes add` (quotation marks not required). See `.help notes add`.
+
+        Example:
+        .notes expires 122 tomorrow
+            Change the expiration time of note #122 to tomorrow (24 hours from now).
+        .notes expires 138 2018-01-24
+            Change the expiration time of note #138 to 24 January 2018.
+        """
+        logger.info("notes expires: {}".format(message_log_str(ctx.message)))
+
+        expires = dateparser.parse(timespec, settings=self.DATEPARSER_SETTINGS)
+        if expires is None:  # dateparser failed to parse
+            raise commands.BadArgument("Invalid timespec: '{}'".format(timespec))
+
+        try:
+            record = c.update_record(note_id, expires=expires)
+        except db.orm_exc.NoResultFound:
+            await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
+        else:
+            await self.show_records(ctx.message.channel,
+                user=record.user, records=[record],
+                box_title="Note expiration updated.", page=None, short=True)
+            await self.show_records(self.ch_log,
+                user=record.user, records=[record],
+                box_title="Note expiration updated.", page=None, short=True)
+
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels()
