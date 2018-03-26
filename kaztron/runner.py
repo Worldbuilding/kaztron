@@ -1,8 +1,10 @@
 import asyncio
 import enum
+import functools
 import logging
 import random
 import sys
+from types import MethodType
 
 from discord.ext import commands
 
@@ -20,11 +22,45 @@ class ErrorCodes:
     CFG_FILE = 17
 
 
+def patch_smart_quotes_hack(client: commands.Bot):
+    """
+    Patch to convert smart quotes to ASCII quotes when processing commands in discord.py
+
+    Because iOS by default is stupid and inserts smart quotes, and not everyone configures their
+    mobile device to be SSH-friendly. WTF, Apple, way to ruin basic input expectations across your
+    *entire* OS.
+    """
+    old_process_commands = client.process_commands
+    conversion_map = {
+        '\u00ab': '"',
+        '\u00bb': '"',
+        '\u2018': '\'',
+        '\u2019': '\'',
+        '\u201a': '\'',
+        '\u201b': '\'',
+        '\u201c': '"',
+        '\u201d': '"',
+        '\u201e': '"',
+        '\u201f': '"',
+        '\u2039': '\'',
+        '\u203a': '\'',
+        '\u2042': '"'
+    }
+
+    @functools.wraps(client.process_commands)
+    async def new_process_commands(self, message, *args, **kwargs):
+        for f, r in conversion_map.items():
+            message.content = message.content.replace(f, r)
+        return await old_process_commands(message, *args, **kwargs)
+    client.process_commands = MethodType(new_process_commands, client)
+
+
 def run(loop: asyncio.AbstractEventLoop):
     config = get_kaztron_config()
     client = commands.Bot(command_prefix='.',
         description='This an automated bot for the /r/worldbuilding discord server',
         pm_help=True)
+    patch_smart_quotes_hack(client)
 
     # Load extensions
     startup_extensions = config.get("core", "extensions")
