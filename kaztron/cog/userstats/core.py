@@ -161,7 +161,7 @@ class StatsAccumulator:
             # commit all unfinished time-based events to the main event data
             logger.debug("Time-based events: closing any unclosed events: {!r}"
                 .format(self.start_times))
-            for k in self.start_times.keys():
+            for k in self.start_times.copy().keys():
                 self.capture_timed_event_end(now, k[0], k[1], k[2])
                 self.capture_timed_event_start(now, k[0], k[1], k[2])
 
@@ -282,5 +282,4 @@ DATEPARSER_SETTINGS = {
     'TO_TIMEZONE': 'UTC',
     'RETURN_AS_TIMEZONE_AWARE': False
 }
-
 
