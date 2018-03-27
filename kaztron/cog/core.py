@@ -239,8 +239,11 @@ class CoreCog(kaztron.KazCog):
 
         elif isinstance(exc, commands.CommandNotFound):
             msg = "Unknown command: {}".format(cmd_string)
-            # avoid some natural language things that start with period (ellipsis, etc.)
-            if ctx.invoked_with not in ['.', '..'] and not ctx.invoked_with.startswith('.'):
+            # safe to assume commands usually words - symbolic commands are rare
+            # and we want to avoid emoticons ('._.', etc.), punctuation ('...') and decimal numbers
+            # without leading 0 (.12) being detected
+            if ctx.invoked_with and all(c.isalnum() for c in ctx.invoked_with) \
+                    and not ctx.invoked_with[0].isdigit():
                 logger.warning(msg)
                 await self.bot.send_message(ctx.message.channel,
                     "Sorry, I don't know the command `{}{.invoked_with}`"
