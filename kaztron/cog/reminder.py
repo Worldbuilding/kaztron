@@ -163,7 +163,8 @@ class ReminderCog(KazCog):
             raise commands.BadArgument("message")
 
         timestamp = datetime.utcnow()
-        timespec = dt_parse(timespec_s, future=True)
+        # first one allows "10 minutes" as a future input, second is a fallback
+        timespec = dt_parse('in ' + timespec_s, future=True) or dt_parse(timespec_s, future=True)
 
         if timespec is None:
             raise commands.BadArgument("timespec", timespec_s[:64])
