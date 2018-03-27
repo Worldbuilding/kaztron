@@ -276,7 +276,10 @@ class CoreCog(kaztron.KazCog):
                      value="v{}".format(kaztron.bot_info["version"]), inline=True)
         em.add_field(name="discord.py version",
             value="v{}".format(discord.__version__), inline=True)
-        for title, url in kaztron.bot_info["links"].items():
+
+        links = kaztron.bot_info["links"].copy()
+        links.update(self.config.get('core', 'info_links', {}))
+        for title, url in links.items():
             em.add_field(name=title, value="[{0}]({1})".format(title, url), inline=True)
         await self.bot.say(embed=em)
 

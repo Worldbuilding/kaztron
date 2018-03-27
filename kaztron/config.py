@@ -2,6 +2,7 @@ import json
 import logging
 import errno
 import copy
+from collections import OrderedDict
 
 from kaztron.driver.atomic_write import atomic_write
 
@@ -65,7 +66,7 @@ class KaztronConfig:
         self._data = copy.deepcopy(self._defaults)
         try:
             with open(self.filename) as cfg_file:
-                read_data = json.load(cfg_file)
+                read_data = json.load(cfg_file, object_pairs_hook=OrderedDict)
         except OSError as e:
             if e.errno == errno.ENOENT:  # file not found, just create it
                 if not self._read_only:

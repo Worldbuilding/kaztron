@@ -12,7 +12,6 @@ bot_info["links"]["Changelog"] = "https://github.com/Worldbuilding/KazTron/relea
 bot_info["links"]["Manual"] = "http://worldbuilding.network/kaztron/"
 bot_info["links"]["GitHub"] = "https://github.com/Worldbuilding/KazTron"
 bot_info["links"]["Bugs/Issues"] = "https://github.com/Worldbuilding/KazTron/issues"
-bot_info["links"]["Spotlight Apps"] = "https://docs.google.com/spreadsheets/d/1YSwx6AJFfOEzIwTAeb71YXEeM0l34mUt6OvyhxTwQis/edit?usp=sharing"
 
 cfg_defaults = {
     "discord": {
