@@ -4,7 +4,6 @@ import os
 import time
 from typing import Tuple, Optional
 
-import dateparser
 import discord
 from discord.ext import commands
 from discord.ext.commands import ChannelConverter
@@ -14,7 +13,7 @@ from kaztron.cog.userstats import core, reports
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.datetime import utctimestamp, format_date
+from kaztron.utils.datetime import utctimestamp, format_date, parse as dt_parse
 from kaztron.utils.logging import message_log_str
 
 logger = logging.getLogger(__name__)
@@ -28,12 +27,6 @@ class UserStats(KazCog):
     such as number of messages in each channel on an hour-by-hour basis.
 
     """
-    DATEPARSER_SETTINGS = {
-        'TIMEZONE': 'UTC',
-        'TO_TIMEZONE': 'UTC',
-        'RETURN_AS_TIMEZONE_AWARE': False
-    }
-
     ACCUMULATOR_SETTINGS = {
         'hash_name': 'sha256',
         'iterations': 100000
@@ -249,8 +242,7 @@ class UserStats(KazCog):
         date_split = daterange.split(' to ', maxsplit=1)
         logger.debug("Identified date strings: {!r}".format(date_split))
 
-        dates = tuple(dateparser.parse(date_str, settings=self.DATEPARSER_SETTINGS)
-                      for date_str in date_split)
+        dates = tuple(dt_parse(date_str, future=False) for date_str in date_split)
         if None in dates:
             logger.warning("Invalid datespec(s) passed: '{}' split as {!r}"
                 .format(daterange, date_split))

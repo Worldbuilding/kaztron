@@ -1,10 +1,42 @@
-import datetime
 from datetime import datetime, date, timedelta, timezone
+import dateparser
 from typing import Union
 
 import discord
 
 from kaztron.config import get_kaztron_config
+
+
+DATEPARSER_SETTINGS = {
+    'TIMEZONE': 'UTC',
+    'TO_TIMEZONE': 'UTC',
+    'RETURN_AS_TIMEZONE_AWARE': False
+}
+
+
+def parse(timespec: str, future=False, **kwargs):
+    """
+    Datetime parser, using the `dateparse` package. By default, assumes the UTC timezone unless the
+    datetime string specifies timezone.
+
+    :param timespec: String to parse
+    :param future: If True, ambiguous dates should favour future times. Otherwise, past.
+    :param kwargs: Any other kwargs to pass to dateparser.parse
+    :return: A timezone-agnostic datetime object in UTC.
+    """
+    settings = DATEPARSER_SETTINGS.copy()
+    settings.update(kwargs)
+    if not future:
+        return dateparser.parse(timespec, settings=settings)
+    else:
+        # workaround for https://github.com/scrapinghub/dateparser/issues/403
+        # we'll try it out without this setting and return if it's in the future
+        dt = dateparser.parse(timespec, settings=settings)
+        if dt > datetime.utcnow():
+            return dt
+        else:
+            settings['PREFER_DATES_FROM'] = 'future'
+            return dateparser.parse(timespec, settings=settings)
 
 
 def utctimestamp(utcdt: datetime):
@@ -78,13 +110,13 @@ def format_timedelta(delta: timedelta, timespec="seconds") -> str:
 
     # get a resolution object to round against
     if timespec == 'days':
-        res = datetime.timedelta(days=1)
+        res = timedelta(days=1)
     elif timespec == 'hours':
-        res = datetime.timedelta(hours=1)
+        res = timedelta(hours=1)
     elif timespec == 'minutes':
-        res = datetime.timedelta(minutes=1)
+        res = timedelta(minutes=1)
     elif timespec == 'seconds':
-        res = datetime.timedelta(seconds=1)
+        res = timedelta(seconds=1)
     elif timespec == 'microseconds':
         res = None
     else:
@@ -96,7 +128,7 @@ def format_timedelta(delta: timedelta, timespec="seconds") -> str:
 
     # split up seconds into hours, minutes, seconds
     # (because timedelta only stores days and seconds???)
-    rem = datetime.timedelta(seconds=delta.seconds, microseconds=delta.microseconds)
+    rem = timedelta(seconds=delta.seconds, microseconds=delta.microseconds)
     hours, rem = divmod(rem, timedelta(hours=1))
     minutes, rem = divmod(rem, timedelta(minutes=1))
     seconds, rem = divmod(rem, timedelta(seconds=1))

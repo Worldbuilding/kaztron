@@ -5,13 +5,12 @@ from datetime import datetime
 from functools import reduce
 from typing import List, Optional, Callable, Awaitable
 
-import dateparser
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
-from kaztron.config import get_kaztron_config, get_runtime_config
-from kaztron.utils.datetime import utctimestamp, format_datetime, format_timedelta
+from kaztron.utils.datetime import utctimestamp, format_datetime, format_timedelta, \
+    parse as dt_parse
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import Limits
 from kaztron.utils.logging import message_log_str, exc_log_str
@@ -164,7 +163,7 @@ class ReminderCog(KazCog):
             raise commands.BadArgument("message")
 
         timestamp = datetime.utcnow()
-        timespec = dateparser.parse(timespec_s, settings=self.DATEPARSER_SETTINGS)
+        timespec = dt_parse(timespec_s, future=True)
 
         if timespec is None:
             raise commands.BadArgument("timespec", timespec_s[:64])

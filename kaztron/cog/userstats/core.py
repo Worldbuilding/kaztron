@@ -275,11 +275,3 @@ def collect_stats(filename: str, from_date: datetime, to_date: datetime):
             yield outfile
     finally:
         os.unlink(filename)
-
-
-DATEPARSER_SETTINGS = {
-    'TIMEZONE': 'UTC',
-    'TO_TIMEZONE': 'UTC',
-    'RETURN_AS_TIMEZONE_AWARE': False
-}
-

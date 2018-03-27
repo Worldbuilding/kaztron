@@ -7,11 +7,10 @@ from os import path
 from typing import Sequence, Tuple, List
 import logging
 
-import dateparser
 import discord
 
 from kaztron.utils import datetime as utils_dt
-from kaztron.cog.userstats.core import EventType, DATEPARSER_SETTINGS, list_stats_files, \
+from kaztron.cog.userstats.core import EventType, list_stats_files, \
     init_stats_dir, init_out_dir, out_dir
 from kaztron.driver.stats import MeanVarianceAccumulator
 
@@ -80,7 +79,7 @@ class ReportGenerator:
 
     @staticmethod
     def get_period(row: Sequence) -> datetime:
-        return dateparser.parse(row[0], settings=DATEPARSER_SETTINGS)
+        return utils_dt.parse(row[0])
 
     @staticmethod
     def get_channel(row: Sequence) -> str:

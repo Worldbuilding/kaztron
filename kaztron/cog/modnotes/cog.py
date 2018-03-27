@@ -4,12 +4,12 @@ import math
 from collections import OrderedDict
 from typing import List, Optional
 
-import dateparser
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.driver import database as db
+from kaztron.utils.datetime import parse as dt_parse
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, get_usage_str
 from kaztron.utils.logging import message_log_str
@@ -329,7 +329,7 @@ class ModNotes(KazCog):
         for key, arg in kwargs.items():
             if key.lower() in self.KW_TIME:
                 if timestamp is None:
-                    timestamp = dateparser.parse(arg, settings=self.DATEPARSER_SETTINGS)
+                    timestamp = dt_parse(arg, future=False)
                     if timestamp is None:  # dateparser failed to parse
                         raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
@@ -340,7 +340,7 @@ class ModNotes(KazCog):
                     if arg.lower() in ('none', 'never'):
                         expires = None
                     else:
-                        expires = dateparser.parse(arg, settings=self.DATEPARSER_SETTINGS)
+                        expires = dt_parse(arg, future=True)
                         if expires is None:  # dateparser failed to parse
                             raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
@@ -388,7 +388,7 @@ class ModNotes(KazCog):
         """
         logger.info("notes expires: {}".format(message_log_str(ctx.message)))
 
-        expires = dateparser.parse(timespec, settings=self.DATEPARSER_SETTINGS)
+        expires = dt_parse(timespec, future=True)
         if expires is None:  # dateparser failed to parse
             raise commands.BadArgument("Invalid timespec: '{}'".format(timespec))
 
