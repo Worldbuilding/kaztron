@@ -78,7 +78,7 @@ class KaztronConfig:
         else:
             self._data.update(read_data)
 
-    def write(self):
+    def write(self, log=True):
         """
         Write the current config data to the configured file.
         :raises OSError: Error opening or writing file.
@@ -86,7 +86,8 @@ class KaztronConfig:
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
-        logger.info("config({}) Writing file...".format(self.filename))
+        if log:
+            logger.info("config({}) Writing file...".format(self.filename))
         with atomic_write(self.filename) as cfg_file:
             json.dump(self._data, cfg_file)
 

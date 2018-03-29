@@ -34,7 +34,7 @@ class UserStats(KazCog):
 
     SALT_PERIOD = 'month'  # must be a valid `timespec` argument to utils.datetime.truncate()
 
-    SAVE_TIMEOUT = 120
+    SAVE_TIMEOUT = 15
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -42,8 +42,13 @@ class UserStats(KazCog):
         self.ignore_user_ids = self.config.get('userstats', 'ignore_users', [])
         self.ignore_channel_ids = self.config.get('userstats', 'ignore_channels', [])
         self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
-        self.last_report_dt = datetime.utcfromtimestamp(
-            self.state.get('userstats', 'last_report', 0))
+
+        try:
+            self.last_report_dt = datetime.utcfromtimestamp(
+                self.state.get('userstats', 'last_report'))
+        except KeyError:
+            self.last_report_dt = utils.datetime.get_month_offset(datetime.utcnow(), -1)
+
         self.output_file_format = 'userstats-{}-{}.csv.gz'
         self.report_file_format = 'report-{}-{}-{}-{}.csv.gz'
 
@@ -69,15 +74,15 @@ class UserStats(KazCog):
 
     def save_accumulator(self, force=False):
         if force or time.monotonic() - self.last_acc_save >= self.SAVE_TIMEOUT:
-            logger.debug("Updating total user count in accumulator...")
+            # logger.debug("Updating total user count in accumulator...")
             user_count = 0
             for server in self.bot.servers:
                 user_count += len(server.members)
             self.acc.set_event(EventType.total_users, None, None, user_count)
 
-            logger.debug("Saving accumulator...")
+            # logger.debug("Saving accumulator...")
             self.state.set('userstats', 'accumulator', self.acc.to_dict())
-            self.state.write()
+            self.state.write(log=False)
             self.last_acc_save = time.monotonic()
 
     def get_next_salt(self,
@@ -103,7 +108,24 @@ class UserStats(KazCog):
 
     async def on_ready(self):
         await self.update_accumulator()
+        await self.init_voice_channels()
         await super().on_ready()
+
+    async def init_voice_channels(self):
+        logger.debug("Collecting all members currently in voice channels")
+        now = datetime.utcnow()
+        for server in self.bot.servers:
+            for channel in server.channels:
+                for member in channel.voice_members:
+                    self.acc.capture_timed_event_start(now, EventType.voice, member, channel)
+
+    def unload_kazcog(self):
+        logger.info("Unloading: stopping all ongoing timed events")
+        old_start_times = self.acc.start_times.copy()
+        now = datetime.utcnow()
+        for k in old_start_times.keys():
+            self.acc.capture_timed_event_end(now, *k)
+        self.state.set('userstats', 'accumulator', self.acc.to_dict())
 
     async def update_accumulator(self):
         """
@@ -118,7 +140,8 @@ class UserStats(KazCog):
 
         logger.info("Closing stats accumulator for {}".format(self.acc.period.isoformat(' ')))
         filepath = core.get_filepath_for(self.acc.period)
-        self.acc.write_anonymised_csv(filepath, self.bot, datetime.utcnow())
+        now = datetime.utcnow()
+        self.acc.write_csv(filepath, self.bot, now)
 
         logger.info("Starting new stats accumulator for {}".format(current_hour))
         old_start_times = self.acc.start_times
@@ -127,13 +150,15 @@ class UserStats(KazCog):
             salt=self.get_next_salt(self.acc.period, current_hour, self.acc.salt),
             **self.ACCUMULATOR_SETTINGS
         )
+        now = datetime.utcnow()
+        for k in old_start_times.keys():
+            self.acc.capture_timed_event_start(now, *k)
         self.acc.start_times.update(old_start_times)
         self.save_accumulator(force=True)
 
-        await self.generate_monthly_report()
+        await self.do_monthly_tasks()
 
     async def show_report(self, dest, report: reports.Report):
-
         em = discord.Embed(
             title=report.name,
             color=theme.solarized.magenta
@@ -166,22 +191,40 @@ class UserStats(KazCog):
 
         await self.bot.send_message(dest, embed=em)
 
-    async def generate_monthly_report(self):
-        """ Generate this month's report, if it has not yet been generated. """
-        current_month = utils.datetime.truncate(self.acc.period, 'month')
-        if current_month > self.last_report_dt:
-            self.last_report_dt = current_month
-            self.state.set('userstats', 'last_report', utctimestamp(current_month))
+    async def do_monthly_tasks(self):
+        last_month = utils.datetime.get_month_offset(self.acc.period, -1)
+        if last_month > self.last_report_dt:
+            logger.debug("monthly tasks: last month {}, last report {}".format(
+                last_month.isoformat(' '), self.last_report_dt.isoformat(' ')
+            ))
+            # Do all months since the last month processed
+            month = utils.datetime.get_month_offset(self.last_report_dt, 1)
+            while month <= last_month:
+                logger.info("Doing monthly tasks for {}".format(month.strftime('%B %Y')))
+                await self.anonymize_monthly_data(month)
+                await self.generate_monthly_report(month)
+                month = utils.datetime.get_month_offset(month, 1)
+
+            self.last_report_dt = last_month
+            self.state.set('userstats', 'last_report', utctimestamp(self.last_report_dt))
             self.state.write()
 
-            start = utils.datetime.truncate(current_month - timedelta(days=1), 'month')
-            end = current_month
-            report = reports.prepare_report(start, end)
-            report.name = "Report for {}".format(start.strftime('%B %Y'))
-            await self.show_report(self.dest_output, report)
-            await self.bot.send_message(self.dest_output,
-                "**Monthly reports now available!** Check `.help report` for help on generating "
-                "and viewing detailed reports.")
+    async def generate_monthly_report(self, month: datetime):
+        """
+        Generate this month's report, if it has not yet been generated.
+        :param month: The 1st of the month to generate a report for.
+        """
+        report = reports.prepare_report(month, utils.datetime.get_month_offset(month, 1))
+        report.name = "Report for {}".format(month.strftime('%B %Y'))
+        await self.show_report(self.dest_output, report)
+        await self.bot.send_message(self.dest_output,
+            "**Monthly reports now available!** Check `.help report` for help on generating "
+            "and viewing detailed reports.")
+
+    async def anonymize_monthly_data(self, month: datetime):
+        core.anonymize_csv_data(month, utils.datetime.get_month_offset(month, 1))
+        await self.bot.send_message(self.dest_output,
+            "**Userstats** Anonymisation completed for {}".format(month.strftime('%B %Y')))
 
     @ready_only
     async def on_message(self, message: discord.Message):
@@ -261,7 +304,7 @@ class UserStats(KazCog):
     def default_daterange(self) -> Tuple[datetime, datetime]:
         """ Return the default daterange (last month). """
         end = utils.datetime.truncate(datetime.utcnow(), 'month')
-        start = utils.datetime.truncate(end - timedelta(days=1), 'month')
+        start = utils.datetime.get_month_offset(end, -1)
         return start, end
 
     @commands.command(pass_context=True, ignore_extra=False)
@@ -276,8 +319,8 @@ class UserStats(KazCog):
 
         Note that if the range crosses month boundaries (e.g. March to April), then the unique user
         hashes can be correlated between each other only within a given month. The same user will
-        have different hashes in different months. This is used as an anonymisation method, to avoid
-        long-term tracking of a unique, even if pseudonymised, user.
+        have different hashes in different months. This is used as a anonymisation method, to avoid
+        long-term tracking of a unique user.
 
         This will generate and upload a CSV file, and could take some time. Please avoid calling
         this function multiple times for the same data or requesting giant ranges.
@@ -288,8 +331,8 @@ class UserStats(KazCog):
 
         Arguments:
         * daterange. Optional. This can be a single date (period of 24 hours), or a range of
-          date/times in the form `date1 to date2`. Each date can be specified as ISO format
-          (2018-01-12), in English with or without abbreviations (12 Jan 2018), or as relative times
+          dates in the form `date1 to date2`. Each date can be specified as ISO format
+          (2018-01-12), in English with or without abbreviations (12 Jan 2018), or as relative dates
           (5 days ago). Default is last month.
 
         Examples:
@@ -346,8 +389,8 @@ class UserStats(KazCog):
             provide a breakdown by day of the week or hour of the day, respectively.
         * channel: The name of a channel on the server, or "all".
         * daterange. Optional. This can be a single date (period of 24 hours), or a range of
-          date/times in the form `date1 to date2`. Each date can be specified as ISO format
-          (2018-01-12), in English with or without abbreviations (12 Jan 2018), or as relative times
+          dates in the form `date1 to date2`. Each date can be specified as ISO format
+          (2018-01-12), in English with or without abbreviations (12 Jan 2018), or as relative dates
           (5 days ago). Default is last month.
 
         Examples:

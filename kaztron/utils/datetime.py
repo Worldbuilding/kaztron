@@ -158,3 +158,22 @@ def format_timestamp(dt: Union[discord.Message, datetime]) -> str:
     if isinstance(dt, discord.Message):
         dt = dt.timestamp
     return format_datetime(dt, seconds=True) + ' UTC'
+
+
+def get_month_offset(dt_month: datetime, months: int) -> datetime:
+    """
+    Add or subtract months from a month datetime. Always returns the 1st of the month at midnight.
+    :param dt_month:
+    :param months: Number of months to add (>0) or subtract (<0).
+    :return:
+    """
+    offset = abs(months)
+    if months > 0:
+        delta = timedelta(days=32)
+    else:
+        delta = timedelta(days=-1)
+
+    new_dt = truncate(dt_month, 'month')
+    for _ in range(offset):
+        new_dt = truncate(new_dt + delta, 'month')
+    return new_dt

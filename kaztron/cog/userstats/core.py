@@ -6,13 +6,15 @@ import gzip
 import hashlib
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta
 from os import path
-from typing import Union, Tuple, Optional, List
+from typing import Union, Tuple, Optional, List, Sequence
 
 import discord
 
 from kaztron import utils
+import kaztron.utils.datetime
 from kaztron.utils.datetime import utctimestamp
 
 logger = logging.getLogger(__name__)
@@ -21,7 +23,6 @@ stats_file_date_format = '%Y-%m-%d'
 stats_file_format = '{}.csv.gz'
 stats_dir = 'userstats'
 out_dir = 'tmp'
-stats_csv_headings = ('Period', 'Event', 'User hash (monthly)', 'Channel', 'Count')
 
 
 class EventType(enum.Enum):
@@ -42,7 +43,7 @@ class StatsAccumulator:
     anonymisation. This should ONLY be used to prevent data loss while accumulating, and not for
     long term storage, due to the lack of anonymisation.
 
-    At the end of each accumulation period, :meth:`~.write_anonymised_csv()` may be called to
+    At the end of each accumulation period, :meth:`~.write_csv()` may be called to
     anonymise user information and output as a CSV for storage and later analysis. Note that
     anonymisation is performed by securely hashing user information with a salt - this salt is to
     later be discarded once the CSV has been written. This ensures that it is possible to collect
@@ -69,6 +70,8 @@ class StatsAccumulator:
                     channel: Union[discord.Channel, str]) -> Tuple:
         if isinstance(user, discord.Member):
             user_hash = self._hash(user.id)
+        elif str(user).startswith('h$'):
+            user_hash = user
         elif user is None:
             user_hash = None
         else:
@@ -83,7 +86,7 @@ class StatsAccumulator:
             data = data.encode('utf-8', 'replace')
 
         dk = hashlib.pbkdf2_hmac(self.hash_name, data, self.salt, self.hash_iters)
-        return binascii.hexlify(dk).decode()
+        return 'h$' + binascii.hexlify(dk).decode()
 
     def capture_event(self,
                       type_: EventType,
@@ -154,7 +157,7 @@ class StatsAccumulator:
         # noinspection PyTypeChecker
         return [(*key, self.data[key]) for key in filter(tuple_filt, self.data.keys())]
 
-    def write_anonymised_csv(self, filepath: str, bot: discord.Client, now: datetime):
+    def write_csv(self, filepath: str, bot: discord.Client, now: datetime):
         logger.info("Writing CSV file: {}".format(filepath))
         with gzip.open(filepath, mode='at') as csvfile:
             writer = csv.writer(csvfile)
@@ -162,8 +165,8 @@ class StatsAccumulator:
             logger.debug("Time-based events: closing any unclosed events: {!r}"
                 .format(self.start_times))
             for k in self.start_times.copy().keys():
-                self.capture_timed_event_end(now, k[0], k[1], k[2])
-                self.capture_timed_event_start(now, k[0], k[1], k[2])
+                self.capture_timed_event_end(now, *k)
+                self.capture_timed_event_start(now, *k)
 
             # write all events
             logger.debug("Writing all events to CSV...")
@@ -197,6 +200,37 @@ class StatsAccumulator:
         self.data = {(EventType[i[0]], i[1], i[2]): i[3] for i in data['data']}
         self.start_times = {(EventType[i[0]], i[1], i[2]): i[3] for i in data['start_time_data']}
         return self
+
+
+class CsvRow:
+    headings = ('Period', 'Event', 'User hash (monthly)', 'Channel', 'Count')
+
+    def __init__(self, row: Sequence):
+        self.data = row
+
+    @property
+    def period(self) -> datetime:
+        return utils.datetime.parse(self.data[0])
+
+    @property
+    def event(self) -> EventType:
+        return EventType[self.data[1]]
+
+    @property
+    def user(self) -> str:
+        return self.data[2]
+
+    @user.setter
+    def user(self, v: str):
+        self.data[2] = v
+
+    @property
+    def channel(self) -> str:
+        return self.data[3]
+
+    @property
+    def count(self) -> int:
+        return int(self.data[4])
 
 
 def init_stats_dir():
@@ -240,6 +274,67 @@ def format_filename_date(dt: datetime) -> str:
     return dt.strftime(stats_file_date_format)
 
 
+def anonymize_csv_data(from_date: datetime, to_date: datetime):
+    """
+    Fully anonymise the user hashes for data in a given date range.
+    """
+    logger.info("Anonymizing all data from {} to {}..."
+        .format(from_date.isoformat(' '), to_date.isoformat(' ')))
+
+    init_stats_dir()
+    filenames = list_stats_files(from_date, to_date)
+    logger.debug("Files to anonymize: {}".format(', '.join(filenames)))
+
+    anonymizer = Anonymizer(from_date.strftime('%Y%m'))
+
+    for in_filename in filenames:
+        out_filename = in_filename + '.tmp'
+        try:
+            with gzip.open(in_filename, mode='rt') as infile:
+                with gzip.open(out_filename, mode='wt') as outfile:
+                    writer = csv.writer(outfile)
+                    for row_raw in csv.reader(infile):
+                        row = CsvRow(row_raw)
+                        if row.user and row.user[0:2] == 'h$':
+                            writer.writerow(anonymizer.anonymize(row).data)
+                        else:
+                            writer.writerow(row_raw)
+            os.replace(out_filename, in_filename)
+        except FileNotFoundError:
+            logger.warning("No stats file '{}'".format(in_filename))
+        except:
+            os.unlink(out_filename)
+            raise
+
+
+class Anonymizer:
+    def __init__(self, prefix):
+        self._prefix = prefix
+        self._hash_anon_map = {}
+        self._anons = set()
+
+    def _get_random_id(self):
+        uid = secrets.token_urlsafe(6)
+        while uid in self._anons:
+            uid = secrets.token_urlsafe(6)
+        return uid
+
+    def anonymize(self, row: CsvRow) -> CsvRow:
+        """
+        Anonymize the user in a given row. Modifies the row in-place, and returns the same object
+        for convenience.
+        """
+        try:
+            anon_id = self._hash_anon_map[row.user]
+        except KeyError:
+            anon_id = self._get_random_id()
+            self._anons.add(anon_id)
+            self._hash_anon_map[row.user] = anon_id
+
+        row.user = 'u{}${}'.format(self._prefix, anon_id)
+        return row
+
+
 @contextlib.contextmanager
 def collect_stats(filename: str, from_date: datetime, to_date: datetime):
     """
@@ -253,15 +348,16 @@ def collect_stats(filename: str, from_date: datetime, to_date: datetime):
     init_stats_dir()
     init_out_dir()
 
+    logger.info("Collecting data into output file '{}'...".format(filename))
+
     filenames = list_stats_files(from_date, to_date)
     logger.debug("Files to collect: {}".format(', '.join(filenames)))
 
     filename = path.join(out_dir, filename)
-    logger.info("Collecting data into output file '{}'...".format(filename))
     try:
         with open(filename, mode='w+b') as outfile:
             with gzip.open(outfile, mode='wt') as zipfile:
-                zipfile.write(','.join(stats_csv_headings))
+                zipfile.write(','.join(CsvRow.headings))
                 zipfile.write('\n')
                 for file in filenames:
                     logger.info("Writing '{}' to temp file...".format(file))

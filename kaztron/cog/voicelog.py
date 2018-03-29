@@ -30,7 +30,7 @@ class VoiceLog(KazCog):
         self.role_voice_name = self.config.get('voicelog', 'role_voice', "")
 
     async def on_ready(self):
-        out_id = self.dest_output.id
+        out_id = self.config.get('discord', 'channel_output')
         self.dest_output = self.bot.get_channel(out_id)
         if self.dest_output is None:
             raise ValueError("Channel {} not found".format(out_id))

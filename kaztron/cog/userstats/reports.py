@@ -4,14 +4,14 @@ import gzip
 import os
 from datetime import datetime, timedelta
 from os import path
-from typing import Sequence, Tuple, List
+from typing import Sequence, Tuple, List, Callable
 import logging
 
 import discord
 
 from kaztron.utils import datetime as utils_dt
 from kaztron.cog.userstats.core import EventType, list_stats_files, \
-    init_stats_dir, init_out_dir, out_dir
+    init_stats_dir, init_out_dir, out_dir, CsvRow
 from kaztron.driver.stats import MeanVarianceAccumulator
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class ReportGenerator:
         self._total_users = 0
         self._total_users_date = None
 
-    def add_data(self, row: Sequence):
+    def add_data(self, row: CsvRow):
         """
         Add a new event row to the report. This method aggregates all data by 1) event and 2) user,
         effectively reducing it over time (period) and channels.
@@ -69,29 +69,17 @@ class ReportGenerator:
         key = self._make_tuple(row)
         if key[0] != EventType.total_users:
             # normal count events
-            self._data[key] = self._data.get(key, 0) + self._get_count(row)
+            self._data[key] = self._data.get(key, 0) + row.count
         else:
-            period = self.get_period(row)
+            period = row.period
             # total users event: only keep the most recent total user count
             if self._total_users_date is None or period > self._total_users_date:
-                self._total_users = self._get_count(row)
+                self._total_users = row.count
                 self._total_users_date = period
 
     @staticmethod
-    def get_period(row: Sequence) -> datetime:
-        return utils_dt.parse(row[0])
-
-    @staticmethod
-    def get_channel(row: Sequence) -> str:
-        return row[3]
-
-    @staticmethod
-    def _make_tuple(row: Sequence):
-        return EventType[row[1]], row[2]  # event, user
-
-    @staticmethod
-    def _get_count(row: Sequence) -> int:
-        return int(row[4])
+    def _make_tuple(row: CsvRow):
+        return row.event, row.user
 
     def generate(self) -> Report:
         """ Generate the report with the data collected so far. """
@@ -137,7 +125,7 @@ def prepare_report(from_date: datetime, to_date: datetime, channel: discord.Chan
         .format(from_date.isoformat(' '), to_date.isoformat(' ')))
     generator = ReportGenerator("Full report", from_date, to_date)
 
-    def row_callback(row: Sequence):
+    def row_callback(row: CsvRow):
         generator.add_data(row)
 
     _prepare_report_inner(from_date, to_date, channel, row_callback)
@@ -160,8 +148,8 @@ def prepare_weekday_report(from_date: datetime, to_date: datetime, channel: disc
     for day in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"):
         generators.append(ReportGenerator("Weekday report: {}".format(day), from_date, to_date))
 
-    def row_callback(row: Sequence):
-        period = ReportGenerator.get_period(row)
+    def row_callback(row: CsvRow):
+        period = row.period
         generators[period.weekday()].add_data(row)
 
     _prepare_report_inner(from_date, to_date, channel, row_callback)
@@ -177,7 +165,6 @@ def prepare_hourly_report(from_date: datetime, to_date: datetime, channel: disco
 
     :return: A tuple of 24 reports, from hour 0 to 23 (UTC).
     """
-    # TODO: per channel generator?
     logger.info("Preparing hourly reports for {} to {}..."
         .format(from_date.isoformat(' '), to_date.isoformat(' ')))
 
@@ -185,8 +172,8 @@ def prepare_hourly_report(from_date: datetime, to_date: datetime, channel: disco
     for hour in range(24):
         generators.append(ReportGenerator("Hourly report: {}h".format(hour), from_date, to_date))
 
-    def row_callback(row: Sequence):
-        period = ReportGenerator.get_period(row)
+    def row_callback(row: CsvRow):
+        period = row.period
         generators[period.hour].add_data(row)
 
     _prepare_report_inner(from_date, to_date, channel, row_callback)
@@ -194,16 +181,17 @@ def prepare_hourly_report(from_date: datetime, to_date: datetime, channel: disco
     return tuple(g.generate() for g in generators)
 
 
-def _prepare_report_inner(from_date, to_date, channel: discord.Channel, row_callback):
+def _prepare_report_inner(from_date, to_date, channel: discord.Channel,
+                          row_callback: Callable[[CsvRow], None]):
     filenames = list_stats_files(from_date, to_date)
     logger.debug("Report: Files to collect: {}".format(', '.join(filenames)))
     for file in filenames:
         logger.debug("Opening '{}' for report...".format(file))
         try:
             with gzip.open(file, mode='rt') as infile:
-                for row in csv.reader(infile):
-                    row_channel = ReportGenerator.get_channel(row)
-                    if channel is None or not row_channel or '#' + channel.name == row_channel:
+                for row_raw in csv.reader(infile):
+                    row = CsvRow(row_raw)
+                    if channel is None or not row.channel or '#' + channel.name == row.channel:
                         row_callback(row)
         except FileNotFoundError:
             logger.warning("No stats file '{}'".format(file))
@@ -234,7 +222,7 @@ def collect_report_matrix(filename: str, reports: Sequence[Report], heads: Seque
                           report.joins, report.parts,
                           report.messages, *report.messages_per_user,
                           report.voice_time/3600, *[v/3600 for v in report.voice_time_per_user]
-                         )]))
+                          )]))
                     zipfile.write('\n')
             outfile.seek(0)
             yield outfile
