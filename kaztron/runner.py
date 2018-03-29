@@ -9,6 +9,7 @@ from types import MethodType
 from discord.ext import commands
 
 import kaztron
+from kaztron import KazCog
 from kaztron.config import get_kaztron_config
 
 logger = logging.getLogger("kaztron.bootstrap")
@@ -112,6 +113,7 @@ def run(loop: asyncio.AbstractEventLoop):
         except Exception:
             pass
         # END CONTRIB
+        KazCog._state.write()
 
 
 class Backoff:

@@ -1,10 +1,13 @@
 import functools
+import logging
 
 import discord
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config, get_runtime_config, KaztronConfig
 from kaztron.errors import BotNotReady
+
+logger = logging.getLogger(__name__)
 
 
 class KazCog:
@@ -24,9 +27,14 @@ class KazCog:
     """
     _config = get_kaztron_config()
     _state = get_runtime_config()
+    _custom_states = []
+
+    _core_cache = None
 
     def __init__(self, bot: commands.Bot):
         self._bot = bot
+        self.disconnect_task = None
+        setattr(self, '_{0.__class__.__name__}__unload'.format(self), self.unload)
 
     async def on_ready(self):
         """
@@ -34,6 +42,34 @@ class KazCog:
         marks the cog as fully ready to receive commands.
         """
         self.core.set_cog_ready(self)
+
+    def unload(self):
+        try:
+            if self.is_ready:
+                self.unload_kazcog()
+        except:
+            logger.exception("Exception occurred during disconnect event in cog {}"
+                .format(type(self).__name__))
+            # suppress exception - we're shutting down
+        finally:
+            try:
+                self.core.set_cog_shutdown(self)
+            except:
+                logger.exception("Exception occurred during cog shutdown in cog {}"
+                    .format(type(self).__name__))
+                # suppress exception - we're shutting down
+
+    def unload_kazcog(self):
+        """
+        Can be overridden to perform some actions at disconnect time. All state files will
+        automatically be written and need not be written here (but any updates to the self.state
+        should be done to persist it).
+
+        MUST NOT BE A COROUTINE.
+
+        Only executed if cog was in ready state.
+        """
+        pass
 
     def setup_custom_state(self, name, defaults=None):
         """
@@ -50,7 +86,10 @@ class KazCog:
 
     @property
     def core(self):
-        return self.bot.get_cog('CoreCog')
+        # cached since we need this when handling disconnect, after cog potentially unloaded...
+        if not self._core_cache:
+            self._core_cache = self.bot.get_cog('CoreCog')
+        return self._core_cache
 
     @property
     def is_ready(self):

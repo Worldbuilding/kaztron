@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class CoreCog(kaztron.KazCog):
+
     def __init__(self, bot):
         super().__init__(bot)
         self.ch_request = discord.Object(self.config.get('core', 'channel_request'))
@@ -44,6 +45,12 @@ class CoreCog(kaztron.KazCog):
         """
         logger.info("Cog ready: {}".format(type(cog).__name__))
         self.ready_cogs.add(cog)
+
+    def set_cog_shutdown(self, cog):
+        logger.info("Cog has been shutdown: {}".format(type(cog).__name__))
+        self.ready_cogs.remove(cog)
+        if cog.state != self.state:  # not using global state (saving handled in runner)
+            cog.state.write()
 
     async def on_ready(self):
         logger.debug("on_ready")
