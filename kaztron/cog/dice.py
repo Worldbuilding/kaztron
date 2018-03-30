@@ -19,6 +19,7 @@ class DiceCog(KazCog):
         config.get("discord", "channel_test"),
         config.get("discord", "channel_output")
     )
+    MAX_CHOICES = 20
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -30,7 +31,6 @@ class DiceCog(KazCog):
             raise ValueError("Channel {} not found".format(self.config.get('dice', 'channel_dice')))
         await super().on_ready()
 
-    max_choices = 20
 
     @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
     @in_channels(ch_allowed_list)
@@ -86,7 +86,6 @@ class DiceCog(KazCog):
         await self.bot.say("[{}]\n**Sum:** {:d}".format(' '.join(rolls_str), total))
         logger.info("Rolled FATE dice: {!r} (sum={})".format(rolls_str, total))
 
-    # strip_list = map(str.strip, lines)
     @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
     async def choose(self, ctx, *, choices: str):
         """
@@ -106,9 +105,10 @@ class DiceCog(KazCog):
         elif len(choices) < 2:
             logger.warning("choose(): arguments out of range")
             await self.bot.say("I need something to choose from.")
-        elif len(choices) > self.max_choices:
+        elif len(choices) > self.MAX_CHOICES:
             logger.warning("choose(): arguments out of range")
-            await self.bot.say("That is too much to choose from for me.")
+            await self.bot.say("I don't know, that's too much to choose from! "
+                "I can't handle more than {:d} choices!".format(self.MAX_CHOICES))
         else:
             r = random.randint(0, len(choices) - 1)
             await self.bot.say(choices[r])
@@ -124,7 +124,7 @@ class DiceCog(KazCog):
                 logger.error("Unauthorized use of command in #{1}: {0}"
                              .format(cmd_string, ctx.message.channel.name))
                 await self.bot.send_message(ctx.message.channel,
-                                            "Sorry, this command can only be used in {}".format(self.ch_dice.mention))
+                    "Sorry, this command can only be used in {}".format(self.ch_dice.mention))
 
             else:
                 core_cog = self.bot.get_cog("CoreCog")
