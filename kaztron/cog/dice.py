@@ -88,7 +88,6 @@ class DiceCog(KazCog):
 
     # strip_list = map(str.strip, lines)
     @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
-    @in_channels(ch_allowed_list)
     async def choose(self, ctx, *, choices: str):
         """
         Need some help making a decision? Let the bot choose for you!
@@ -99,6 +98,7 @@ class DiceCog(KazCog):
         Examples:
         `.choose a, b, c`
         """
+        logger.info("choose: {}".format(message_log_str(ctx.message)))
         choices = list(map(str.strip, choices.split(",")))
         if "" in choices:
             logger.warning("choose(): argument empty")
