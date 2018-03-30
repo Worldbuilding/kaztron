@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 
 from kaztron import KazCog
+from kaztron import theme
 from kaztron.driver import database as db
 from kaztron.driver.pagination import Pagination
 from kaztron.utils.datetime import parse as dt_parse
@@ -32,10 +33,16 @@ class ModNotes(KazCog):
     EMBED_SEPARATOR = '\n{}'.format('\\_'*16)
     EMBED_FIELD_LEN = Limits.EMBED_FIELD_VALUE - len(EMBED_SEPARATOR)
 
-    DATEPARSER_SETTINGS = {
-        'TIMEZONE': 'UTC',
-        'TO_TIMEZONE': 'UTC',
-        'RETURN_AS_TIMEZONE_AWARE': False
+    COLOR_MAP = {
+        RecordType.note: theme.solarized.blue,
+        RecordType.good: theme.solarized.green,
+        RecordType.watch: theme.solarized.magenta,
+        RecordType.int: theme.solarized.violet,
+        RecordType.warn: theme.solarized.yellow,
+        RecordType.temp: theme.solarized.orange,
+        RecordType.perma: theme.solarized.red,
+        RecordType.appeal: theme.solarized.cyan,
+        None: theme.solarized.violet
     }
 
     KW_TIME = ('timestamp', 'starts', 'start', 'time')
@@ -103,7 +110,7 @@ class ModNotes(KazCog):
     async def show_record(self, dest: discord.Object, *,
                           record: Record,
                           title: str):
-        embed_color = 0xAA80FF
+        embed_color = self.COLOR_MAP[record.type]
         em = discord.Embed(color=embed_color, title=title)
 
         record_fields, contents = self._get_record_fields(record, show_user=True)
@@ -125,11 +132,10 @@ class ModNotes(KazCog):
         if group is None:
             group = []
 
-        embed_color = 0xAA80FF
         footer = 'Page {page:d}/{total:d} (Total {len:d} records)'\
             .format(page=records.page + 1, total=records.total_pages, len=len(records))
 
-        em = discord.Embed(color=embed_color, title=title)
+        em = discord.Embed(color=self.COLOR_MAP[None], title=title)
         em_len = 0
         em_n = 0
 
@@ -164,7 +170,7 @@ class ModNotes(KazCog):
             embed_too_long = em_len + rec_len > int(0.95 * Limits.EMBED_TOTAL)
             if too_many_fields or embed_too_long:
                 await self.bot.send_message(dest, embed=em)
-                em = discord.Embed(color=embed_color, title=title)
+                em = discord.Embed(color=self.COLOR_MAP[None], title=title)
                 em_len = len(title)  # that's all for this next embed
                 em_n = 0
 
