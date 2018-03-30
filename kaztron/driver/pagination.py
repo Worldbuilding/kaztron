@@ -2,6 +2,8 @@ from typing import List, Tuple
 
 import math
 
+import itertools
+
 
 class Pagination:
     """
@@ -51,3 +53,10 @@ class Pagination:
             end = len(self.records) - (self.total_pages - self.page - 1) * self.page_size
             start = max(0, end - self.page_size)
         return start, end
+
+    def __len__(self):
+        return len(self.records)
+
+    def __iter__(self):
+        start_index, end_index = self.get_page_indices()
+        return itertools.islice(self.records, start_index, end_index)

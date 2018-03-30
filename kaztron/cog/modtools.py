@@ -8,7 +8,7 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.modnotes.model import RecordType
-from kaztron.cog.modnotes.cog import ModNotes
+from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller as c, model
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
