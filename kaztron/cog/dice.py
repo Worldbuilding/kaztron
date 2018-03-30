@@ -90,7 +90,15 @@ class DiceCog(KazCog):
     @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
     @in_channels(ch_allowed_list)
     async def choose(self, ctx, *, choices: str):
-        "Need some help making a decision? Just give the .choose command two or more options(separated by ,) and it will choose for you!"
+        """
+        Need some help making a decision? Let the bot choose for you!
+
+        Arguments:
+        * choices - Two or more choices, separated by commas `,`.
+
+        Examples:
+        `.choose a, b, c`
+        """
         choices = list(map(str.strip, choices.split(",")))
         if "" in choices:
             logger.warning("choose(): argument empty")
