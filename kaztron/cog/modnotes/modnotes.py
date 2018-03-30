@@ -203,7 +203,7 @@ class ModNotes(KazCog):
         db_group = c.query_user_group(db_user)
         db_records = c.query_user_records(db_group)
 
-        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE)
+        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
         if page is not None:
             records_pages.page = max(1, min(records_pages.total_pages, page))
 
@@ -227,7 +227,7 @@ class ModNotes(KazCog):
         watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
         db_records = c.query_unexpired_records(types=watch_types)
 
-        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE)
+        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
         if page is not None:
             records_pages.page = max(1, min(records_pages.total_pages, page)) - 1
 
@@ -250,7 +250,7 @@ class ModNotes(KazCog):
         logger.info("notes temps: {}".format(message_log_str(ctx.message)))
         db_records = c.query_unexpired_records(types=RecordType.temp)
 
-        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE)
+        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
         if page is not None:
             records_pages.page = max(1, min(records_pages.total_pages, page)) - 1
 
@@ -456,7 +456,7 @@ class ModNotes(KazCog):
             db_group = None
             db_records = c.query_user_records(None, removed=True)
 
-        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE)
+        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
         if page is not None:
             records_pages.page = max(1, min(records_pages.total_pages, page))
 

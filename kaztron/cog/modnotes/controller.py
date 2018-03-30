@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Union, Tuple, Optional, Iterable
+from typing import List, Union, Tuple, Optional, Iterable, Sequence
 
 import discord
 
@@ -188,21 +188,21 @@ def query_user_group(user: User) -> List[User]:
         return [user]
 
 
-def query_user_records(user_group: Union[User, List[User], None], removed=False) -> List[Record]:
+def query_user_records(user_group: Union[User, Sequence[User], None], removed=False)\
+        -> List[Record]:
     """
     :param user_group: User or user group as an iterable of users.
     :param removed: Whether to search for non-removed or removed records.
     :return:
     """
     # Input validation
-    # type: Optional[List[User]]
     user_list = [user_group] if isinstance(user_group, User) else user_group
 
     # Query
     query = session.query(Record).filter_by(is_removed=removed)
     if user_list:
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
-    results = query.order_by(db.desc(Record.timestamp)).all()
+    results = query.order_by(Record.timestamp).all()
     logger.info("query_user_records: "
                 "Found {:d} records for user group: {!r}".format(len(results), user_group))
     return results
@@ -227,7 +227,7 @@ def query_unexpired_records(*,
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
     if rtypes:
         query = query.filter(Record.type.in_(rtypes))
-    results = query.order_by(db.desc(Record.timestamp)).all()
+    results = query.order_by(Record.timestamp).all()
     logger.info("query_unexpired_records: "
                 "Found {:d} records for users={!r} types={!r}".format(len(results), users, rtypes))
     return results
