@@ -74,6 +74,7 @@ class ModNotes(KazCog):
         user_fields = OrderedDict()
 
         user_fields[user.name] = self.format_display_user(user)
+        # noinspection PyTypeChecker
         user_fields['Aliases'] = '\n'.join(a.name for a in user.aliases) or 'None'
         if group:
             user_fields['Links'] = '\n'.join(user_mention(u.discord_id)
@@ -582,6 +583,7 @@ class ModNotes(KazCog):
         if search_term.lower() in user.name.lower():
             return None
 
+        # noinspection PyTypeChecker
         for alias_ in filter(lambda a: search_term.lower() in a.name.lower(), user.aliases):
             return alias_  # first one is fine
         else:  # if no results from the filter()

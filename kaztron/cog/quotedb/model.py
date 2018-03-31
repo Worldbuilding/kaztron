@@ -1,5 +1,3 @@
-import enum
-
 from kaztron.driver import database as db
 from kaztron.utils.discord import Limits, user_mention
 

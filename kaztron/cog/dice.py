@@ -1,7 +1,6 @@
 import logging
 import random
 
-import discord
 from discord.ext import commands
 
 from kaztron import errors, KazCog

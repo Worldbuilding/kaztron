@@ -241,7 +241,7 @@ class CoreCog(kaztron.KazCog):
             await self.bot.send_message(
                 ctx.message.channel,
                 "Sorry, I'm still loading the {} module! Try again in a few seconds."
-                    .format(cog_name)
+                .format(cog_name)
             )
 
         elif isinstance(exc, commands.CommandNotFound):

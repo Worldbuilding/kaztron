@@ -8,7 +8,8 @@ bot_info = {
     "version": __version__,
     "links": OrderedDict()
 }
-bot_info["links"]["Changelog"] = "https://github.com/Worldbuilding/KazTron/releases/tag/v" + __version__
+bot_info["links"]["Changelog"] = "https://github.com/Worldbuilding/KazTron/releases/tag/v" \
+                                 + __version__
 bot_info["links"]["Manual"] = "http://worldbuilding.network/kaztron/"
 bot_info["links"]["GitHub"] = "https://github.com/Worldbuilding/KazTron"
 bot_info["links"]["Bugs/Issues"] = "https://github.com/Worldbuilding/KazTron/issues"

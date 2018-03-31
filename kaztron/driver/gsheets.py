@@ -7,8 +7,11 @@ from oauth2client import client, tools
 from oauth2client.file import Storage
 
 # Do NOT remove - exported for external use
+# noinspection PyUnresolvedReferences
 from oauth2client.client import UnknownClientSecretsFlowError
+# noinspection PyUnresolvedReferences
 from oauth2client.clientsecrets import InvalidClientSecretsError
+# noinspection PyUnresolvedReferences
 from googleapiclient.errors import Error
 
 
@@ -31,6 +34,7 @@ SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = 'client_secret.json'
 
 
+# noinspection PyUnresolvedReferences
 def _get_credentials(user_agent: str):
     """
     Gets valid user credentials from storage.

@@ -183,8 +183,8 @@ class RoleManager(KazCog):
                                         'Use `{1}` or `{1} <subcommand>` for instructions.')
                         .format(command_list, get_help_str(ctx)))
 
-                current_group = current_group.group(invoke_without_command=True, pass_context=True)\
-                        (anonymous_group)
+                current_group = current_group.group(
+                    invoke_without_command=True, pass_context=True)(anonymous_group)
                 current_group.instance = self
             except AttributeError:
                 raise discord.ClientException(("Cannot group role management command: parent "

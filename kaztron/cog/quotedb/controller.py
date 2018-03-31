@@ -1,15 +1,15 @@
 import logging
 from datetime import datetime
-from typing import List, Union, Tuple, Optional, Iterable
+from typing import List, Union
 
 import discord
 from sqlalchemy import orm
 
+# noinspection PyUnresolvedReferences
 from kaztron.driver import database as db
 from kaztron.cog.quotedb.model import *
 from kaztron.driver.database import make_error_handler_decorator
 from kaztron.utils.discord import extract_user_id
-from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def query_user(server: discord.Server, id_: str):
 
         try:
             member = server.get_member(discord_id)  # type: discord.Member
-        except discord.NotFound as e:
+        except discord.NotFound:
             logger.warning("Can't find user {!r} on Discord, skipping update nicknames"
                 .format(db_user))
         else:
@@ -134,6 +134,7 @@ def search_users(query: str) -> List[User]:
     :return:
     """
     search_term_like = '%{}%'.format(query.replace('%', '\\%').replace('_', '\\_'))
+    # noinspection PyUnresolvedReferences
     results = session.query(User) \
         .filter(db.or_(User.name.ilike(search_term_like, escape='\\'),
                        User.username.ilike(search_term_like, escape='\\'))) \
@@ -164,10 +165,12 @@ def search_quotes(search_term: str=None, user: Union[User, List[User]]=None) -> 
 
     query = session.query(Quote)
     if user_list:
+        # noinspection PyUnresolvedReferences
         query = query.filter(Quote.author_id.in_(u.user_id for u in user_list))
 
     if search_term:
         search_term_like = db.format_like(search_term)
+        # noinspection PyUnresolvedReferences
         query = query.filter(Quote.message.ilike(search_term_like, escape='\\'))
 
     results = query.order_by(Quote.timestamp).all()

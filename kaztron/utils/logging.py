@@ -1,4 +1,3 @@
-import copy
 import traceback
 import logging
 
@@ -24,7 +23,9 @@ def setup_logging(logger, config):
 
     # File handler
     fh = logging.FileHandler(config.get("core", "log_file"))
-    fh_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s [in %(pathname)s:%(lineno)d]')
+    fh_formatter = logging.Formatter(
+        '[%(asctime)s] (%(levelname)s) %(name)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    )
     fh.setFormatter(fh_formatter)
     logger.addHandler(fh)
 

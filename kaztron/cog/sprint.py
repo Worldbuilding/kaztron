@@ -13,7 +13,6 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.role_man import RoleManager
-from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.errors import UnauthorizedUserError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
@@ -250,6 +249,7 @@ class EmbedInfo:
             strings=list(self.strings)
         )
 
+    # noinspection PyArgumentList
     def __deepcopy__(self, memo):
         return EmbedInfo(
             title=copy.deepcopy(self.title, memo),
@@ -1096,7 +1096,8 @@ class WritingSprint(KazCog):
             try:
                 await self._display_embed(
                     self.channel, self.DISP_EMBEDS['on_sprint_warning'],
-                    founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
+                    founder=self.sprint_data.founder.mention
+                    if self.sprint_data.founder else "None",
                     remaining=format_seconds(self.sprint_data.remaining),
                     notif=self.role_sprint_mention,
                     participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))

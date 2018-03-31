@@ -4,6 +4,7 @@ from typing import List, Union, Tuple, Optional, Iterable, Sequence
 
 import discord
 
+# noinspection PyUnresolvedReferences
 from kaztron.driver import database as db
 from kaztron.cog.modnotes.model import *
 from kaztron.driver.database import make_error_handler_decorator, format_like
@@ -48,6 +49,7 @@ async def create_user(discord_id: str, bot: discord.Client) -> User:
             if member:
                 break
         else:  # If user has left server, see if the account still exists via the API
+            # noinspection PyUnresolvedReferences
             member = await bot.get_user_info(discord_id)
     except discord.NotFound as e:
         raise UserNotFound('Discord user not found') from e
@@ -63,12 +65,13 @@ async def create_user(discord_id: str, bot: discord.Client) -> User:
     # Create and store the user
     db_user = User(discord_id=discord_id, name=name)
     if alias:
+        # noinspection PyUnresolvedReferences
         db_user.aliases.append(UserAlias(user=db_user, name=alias))
 
     try:
         session.add(db_user)
         session.commit()
-    except:
+    except Exception:
         session.rollback()
         raise
     else:
@@ -171,8 +174,10 @@ def update_nicknames(user: User, member: discord.Member):
     """
     logger.debug("update_nicknames: Updating names: {!r}...".format(user))
     if member.nick and member.nick != user.name and member.nick not in user.aliases:
+        # noinspection PyUnresolvedReferences
         user.aliases.append(UserAlias(user=user, name=member.nick))
     if member.name != user.name and member.name not in user.name:
+        # noinspection PyUnresolvedReferences
         user.aliases.append(UserAlias(user=user, name=member.name))
     session.commit()
     logger.info("update_nicknames: Updated names: {!r}".format(user))
@@ -201,6 +206,7 @@ def query_user_records(user_group: Union[User, Sequence[User], None], removed=Fa
     # Query
     query = session.query(Record).filter_by(is_removed=removed)
     if user_list:
+        # noinspection PyUnresolvedReferences
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
     results = query.order_by(Record.timestamp).all()
     logger.info("query_user_records: "
@@ -221,9 +227,11 @@ def query_unexpired_records(*,
     rtypes = [types] if isinstance(types, RecordType) else types  # type: Optional[List[RecordType]]
 
     # Query
+    # noinspection PyComparisonWithNone,PyPep8
     query = session.query(Record).filter_by(is_removed=False) \
                    .filter(db.or_(datetime.utcnow() < Record.expires, Record.expires == None))
     if user_list:
+        # noinspection PyUnresolvedReferences
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
     if rtypes:
         query = query.filter(Record.type.in_(rtypes))
@@ -241,6 +249,7 @@ def search_users(search_term: str) -> List[User]:
     :return:
     """
     search_term_like = format_like(search_term)
+    # noinspection PyUnresolvedReferences
     results = session.query(User).outerjoin(UserAlias) \
         .filter(db.or_(User.name.ilike(search_term_like, escape='\\'),
                 UserAlias.name.ilike(search_term_like, escape='\\'))) \
@@ -272,6 +281,7 @@ def add_user_alias(user: User, alias: str) -> UserAlias:
 
     logger.info("Updating user {0!r} - adding alias {1!r}".format(user, alias))
     db_alias = UserAlias(user=user, name=alias)
+    # noinspection PyUnresolvedReferences
     user.aliases.append(db_alias)
     session.commit()
     return db_alias
@@ -283,6 +293,7 @@ def remove_user_alias(user: User, alias: str):
     :raise db.exc.NoResultFound: Alias could not be found for user
     """
     try:
+        # noinspection PyTypeChecker
         alias = [a for a in user.aliases if a.name.lower() == alias.lower()][0]
     except IndexError as e:
         err_msg = "User {!r} - cannot remove alias - no such alias {!r}".format(user, alias)

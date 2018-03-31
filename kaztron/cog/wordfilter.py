@@ -5,7 +5,6 @@ import discord
 from discord.ext import commands
 
 from kaztron import KazCog
-from kaztron.config import get_kaztron_config, get_runtime_config
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels

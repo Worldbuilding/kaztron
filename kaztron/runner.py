@@ -1,5 +1,4 @@
 import asyncio
-import enum
 import functools
 import logging
 import random
@@ -8,7 +7,6 @@ from types import MethodType
 
 from discord.ext import commands
 
-import kaztron
 from kaztron import KazCog
 from kaztron.config import get_kaztron_config
 
@@ -53,6 +51,7 @@ def patch_smart_quotes_hack(client: commands.Bot):
         for f, r in conversion_map.items():
             message.content = message.content.replace(f, r)
         return await old_process_commands(message, *args, **kwargs)
+    # noinspection PyArgumentList
     client.process_commands = MethodType(new_process_commands, client)
 
 
@@ -85,7 +84,7 @@ def run(loop: asyncio.AbstractEventLoop):
         loop.run_until_complete(client.close())
         logger.info("Client closed.")
         sys.exit(ErrorCodes.OK)
-    except:
+    except Exception:
         logger.exception("Uncaught exception during bot execution")
         logger.debug("Waiting for client to close...")
         loop.run_until_complete(client.close())

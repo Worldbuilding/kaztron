@@ -1,7 +1,6 @@
 import functools
 import logging
 
-import discord
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config, get_runtime_config, KaztronConfig
@@ -43,18 +42,19 @@ class KazCog:
         """
         self.core.set_cog_ready(self)
 
+    # noinspection PyBroadException
     def unload(self):
         try:
             if self.is_ready:
                 self.unload_kazcog()
-        except:
+        except Exception:
             logger.exception("Exception occurred during disconnect event in cog {}"
                 .format(type(self).__name__))
             # suppress exception - we're shutting down
         finally:
             try:
                 self.core.set_cog_shutdown(self)
-            except:
+            except Exception:
                 logger.exception("Exception occurred during cog shutdown in cog {}"
                     .format(type(self).__name__))
                 # suppress exception - we're shutting down

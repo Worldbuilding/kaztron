@@ -36,7 +36,7 @@ def check_role(rolelist, message):
         try:
             if discord.utils.get(message.server.roles, name=role) in message.author.roles:
                 return True
-        except:
+        except Exception:
             pass
     else:
         return False

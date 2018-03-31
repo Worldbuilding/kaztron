@@ -6,7 +6,8 @@ write, you may corrupt the file and lose the user's data. One approach to preven
 to a temporary file, then only when you know the file has been written successfully, over-write the
 original. This function returns a context manager which can make this more convenient.
 
-Adapted from: https://github.com/ActiveState/code/blob/3b27230f418b714bc9a0f897cb8ea189c3515e99/recipes/Python/579097_Safely_atomically_write/recipe-579097.py
+Adapted from: https://github.com/ActiveState/code/blob/3b27230f418b714bc9a0f897cb8ea189c3515e99/
+              recipes/Python/579097_Safely_atomically_write/recipe-579097.py
 
 Original author: Steven D'Aprano
 
@@ -109,7 +110,8 @@ def atomic_write(filename, text=True, keep=True,
     finally:
         if (tmp is not None) and (not keep):
             # Silently delete the temporary file. Ignore any errors.
+            # noinspection PyBroadException
             try:
                 os.unlink(tmp)
-            except:
+            except Exception:
                 pass

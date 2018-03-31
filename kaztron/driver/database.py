@@ -9,7 +9,9 @@ from sqlalchemy.orm import relationship, sessionmaker, Query
 from sqlalchemy.orm import exc as orm_exc
 # noinspection PyUnresolvedReferences
 from sqlalchemy import exc as core_exc
-from sqlalchemy.ext.declarative import declarative_base
+# noinspection PyUnresolvedReferences
+from sqlalchemy.ext.declarative import declarative_base  # DON'T REMOVE THIS - import into module
+# noinspection PyProtectedMember
 from sqlalchemy.engine import Engine
 
 
@@ -29,6 +31,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 
 def make_error_handler_decorator(session, logger):
+    # noinspection PyShadowingNames
     def on_error_rollback(func):
         """
         Decorator for database operations. Any raised exceptions will cause a rollback, and then be

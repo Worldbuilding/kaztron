@@ -94,6 +94,6 @@ class MeanVarianceAccumulator:
         return MeanVarianceAccumulator.from_state(
             sum_=self.sum + other.sum,
             count=self.count + other.count,
-            m2=self._m2 + other._m2 + (self.mean - other.mean) ** 2 *
-                                      self.count * other.count / (self.count + other.count)
+            m2=(self._m2 + other._m2 + (self.mean - other.mean) ** 2 *
+                self.count * other.count / (self.count + other.count))
         )

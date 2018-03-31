@@ -129,8 +129,11 @@ def format_timedelta(delta: timedelta, timespec="seconds") -> str:
     # split up seconds into hours, minutes, seconds
     # (because timedelta only stores days and seconds???)
     rem = timedelta(seconds=delta.seconds, microseconds=delta.microseconds)
+    # noinspection PyTypeChecker
     hours, rem = divmod(rem, timedelta(hours=1))
+    # noinspection PyTypeChecker
     minutes, rem = divmod(rem, timedelta(minutes=1))
+    # noinspection PyTypeChecker
     seconds, rem = divmod(rem, timedelta(seconds=1))
 
     if delta.days:

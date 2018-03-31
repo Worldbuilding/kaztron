@@ -269,31 +269,31 @@ class QuoteCog(KazCog):
                     .format(user.nick, self.grab_max))
             return
 
-        message = grabbed_message.content
+        message_text = grabbed_message.content
         if grabbed_message.attachments:
-            message = "{0}\n\n{1}".format(
-                message,
+            message_text = "{0}\n\n{1}".format(
+                message_text,
                 '\n'.join(a['url'] for a in ctx.message.attachments)
             )
 
-        if len(message) > Limits.EMBED_FIELD_VALUE:
+        if len(message_text) > Limits.EMBED_FIELD_VALUE:
             raise ValueError("That quote is too long! Maximum length 1024 characters.")
 
         quote = c.store_quote(
             user=c.query_user(self.server, grabbed_message.author.id),
             saved_by=c.query_user(self.server, ctx.message.author.id),
             channel_id=grabbed_message.channel.id,
-            message=message,
+            message=message_text,
             timestamp=grabbed_message.timestamp
         )
 
-        message = "Added quote: {}".format(self.format_quote(quote))
-        logger.info(message)
+        message_text = "Added quote: {}".format(self.format_quote(quote))
+        logger.info(message_text)
 
         em = self.make_single_embed(quote, title="Added quote.")
         await self.bot.say(embed=em)
 
-        await self.bot.send_message(self.ch_output, message)
+        await self.bot.send_message(self.ch_output, message_text)
 
     @quote.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()

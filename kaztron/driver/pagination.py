@@ -14,8 +14,6 @@ class Pagination:
     :param align_end: If True, aligns the records to fill up the last page. Useful e.g. for
         displaying chronological data but starting from the most recent records on the last page.
         If False, aligns the records to fill up the first page.
-
-    :var current_page: The last requested page.
     """
     def __init__(self, records: List, page_size: int, align_end=False):
         self.records = list(records)

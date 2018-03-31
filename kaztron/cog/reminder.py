@@ -3,7 +3,7 @@ import logging
 import re
 from datetime import datetime
 from functools import reduce
-from typing import List, Optional, Callable, Awaitable
+from typing import List, Callable, Awaitable
 
 import discord
 from discord.ext import commands

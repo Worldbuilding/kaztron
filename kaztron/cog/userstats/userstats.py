@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 import os
 import time
@@ -13,7 +13,7 @@ from kaztron.cog.userstats import core, reports
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.datetime import utctimestamp, format_date, parse as dt_parse, parse_daterange
+from kaztron.utils.datetime import utctimestamp, format_date, parse_daterange
 from kaztron.utils.logging import message_log_str
 
 logger = logging.getLogger(__name__)
@@ -280,7 +280,8 @@ class UserStats(KazCog):
 
     # TODO: replace process_daterange
 
-    def default_daterange(self) -> Tuple[datetime, datetime]:
+    @staticmethod
+    def default_daterange() -> Tuple[datetime, datetime]:
         """ Return the default daterange (last month). """
         end = utils.datetime.truncate(datetime.utcnow(), 'month')
         start = utils.datetime.get_month_offset(end, -1)

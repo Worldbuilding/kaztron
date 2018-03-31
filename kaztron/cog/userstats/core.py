@@ -9,7 +9,7 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from os import path
-from typing import Union, Tuple, Optional, List, Sequence
+from typing import Union, Tuple, Optional, List
 
 import discord
 
@@ -205,7 +205,7 @@ class StatsAccumulator:
 class CsvRow:
     headings = ('Period', 'Event', 'User hash (monthly)', 'Channel', 'Count')
 
-    def __init__(self, row: Sequence):
+    def __init__(self, row: List):
         self.data = row
 
     @property
@@ -289,6 +289,7 @@ def anonymize_csv_data(from_date: datetime, to_date: datetime):
 
     for in_filename in filenames:
         out_filename = in_filename + '.tmp'
+        # noinspection PyPep8
         try:
             with gzip.open(in_filename, mode='rt') as infile:
                 with gzip.open(out_filename, mode='wt') as outfile:

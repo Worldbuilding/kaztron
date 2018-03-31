@@ -2,7 +2,7 @@ import random
 import re
 import time
 import logging
-from typing import List
+from typing import List, Union
 from collections import deque
 
 import discord
@@ -15,7 +15,7 @@ from kaztron.cog.role_man import RoleManager
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only
 from kaztron.utils.converter import NaturalDateConverter
-from kaztron.utils.datetime import utctimestamp, format_date, parse as dt_parse, parse_daterange, \
+from kaztron.utils.datetime import utctimestamp, parse as dt_parse, parse_daterange, \
     get_month_offset, truncate
 from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, Limits, remove_role_from_all, \
@@ -391,7 +391,7 @@ class Spotlight(KazCog):
         sep = '-'
         num_fields = 0
         max_fields = (Limits.EMBED_TOTAL - len(title) - 2) \
-                     // (Limits.EMBED_FIELD_VALUE + len(sep))
+            // (Limits.EMBED_FIELD_VALUE + len(sep))
         for say_str in contents_split:
             if num_fields >= max_fields:
                 await self.bot.say(embed=em)
@@ -651,7 +651,7 @@ class Spotlight(KazCog):
 
         return app_strings
 
-    def format_date_range(self, start: date, end: date):
+    def format_date_range(self, start: Union[date, datetime], end: Union[date, datetime]):
         return start.strftime(self.time_formats[0]), end.strftime(self.time_formats[1])
 
     def sort_queue(self):
@@ -690,6 +690,7 @@ class Spotlight(KazCog):
         logger.debug("queue showcase: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         logger.info("Listing showcase queue for {0.author!s} in {0.channel!s}".format(ctx.message))
+        month = month  # type: datetime
 
         # figure out month start/end times
         if not month:
@@ -805,7 +806,7 @@ class Spotlight(KazCog):
             self.queue_data.appendleft(queue_item)
             self.current_app_index = old_index
             return  # get_current() already handles this
-        except:
+        except Exception:
             self.queue_data.appendleft(queue_item)
             self.current_app_index = old_index
             raise
@@ -850,7 +851,7 @@ class Spotlight(KazCog):
                 raise commands.BadArgument(
                     ("{0:d} is not a valid queue index! "
                      "Currently valid values are 1 to {1:d} inclusive.")
-                         .format(queue_index, len(self.queue_data)))
+                    .format(queue_index, len(self.queue_data)))
         else:
             queue_array_index = -1  # last item
 

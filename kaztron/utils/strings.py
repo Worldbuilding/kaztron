@@ -53,17 +53,17 @@ def split_code_chunks_on(str_: str, maxlen: int, split_char='\n', lang: str=None
     return ["{}{}{}".format(head, part, tail) for part in raw_parts]
 
 
-def natural_truncate(str_: str, maxlen: int, ellipsis='[…]') -> str:
+def natural_truncate(str_: str, maxlen: int, ellipsis_='[…]') -> str:
     """
-    If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis
+    If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis_
     appended to the end.
     """
-    maxlen_net = maxlen - len(ellipsis)
+    maxlen_net = maxlen - len(ellipsis_)
     if len(str_) > maxlen:
             trunc_str = str_[:maxlen_net]
             match = re.search(r'\W.*?$', trunc_str)
             if match:
-                return str_[:match.start() + 1] + ellipsis
+                return str_[:match.start() + 1] + ellipsis_
             else:
                 return trunc_str
     else:
