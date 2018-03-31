@@ -186,6 +186,7 @@ class QuoteCog(KazCog):
         Arguments:
         * user: Required. The user to find a quote for. See `.help quote` for valid formats.
         * page: Optional. The page number to access, if there are more than 1 pages of notes.
+          Default: last page.
 
         Examples:
             .quote list @JaneDoe - List all quotes by JaneDoe (page 1 if multiple pages)..

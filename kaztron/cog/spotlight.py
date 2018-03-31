@@ -730,7 +730,7 @@ class Spotlight(KazCog):
         different dates). To edit the date instead, use `.spotlight queue edit`.
 
         Arguments:
-        * `<daterange>`: Required, string. A string in the form "date1 to date2". Each date can be
+        * `daterange`: Required, string. A string in the form "date1 to date2". Each date can be
           in one of these formats:
             * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
             * A partial date: "April 23"
@@ -830,15 +830,16 @@ class Spotlight(KazCog):
 
         Arguments:
         * `<queue_index>`: Required, int. The numerical position in the queue, as shown with
-          `.spotlight queue list` ([1.8.1](#181-list-shorthand-l)).
-        * `<datespec>`: Required, string. A string identifying the date. This can be:
-            * An exact date: 2017-12-25, "25 December 2017", "December 25, 2017" (with quotes)
+          `.spotlight queue list`.
+        * `<daterange>`: Required, string. A string in the form "date1 to date2". Each date can be
+          in one of these formats:
+            * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
+            * A partial date: "April 23"
             * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
               the week ("next Tuesday").
 
         Examples:
-            `.spotlight queue edit 3 2017-12-31` - Changes the date of the 3rd queued application to
-                31 December 2017.
+            `.spotlight queue edit 3 april 3 to april 6`
         """
         logger.debug("queue edit: {}".format(message_log_str(ctx.message)))
         self._load_applications()

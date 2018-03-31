@@ -278,8 +278,6 @@ class UserStats(KazCog):
         if modified:
             self.save_accumulator()
 
-    # TODO: replace process_daterange
-
     @staticmethod
     def default_daterange() -> Tuple[datetime, datetime]:
         """ Return the default daterange (last month). """
@@ -341,6 +339,10 @@ class UserStats(KazCog):
             await self.bot.send_file(ctx.message.channel, collect_file, filename=filename,
                 content="User stats for {} to {}"
                         .format(format_date(dates[0]), format_date(dates[1])))
+
+        if dates[1] >= utils.datetime.get_month_offset(self.last_report_dt, 1):
+            self.bot.say("**WARNING:** Data not yet anonymised - "
+                         "hashes on an unexpired salt are in use. Do not distribute.")
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
