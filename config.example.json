@@ -21,6 +21,10 @@
       "websockets.protocol": "INFO",
       "discord": "INFO"
     },
+    "info_links": {
+      "link name 1": "http://potato.example/url/to/something",
+      "link name 2": "http://google.com"
+    },
     "date_format": "%Y-%m-%d",
     "datetime_format": "%Y-%m-%d %H:%M",
     "datetime_seconds_format": "%Y-%m-%d %H:%M:%S"
@@ -30,7 +34,9 @@
     "audience_role": "Spotlight Audience role name",
     "host_role": "Spotlight Host role name",
     "spreadsheet_id": "Google Spreadsheet ID",
-    "spreadsheet_range": "Google Spreadsheet range name"
+    "spreadsheet_range": "Google Spreadsheet range name",
+    "start_date_format": "%d",
+    "end_date_format": "%d %B"
   },
   "welcome": {
     "channel_welcome": "channel ID for public welcome messages",

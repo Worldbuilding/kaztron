@@ -13,7 +13,7 @@ from kaztron.cog.userstats import core, reports
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.datetime import utctimestamp, format_date, parse as dt_parse
+from kaztron.utils.datetime import utctimestamp, format_date, parse as dt_parse, parse_daterange
 from kaztron.utils.logging import message_log_str
 
 logger = logging.getLogger(__name__)
@@ -278,28 +278,7 @@ class UserStats(KazCog):
         if modified:
             self.save_accumulator()
 
-    def process_daterange(self, daterange: str) -> Tuple[datetime, datetime]:
-        """
-        Process and parse a date or daterange, in the form of "X to Y".
-        """
-        date_split = daterange.split(' to ', maxsplit=1)
-        logger.debug("Identified date strings: {!r}".format(date_split))
-
-        dates = tuple(dt_parse(date_str, future=False) for date_str in date_split)
-        if None in dates:
-            logger.warning("Invalid datespec(s) passed: '{}' split as {!r}"
-                .format(daterange, date_split))
-            raise commands.BadArgument("Invalid date format(s)")
-
-        # if only one
-        if len(dates) == 1:
-            dates = (dates[0], dates[0] + timedelta(days=1))
-
-        # if the order is wrong, swap
-        if dates[0] > dates[1]:
-            dates[0], dates[1] = dates[1], dates[0]
-
-        return dates
+    # TODO: replace process_daterange
 
     def default_daterange(self) -> Tuple[datetime, datetime]:
         """ Return the default daterange (last month). """
@@ -345,7 +324,7 @@ class UserStats(KazCog):
         logger.debug("userstats: {}".format(message_log_str(ctx.message)))
 
         if daterange:
-            dates = self.process_daterange(daterange)
+            dates = parse_daterange(daterange)
         else:
             dates = self.default_daterange()
 
@@ -408,7 +387,7 @@ class UserStats(KazCog):
             raise commands.BadArgument("Invalid type; types in {}".format(types))
 
         if daterange:
-            dates = self.process_daterange(daterange)
+            dates = parse_daterange(daterange)
         else:
             dates = self.default_daterange()
 

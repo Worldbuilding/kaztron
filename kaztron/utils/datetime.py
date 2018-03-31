@@ -1,6 +1,6 @@
 from datetime import datetime, date, timedelta, timezone
 import dateparser
-from typing import Union
+from typing import Union, Tuple
 
 import discord
 
@@ -177,3 +177,24 @@ def get_month_offset(dt_month: datetime, months: int) -> datetime:
     for _ in range(offset):
         new_dt = truncate(new_dt + delta, 'month')
     return new_dt
+
+
+def parse_daterange(daterange: str, future=False) -> Tuple[datetime, datetime]:
+    """
+    Process and parse a date or daterange, in the form of "X to Y".
+    """
+    date_split = daterange.split(' to ', maxsplit=1)
+
+    dates = tuple(parse(date_str, future=future) for date_str in date_split)
+    if None in dates:
+        raise ValueError("Invalid date format(s): {!r} processed as {!r}".format(daterange, dates))
+
+    # if only one
+    if len(dates) == 1:
+        dates = (dates[0], dates[0] + timedelta(days=1))
+
+    # if the order is wrong, swap
+    if dates[0] > dates[1]:
+        dates[0], dates[1] = dates[1], dates[0]
+
+    return dates
