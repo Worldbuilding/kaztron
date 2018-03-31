@@ -228,7 +228,7 @@ class ModNotes(KazCog):
 
         Arguments:
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
-          Default: 1.
+          Default: last page.
         """
         logger.info("notes watches: {}".format(message_log_str(ctx.message)))
         watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
@@ -252,7 +252,7 @@ class ModNotes(KazCog):
 
         Arguments:
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
-          Default: 1.
+          Default: last page.
         """
         logger.info("notes temps: {}".format(message_log_str(ctx.message)))
         db_records = c.query_unexpired_records(types=RecordType.temp)
@@ -451,7 +451,7 @@ class ModNotes(KazCog):
         Arguments:
         * <user>: Required. The user to filter by, or `all`. See `.help notes`.
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
-          Default: 1.
+          Default: last page.
         """
         logger.info("notes removed: {}".format(message_log_str(ctx.message)))
         if user != 'all':
