@@ -41,7 +41,6 @@ class UserStats(KazCog):
         self.setup_custom_state('userstats')
         self.ignore_user_ids = self.config.get('userstats', 'ignore_users', [])
         self.ignore_channel_ids = self.config.get('userstats', 'ignore_channels', [])
-        self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
 
         try:
             self.last_report_dt = datetime.utcfromtimestamp(
@@ -216,14 +215,14 @@ class UserStats(KazCog):
         """
         report = reports.prepare_report(month, utils.datetime.get_month_offset(month, 1))
         report.name = "Report for {}".format(month.strftime('%B %Y'))
-        await self.show_report(self.dest_output, report)
-        await self.bot.send_message(self.dest_output,
+        await self.show_report(self.channel_out, report)
+        await self.send_output(
             "**Monthly reports now available!** Check `.help report` for help on generating "
             "and viewing detailed reports.")
 
     async def anonymize_monthly_data(self, month: datetime):
         core.anonymize_csv_data(month, utils.datetime.get_month_offset(month, 1))
-        await self.bot.send_message(self.dest_output,
+        await self.send_output(
             "**Userstats** Anonymisation completed for {}".format(month.strftime('%B %Y')))
 
     @ready_only

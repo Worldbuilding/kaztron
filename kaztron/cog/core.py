@@ -19,7 +19,6 @@ class CoreCog(kaztron.KazCog):
     def __init__(self, bot):
         super().__init__(bot)
         self.ch_request = discord.Object(self.config.get('core', 'channel_request'))
-        self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
         self.name = self.config.get("core", "name", "KazTron")
 
         self.bot.event(self.on_error)  # register this as a global event handler, not just local
@@ -73,8 +72,7 @@ class CoreCog(kaztron.KazCog):
             print(msg)  # in case console logger is below INFO level - display startup info
 
         try:
-            await self.bot.send_message(
-                self.dest_output,
+            await self.send_output(
                 "**{} is running**\n".format(self.name) + '\n'.join(startup_info)
             )
         except discord.HTTPException:
@@ -98,8 +96,7 @@ class CoreCog(kaztron.KazCog):
             ', '.join(repr(arg) for arg in args),
             ', '.join(key + '=' + repr(value) for key, value in kwargs.items()))
         logger.exception(log_msg)
-        await self.bot.send_message(self.dest_output,
-            "[ERROR] {} - see logs for details".format(exc_log_str(exc_info[1])))
+        await self.send_output("[ERROR] {} - see logs for details".format(exc_log_str(exc_info[1])))
 
         try:
             message = args[0]
@@ -149,14 +146,14 @@ class CoreCog(kaztron.KazCog):
                 err_msg = 'While executing {c}\n\nDiscord API error {e!s}' \
                     .format(c=cmd_string, e=root_exc)
                 logger.error(err_msg + "\n\n{}".format(tb_log_str(root_exc)))
-                await self.bot.send_message(self.dest_output,
+                await self.send_output(
                     "[ERROR] " + err_msg + "\n\nSee log for details")
             else:
                 logger.error("An error occurred while processing the command: {}\n\n{}"
                     .format(cmd_string, tb_log_str(root_exc)))
-                await self.bot.send_message(self.dest_output,
+                await self.send_output(
                     "[ERROR] While executing {}\n\n{}\n\nSee logs for details"
-                        .format(cmd_string, exc_log_str(root_exc)))
+                    .format(cmd_string, exc_log_str(root_exc)))
 
             # In all cases (except if return early/re-raise)
             await self.bot.send_message(ctx.message.channel,
@@ -174,14 +171,14 @@ class CoreCog(kaztron.KazCog):
             err_msg = "Unauthorised user for this command (not a moderator): {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "Only mods can use that command.")
 
         elif isinstance(exc, AdminOnlyError):
             err_msg = "Unauthorised user for this command (not an admin): {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "Only admins can use that command.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
@@ -195,7 +192,7 @@ class CoreCog(kaztron.KazCog):
             err_msg = "Unauthorised channel for this command: {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
 
         elif isinstance(exc, commands.NoPrivateMessage):
@@ -261,7 +258,7 @@ class CoreCog(kaztron.KazCog):
             await self.bot.send_message(ctx.message.channel,
                 "An unexpected error occurred! Details have been logged. Let a mod know so we can "
                 "investigate.")
-            await self.bot.send_message(self.dest_output,
+            await self.send_output(
                 ("[ERROR] Unknown error while trying to process command {}\n"
                  "Error: {!s}\n\nSee logs for details").format(cmd_string, exc))
 

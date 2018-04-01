@@ -10,7 +10,7 @@ from discord.ext import commands
 
 from datetime import datetime, date, timedelta
 
-from kaztron import KazCog
+from kaztron import KazCog, theme
 from kaztron.cog.role_man import RoleManager
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only
@@ -200,8 +200,8 @@ class Spotlight(KazCog):
     QUEUE_ADD_HEADING = "**Added to Queue**"
     QUEUE_EDIT_HEADING = "**Edited in Queue**"
     QUEUE_REM_HEADING = "**Removed from Queue**"
-    QUEUE_ENTRY_FMT = '(#{id:d}) [{start}–{end}] {app}'  # TODO: update usages
-    QUEUE_CHANGED_FMT = '{msg}: {i:d}. ' + QUEUE_ENTRY_FMT  # TODO: update usages
+    QUEUE_ENTRY_FMT = '(#{id:d}) [{start}–{end}] {app}'
+    QUEUE_CHANGED_FMT = '{msg}: {i:d}. ' + QUEUE_ENTRY_FMT
     QUEUE_SHOWCASE_FMT = '{app_obj.user_disp} with **{app_obj.project}** ({start}–{end})'
 
     UNKNOWN_APP_STR = "Unknown - Index out of bounds"
@@ -210,8 +210,7 @@ class Spotlight(KazCog):
         super().__init__(bot)
         self.state.set_defaults('spotlight', current=-1, queue=[])
 
-        self.dest_output = None
-        self.dest_spotlight = None
+        self.channel_spotlight = None
         self.role_audience_name = self.config.get('spotlight', 'audience_role')
         self.role_host_name = self.config.get('spotlight', 'host_role')
 
@@ -395,7 +394,7 @@ class Spotlight(KazCog):
         for say_str in contents_split:
             if num_fields >= max_fields:
                 await self.bot.say(embed=em)
-                em = discord.Embed(color=0x80AAFF, title=title)
+                em = discord.Embed(color=theme.solarized.cyan, title=title)
                 num_fields = 0
             em.add_field(name=sep, value=say_str, inline=False)
             num_fields += 1
@@ -403,18 +402,8 @@ class Spotlight(KazCog):
 
     async def on_ready(self):
         """ Load information from the server. """
-        id_output = self.config.get('discord', 'channel_output')
-        self.dest_output = self.bot.get_channel(id_output)
-
         id_spotlight = self.config.get('spotlight', 'channel')
-        self.dest_spotlight = self.bot.get_channel(id_spotlight)
-
-        # validation
-        if self.dest_output is None:
-            raise ValueError("Output channel '{}' not found".format(id_output))
-
-        if self.dest_spotlight is None:
-            raise ValueError("Spotlight channel '{}' not found".format(id_spotlight))
+        self.channel_spotlight = self.validate_channel(id_spotlight)
 
         roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
         if roleman:
@@ -444,7 +433,7 @@ class Spotlight(KazCog):
         else:
             err_msg = "Cannot find RoleManager - is it enabled in config?"
             logger.error(err_msg)
-            await self.bot.send_message(self.dest_output, err_msg)
+            await self.send_output(err_msg)
 
         # convert queue from v2.0 queue
         self._upgrade_queue_v21()
@@ -582,7 +571,7 @@ class Spotlight(KazCog):
             logger.exception("Can't retrieve Spotlight Audience role")
             role = None
 
-        await self.bot.send_message(self.dest_spotlight,
+        await self.bot.send_message(self.channel_spotlight,
             "**WORLD SPOTLIGHT** {2}\n\n"
             "Our next host is {0}, presenting their project, *{1}*!\n\n"
             "Welcome, {0}!".format(
@@ -591,7 +580,7 @@ class Spotlight(KazCog):
                 role.mention if role else ""
             )
         )
-        await self.send_spotlight_info(self.dest_spotlight, current_app)
+        await self.send_spotlight_info(self.channel_spotlight, current_app)
         await self.bot.say("Application showcased: {} ({}) - {}"
             .format(current_app.user_disp, current_app.user_name_only, current_app.project)
         )
@@ -969,10 +958,10 @@ class Spotlight(KazCog):
                 await self.bot.send_message(ctx.message.channel,
                     "An error occurred while communicating with the Google API. "
                     "See bot output for details.")
-                await self.bot.send_message(self.dest_output,
+                await self.send_output(
                     ("[ERROR] An error occurred while communicating with the Google API.\n"
                      "Original command: {}\n{}\n\nSee logs for details")
-                        .format(cmd_string, exc_log_str(root_exc)))
+                    .format(cmd_string, exc_log_str(root_exc)))
 
             elif isinstance(root_exc,
                     (gsheets.UnknownClientSecretsFlowError, gsheets.InvalidClientSecretsError)
@@ -982,10 +971,10 @@ class Spotlight(KazCog):
                 await self.bot.send_message(ctx.message.channel,
                     "Problem with the stored Google API credentials. "
                     "See bot output for details.")
-                await self.bot.send_message(self.dest_output,
+                await self.send_output(
                     ("[ERROR] Problem with Google API credentials file.\n"
                      "Original command: {}\n{}\n\nSee logs for details")
-                        .format(cmd_string, exc_log_str(root_exc)))
+                    .format(cmd_string, exc_log_str(root_exc)))
 
             elif isinstance(root_exc, discord.HTTPException):
                 cmd_string = str(ctx.message.content)[11:]
@@ -995,17 +984,15 @@ class Spotlight(KazCog):
                     ("Error sending spotlight info, "
                      "maybe the message is too long but Discord is stupid and might not "
                      "give a useful error message here: {!s}").format(root_exc))
-                await self.bot.send_message(self.dest_output,
+                await self.send_output(
                     ("[ERROR] Error sending spotlight info.\n"
                      "Original command: {}\nDiscord API error: {!s}\n\n"
                      "See logs for details").format(cmd_string, root_exc))
 
             else:
-                core_cog = self.bot.get_cog("CoreCog")
-                await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+                await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
         else:
-            core_cog = self.bot.get_cog("CoreCog")
-            await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+            await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
 
 def setup(bot):

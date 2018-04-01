@@ -471,8 +471,6 @@ class WritingSprint(KazCog):
 
         self.channel_id = self.config.get('sprint', 'channel')
         self.channel = None
-        self.dest_output_id = self.config.get('discord', 'channel_output')
-        self.dest_output = discord.Object(id=self.dest_output_id)
 
         self.role_sprint_name = self.config.get('sprint', 'role_sprint')
         self.role_follow_name = self.config.get('sprint', 'role_follow')
@@ -595,15 +593,7 @@ class WritingSprint(KazCog):
         """
         logger.debug("on_ready")
         logger.debug("Validating sprint channel...")
-        self.channel = self.bot.get_channel(self.channel_id)
-        if self.channel is None:
-            err_msg = "Channel does not exist: {}".format(self.channel_id)
-            logger.error(err_msg)
-            try:
-                await self.bot.send_message(self.dest_output, err_msg)
-            except discord.HTTPException:
-                logger.exception("Error sending error to {}".format(self.dest_output_id))
-            return
+        self.channel = self.validate_channel(self.channel_id)
 
         state = self.get_state()
         if state is not SprintState.IDLE:
@@ -642,9 +632,9 @@ class WritingSprint(KazCog):
             err_msg = "Cannot find RoleManager - is it enabled in config?"
             logger.warning(err_msg)
             try:
-                await self.bot.send_message(self.dest_output, err_msg)
+                await self.send_output(err_msg)
             except discord.HTTPException:
-                logger.exception("Error sending error to {}".format(self.dest_output_id))
+                logger.exception("Error sending error to output ch")
 
         logger.info("Restoring task for current state...")
         if self.state_task:  # in case this isn't the first time on_ready is called (reconnect)
@@ -722,9 +712,8 @@ class WritingSprint(KazCog):
             em_data.strings = em_data.strings[0:2] + em_data.strings[3:4] + em_data.strings[5:]
         else:
             logger.error("Unknown state! {!r}".format(state))
-            await self.bot.send_message(
-                self.dest_output,
-                "status: Unknown modnotes state {!r} - probably a bug somewhere!"
+            await self.send_output(
+                "status: Unknown sprint state {!r} - probably a bug somewhere!"
                 .format(state)
             )
             await self.bot.send_message(

@@ -25,7 +25,6 @@ class ModToolsCog(KazCog):
         super().__init__(bot)
         self.distinguish_map = self.config.get("modtools", "distinguish_map", {})
         self.wb_images = self.config.get("modtools", "wb_images", [])
-        self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
         self.ch_mod = discord.Object(self.config.get("modtools", "channel_mod"))
         self.role_name = self.config.get("modtools", "tempban_role")
         self.cog_modnotes = None  # type: ModNotes
@@ -36,12 +35,12 @@ class ModToolsCog(KazCog):
         self.cog_modnotes = self.bot.get_cog("ModNotes")
         if self.cog_modnotes is None:
             logger.error("Can't find ModNotes cog. Tempban command will not work.")
-            self.bot.send_message(
-                self.ch_output,
+            self.send_output(
                 "**ERROR**: Can't find ModNotes cog. The `.tempban` command and automatic tempban "
                 "management will not work."
             )
             raise RuntimeError("Can't find ModNotes cog")
+        self.ch_mod = self.validate_channel(self.ch_mod.id)
 
         logger.debug("Starting task...")
         if self.tempban_task:
@@ -80,7 +79,7 @@ class ModToolsCog(KazCog):
             err_msg = "up: user's roles not recognised: {}".format(message_log_str(ctx.message))
             logger.warning(err_msg)
             await self.bot.say("That command is only available to mods and admins.")
-            await self.bot.send_message(self.ch_output, "[WARNING] " + err_msg)
+            await self.send_output("[WARNING] " + err_msg)
 
     @commands.command(pass_context=True)
     @mod_only()
@@ -107,7 +106,7 @@ class ModToolsCog(KazCog):
             err_msg = "down: user's roles not recognised: {}".format(message_log_str(ctx.message))
             logger.warning(err_msg)
             await self.bot.say("That command is only available to mods and admins.")
-            await self.bot.send_message(self.ch_output, "[WARNING] " + err_msg)
+            await self.send_output("[WARNING] " + err_msg)
 
     @staticmethod
     def _get_tempbanned_members_db(server: discord.Server) -> Iterable[model.Record]:
@@ -136,10 +135,7 @@ class ModToolsCog(KazCog):
             server = self.bot.get_channel(self.ch_mod.id).server  # type: discord.Server
         except AttributeError:  # get_channel failed
             logger.error("Can't find mod channel")
-            await self.bot.send_message(
-                self.ch_output,
-                "**ERROR**: update_tempbans: can't find mod channel"
-            )
+            await self.send_output("**ERROR**: update_tempbans: can't find mod channel")
             return
 
         tempban_role = get_named_role(server, self.role_name)

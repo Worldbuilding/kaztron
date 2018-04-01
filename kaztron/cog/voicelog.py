@@ -20,8 +20,7 @@ class VoiceLog(KazCog):
      """
     def __init__(self, bot):
         super().__init__(bot)
-        self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
-        self.dest = discord.Object(id=self.config.get("voicelog", "channel_text"))
+        self.channel_voicelog = discord.Object(id=self.config.get("voicelog", "channel_text"))
 
         self.voice_channel_ids = self.config.get('voicelog', 'channels_voice', [])
 
@@ -30,15 +29,7 @@ class VoiceLog(KazCog):
         self.role_voice_name = self.config.get('voicelog', 'role_voice', "")
 
     async def on_ready(self):
-        out_id = self.config.get('discord', 'channel_output')
-        self.dest_output = self.bot.get_channel(out_id)
-        if self.dest_output is None:
-            raise ValueError("Channel {} not found".format(out_id))
-
-        dest_id = self.dest.id
-        self.dest = self.bot.get_channel(dest_id)
-        if self.dest is None:
-            raise ValueError("Channel {} not found".format(dest_id))
+        self.channel_voicelog = self.validate_channel(self.channel_voicelog.id)
 
         if self.role_voice_name and self.voice_channel_ids:
             self.is_role_managed = True
@@ -55,13 +46,13 @@ class VoiceLog(KazCog):
                 self.is_role_managed = False
                 err_msg = "Cannot find voice role: {}" .format(self.role_voice_name)
                 logger.warning(err_msg)
-                await self.bot.send_message(self.dest_output, "**Warning:** " + err_msg)
+                await self.send_output("**Warning:** " + err_msg)
                 # don't return here - is_role_managed flag OK, this feature not critical to cog
         else:
             self.is_role_managed = False
             err_msg = "In-voice role management is disabled (not configured)."
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, "**Warning:** " + err_msg)
+            await self.send_output("**Warning:** " + err_msg)
 
         await super().on_ready()
 
@@ -121,7 +112,7 @@ class VoiceLog(KazCog):
 
         if msg:
             # await self.bot.send_message(self.dest_output, msg)
-            await self.bot.send_message(self.dest, msg)
+            await self.bot.send_message(self.channel_voicelog, msg)
 
     async def update_voice_role(self, before: discord.Member, after: discord.Member):
         """ Assigns "in voice" role to members who join voice channels. """

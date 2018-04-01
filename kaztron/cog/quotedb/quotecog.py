@@ -29,20 +29,12 @@ class QuoteCog(KazCog):
 
     def __init__(self, bot):
         super().__init__(bot)
-        # type: discord.Channel
-        self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
         self.grab_max = self.config.get("quotedb", "grab_search_max", 100)
         self.server = None  # type: discord.Server
 
     async def on_ready(self):
-        id_output = self.ch_output.id
-        self.ch_output = self.bot.get_channel(id_output)  # type: discord.Channel
-        if self.ch_output is None:
-            raise ValueError("Output channel {} not found".format(id_output))
-
-        self.server = self.ch_output.server
-
         await super().on_ready()
+        self.server = self.channel_out.server
 
     def make_single_embed(self, quote: Quote,
                           index: int=None, total: int=None, title: str=None):
@@ -228,11 +220,8 @@ class QuoteCog(KazCog):
 
         message = "Added quote: {}".format(self.format_quote(quote))
         logger.info(message)
-
-        em = self.make_single_embed(quote, title="Added quote.")
-        await self.bot.say(embed=em)
-
-        await self.bot.send_message(self.ch_output, message)
+        await self.bot.say(embed=self.make_single_embed(quote, title="Added quote."))
+        await self.send_output(message)
 
     @quote.command(name='grab', pass_context=True, no_pm=True)
     async def quote_grab(self, ctx: commands.Context, user: discord.Member, *, search: str=None):
@@ -290,11 +279,8 @@ class QuoteCog(KazCog):
 
         message_text = "Added quote: {}".format(self.format_quote(quote))
         logger.info(message_text)
-
-        em = self.make_single_embed(quote, title="Added quote.")
-        await self.bot.say(embed=em)
-
-        await self.bot.send_message(self.ch_output, message_text)
+        await self.bot.say(embed=self.make_single_embed(quote, title="Added quote."))
+        await self.send_output(message_text)
 
     @quote.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -326,9 +312,11 @@ class QuoteCog(KazCog):
             return
 
         quote = db_records[number - 1]
+        message_text = "Removed quote (remove): {}".format(self.format_quote(quote))
         em = self.make_single_embed(quote, number, len_recs, title="Quote deleted.")
         c.remove_quotes([quote])
         await self.bot.say(embed=em)
+        await self.send_output(message_text)
 
     @quote.command(name='undo', pass_context=True, ignore_extra=False)
     async def quote_undo(self, ctx: commands.Context):
@@ -345,9 +333,11 @@ class QuoteCog(KazCog):
         db_records = c.query_saved_quotes(db_user)
 
         quote = db_records[-1]
+        message_text = "Removed quote (undo): {}".format(self.format_quote(quote))
         em = self.make_single_embed(quote, title="Quote deleted.")
         c.remove_quotes([quote])
         await self.bot.say(embed=em)
+        await self.send_output(message_text)
 
     @quote.command(name='del', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -372,6 +362,8 @@ class QuoteCog(KazCog):
             logger.info("Removing all {} quotes for {!r}...".format(len_recs, db_user))
             c.remove_quotes(db_records)
             await self.bot.say("Removed all {} quotes for {}.".format(len_recs, db_user.mention))
+            await self.send_output("Removed all {} quotes for {}."
+                .format(len_recs, db_user.mention))
         else:
             try:
                 number = int(number)
@@ -385,9 +377,11 @@ class QuoteCog(KazCog):
                 return
 
             quote = db_records[number - 1]
+            message_text = "Removed quote (mod): {}".format(self.format_quote(quote))
             em = self.make_single_embed(quote, number, len_recs, title="Quote deleted.")
             c.remove_quotes([quote])
             await self.bot.say(embed=em)
+            await self.send_output(message_text)
 
     @quote.error
     @quote_list.error

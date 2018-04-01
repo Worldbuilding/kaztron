@@ -50,20 +50,10 @@ class ModNotes(KazCog):
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.ch_output = discord.Object(self.config.get("discord", "channel_output"))
-        self.ch_log = discord.Object(self.config.get('modnotes', 'channel_log'))
+        self.channel_log = discord.Object(self.config.get('modnotes', 'channel_log'))
 
     async def on_ready(self):
-        id_output = self.ch_output.id
-        self.ch_output = self.bot.get_channel(id_output)
-        if self.ch_output is None:
-            raise ValueError("Output channel {} not found".format(id_output))
-
-        id_log = self.ch_log.id
-        self.ch_log = self.bot.get_channel(id_log)
-        if self.ch_log is None:
-            raise ValueError("Modnotes channel {} not found".format(id_log))
-
+        self.channel_log = self.validate_channel(self.channel_log.id)
         await super().on_ready()
 
     @staticmethod
@@ -72,7 +62,6 @@ class ModNotes(KazCog):
 
     def _get_user_fields(self, user: User, group: Sequence[User]) -> OrderedDict:
         user_fields = OrderedDict()
-
         user_fields[user.name] = self.format_display_user(user)
         # noinspection PyTypeChecker
         user_fields['Aliases'] = '\n'.join(a.name for a in user.aliases) or 'None'
@@ -373,7 +362,7 @@ class ModNotes(KazCog):
         record = c.insert_note(user=db_user, author=db_author, type_=record_type,
                       timestamp=timestamp, expires=expires, body=note_contents)
 
-        await self.show_record(self.ch_log, record=record, title='New Moderation Record')
+        await self.show_record(self.channel_log, record=record, title='New Moderation Record')
         await self.bot.say("Added note #{:04d} for {}."
             .format(record.record_id, user_mention(record.user.discord_id)))
 
@@ -409,7 +398,7 @@ class ModNotes(KazCog):
         else:
             await self.show_record(ctx.message.channel,
                 record=record, title='Note expiration updated')
-            await self.show_record(self.ch_log,
+            await self.show_record(self.channel_log,
                 record=record, title='Note expiration updated')
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
@@ -438,7 +427,7 @@ class ModNotes(KazCog):
             await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
         else:
             await self.show_record(ctx.message.channel, record=record, title='Note removed')
-            await self.bot.send_message(self.ch_log, "Removed note #{:04d}".format(note_id))
+            await self.bot.send_message(self.channel_log, "Removed note #{:04d}".format(note_id))
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
@@ -489,7 +478,7 @@ class ModNotes(KazCog):
             await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
         else:
             await self.show_record(ctx.message.channel, record=record, title='Note restored')
-            await self.bot.send_message(self.ch_log, "Note #{:04d} restored".format(note_id))
+            await self.bot.send_message(self.channel_log, "Note #{:04d} restored".format(note_id))
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
@@ -510,7 +499,7 @@ class ModNotes(KazCog):
             await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
         else:
             await self.bot.say("Record #{:04d} purged.".format(note_id))
-            # don't send to ch_log, this has no non-admin visibility
+            # don't send to channel_log, this has no non-admin visibility
 
     @notes.command(pass_context=True, ignore_extra=False)
     @mod_only()

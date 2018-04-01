@@ -57,9 +57,8 @@ class WordFilter(KazCog):
             channel=self.config.get('filter', 'channel_warning')
         )
         self._load_filter_rules()
-        self.dest_output = None
-        self.dest_warning = None
-        self.dest_current = None
+        self.channel_warning = None
+        self.channel_current = None
 
     def _load_filter_rules(self):
         for filter_type, engine in self.engines.items():
@@ -70,24 +69,14 @@ class WordFilter(KazCog):
         """
         Load information from the server.
         """
-        dest_output_id = self.config.get('discord', 'channel_output')
-        self.dest_output = self.bot.get_channel(dest_output_id)
-
         dest_warning_id = self.config.get('filter', 'channel_warning')
-        self.dest_warning = self.bot.get_channel(dest_warning_id)
+        self.channel_warning = self.validate_channel(dest_warning_id)
 
-        self.dest_current = self.bot.get_channel(self.state.get('filter', 'channel'))
-
-        # validation
-        if self.dest_output is None:
-            raise ValueError("Output channel '{}' not found".format(dest_output_id))
-
-        if self.dest_warning is None:
-            raise ValueError("WordFilter warning channel '{}' not found".format(dest_warning_id))
-
-        if self.dest_current is None:
-            self.dest_current = self.dest_warning
-            self.state.set('filter', 'channel', str(self.dest_warning.id))
+        try:
+            self.channel_current = self.validate_channel(self.state.get('filter', 'channel'))
+        except ValueError:
+            self.channel_current = self.channel_warning
+            self.state.set('filter', 'channel', str(self.channel_warning.id))
 
         await super().on_ready()
 
@@ -134,7 +123,7 @@ class WordFilter(KazCog):
                              value=natural_truncate(message_string, Limits.EMBED_FIELD_VALUE),
                              inline=False)
 
-                await self.bot.send_message(self.dest_current, embed=em)
+                await self.bot.send_message(self.channel_current, embed=em)
 
     @commands.group(name="filter", invoke_without_command=True, pass_context=True)
     @mod_only()
@@ -333,22 +322,22 @@ class WordFilter(KazCog):
         """
         logger.info("switch: {}".format(message_log_str(ctx.message)))
 
-        if self.dest_current is None and self.dest_warning is None:
+        if self.channel_current is None and self.channel_warning is None:
             logger.warning("switch invoked before bot ready state???")
             await self.bot.say("Sorry, I'm still booting up. Try again in a few seconds.")
             return
 
-        if self.dest_current is self.dest_warning:
-            self.dest_current = self.dest_output
+        if self.channel_current is self.channel_warning:
+            self.channel_current = self.channel_out
         else:
-            self.dest_current = self.dest_warning
-        self.state.set('filter', 'channel', str(self.dest_current.id))
+            self.channel_current = self.channel_warning
+        self.state.set('filter', 'channel', str(self.channel_current.id))
         self.state.write()
 
         logger.info("switch(): Changed filter warning channel to #{}"
-            .format(self.dest_current.name))
+            .format(self.channel_current.name))
         await self.bot.say("Changed the filter warning channel to {}"
-            .format(self.dest_current.mention))
+            .format(self.channel_current.mention))
 
     @add.error
     async def filter_add_error(self, exc, ctx: commands.Context):

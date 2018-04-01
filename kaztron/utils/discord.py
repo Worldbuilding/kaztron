@@ -109,6 +109,15 @@ def role_mention(role_id: str) -> str:
     return '<@&{}>'.format(role_id)
 
 
+def channel_mention(channel_id: str) -> str:
+    """
+    Return a mention for a role that can be sent over a Discord message.
+    """
+    if not channel_id.isnumeric():
+        raise ValueError("Discord ID must be numeric")
+    return '<#{}>'.format(channel_id)
+
+
 _re_user_id = re.compile('(?:<@|@)?!?([0-9]{15,23})>?')
 
 
