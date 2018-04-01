@@ -54,6 +54,6 @@ def test_dump():
     dut = MeanVarianceAccumulator()
     for datum in data:
         dut.update(datum)
-    dut2 = MeanVarianceAccumulator.from_state(*dut.dump_state())
+    dut2 = MeanVarianceAccumulator(*dut.dump_state())
     assert dut2.mean == dut.mean
     assert dut2.std_dev == dut.std_dev

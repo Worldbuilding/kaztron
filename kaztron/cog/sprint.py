@@ -13,6 +13,7 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.role_man import RoleManager
+from kaztron.driver.stats import MeanVarianceAccumulator
 from kaztron.errors import UnauthorizedUserError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
@@ -56,13 +57,10 @@ class SprintState(enum.Enum):
 
 class SprintStats:
     def __init__(self):
-        self.sprints = 0
         self.words = 0
-        self.rate_sum = 0  # sum of writing rate (words/s) for each sprint
         self.time = 0
         self.wins = 0
-        # cumulative quantity related to variance of rate for each sprint
-        self.m2rate = 0
+        self.rate_stats = MeanVarianceAccumulator()
 
     def update(self, words: int, rate: float, time: int, winner=False):
         """
@@ -78,20 +76,13 @@ class SprintStats:
         """
         if winner:
             self.wins += 1
-
-        prev_rate_avg = self.rate_sum/self.sprints if self.sprints > 0 else 0
-
-        self.sprints += 1
         self.words += words
-        self.rate_sum += rate
         self.time += time
+        self.rate_stats.update(rate)
 
-        next_rate_avg = self.rate_sum/self.sprints
-
-        last_delta = rate - prev_rate_avg
-        new_delta = rate - next_rate_avg
-
-        self.m2rate = self.m2rate + last_delta * new_delta
+    @property
+    def sprints(self):
+        return self.rate_stats.count
 
     @property
     def words_mean(self):
@@ -101,12 +92,12 @@ class SprintStats:
     @property
     def wpm_mean(self):
         """ Writing speed, average per sprint, in wpm. """
-        return self.rate_sum / self.sprints if self.sprints > 0 else 0
+        return self.rate_stats.mean
 
     @property
     def wpm_stdev(self):
         """ Standard deviation of writing speed (wpm) over all sprints. """
-        return math.sqrt(self.m2rate / (self.sprints - 1)) if self.sprints > 1 else 0
+        return self.rate_stats.std_dev
 
     @property
     def time_mean(self):
@@ -122,8 +113,7 @@ class SprintStats:
         return {
             "sprints": self.sprints,
             "words": self.words,
-            "rate_sum": self.rate_sum,
-            "m2rate": self.m2rate,
+            "rate_acc": self.rate_stats.dump_state(),
             "time": self.time,
             "wins": self.wins
         }
@@ -131,10 +121,8 @@ class SprintStats:
     @classmethod
     def from_dict(cls, stats_dict: Dict):
         s = SprintStats()
-        s.sprints = stats_dict.get('sprints', 0)
         s.words = stats_dict.get('words', 0)
-        s.rate_sum = stats_dict.get('rate_sum', 0)
-        s.m2rate = stats_dict.get('m2rate', 0)
+        s.rate_acc = MeanVarianceAccumulator(*stats_dict.get('rate_acc'))
         s.time = stats_dict.get('time', 0)
         s.wins = stats_dict.get('wins', 0)
         return s
@@ -149,6 +137,7 @@ class SprintData:
         # {user_id: start/end wordcounts}
         self.start = {}  # type: Dict[str, int]
         self.end = {}  # type: Dict[str, int]
+        self.finalized = set()
 
         # loop times
         self.start_time = 0  # type: float
@@ -162,6 +151,7 @@ class SprintData:
             'members': [u.id for u in self.members],
             'start': copy.deepcopy(self.start),
             'end': copy.deepcopy(self.end),
+            'finalized': list(self.finalized),
             'start_time': utctimestamp(self._datetime(self.start_time)) if self.start_time else 0,
             'end_time': utctimestamp(self._datetime(self.end_time)) if self.end_time else 0,
             'warn_times': [self._datetime(t).timestamp() for t in self.warn_times],
@@ -192,6 +182,7 @@ class SprintData:
                 logger.warning("Can't restore member: ID {} not found on server".format(u_id))
         self.start = {u_id: value for u_id, value in data['start'].items() if u_id in member_uids}
         self.end = {u_id: value for u_id, value in data['end'].items() if u_id in member_uids}
+        self.finalized = set(data['finalized'])
         self.start_time = self._loop_time(data['start_time'])
         self.end_time = self._loop_time(data['end_time'])
         self.warn_times = deque(self._loop_time(t) for t in data['warn_times'])
@@ -418,8 +409,13 @@ class WritingSprint(KazCog):
         "rejoin": "{mention} Updated your initial wordcount to {wc:d} words.",
         "leave": "{mention} You have left the writing sprint! Sorry you can't stick around.",
         "leave_error": "{mention} You're not in the writing sprint!",
-        "wordcount": "{mention} Your wordcount has been recorded.",
-        "wordcount_error": "{mention} You're not in the writing sprint!",
+        "wordcount": "{mention} Your wordcount is now {wc:d} ({diff:+d}). "
+                     "If you're done writing for this sprint, don't forget to use `.w final`!",
+        "wordcount_error": "{mention} You're not in the writing sprint! "
+                           "Use `.w join <wordcount>` to join.",
+        "final": "{mention} Your wordcount has been finalized at {wc:d} words.",
+        'finalize_error': "{mention} You haven't submitted an end wordcount yet! "
+                          "Use `.w wc <count>` to set your current wordcount.",
 
         "status_idle_tuple": ("Nobody's sprinting right now!",
                               "Start a sprint with `.w start`! Type `.help w start` for help.",
@@ -840,6 +836,22 @@ class WritingSprint(KazCog):
         else:
             raise UnauthorizedUserError
 
+    async def update_initial_wordcount(self, user: discord.Member, wordcount: int):
+        logger.info("User {} updated initial wc to {:d} words".format(user.name, wordcount))
+        self.sprint_data.start[user.id] = wordcount
+        await self.bot.say(self.DISP_STRINGS['rejoin'].format(mention=user.mention, wc=wordcount))
+        self._save_sprint()
+
+    async def update_final_wordcount(self, user: discord.Member, wordcount: int):
+        logger.info("User {} set wordcount {:d}".format(user.name, wordcount))
+        self.sprint_data.end[user.id] = wordcount
+        await self.bot.say(self.DISP_STRINGS['wordcount'].format(
+            mention=user.mention,
+            wc=wordcount,
+            diff=wordcount - self.sprint_data.start[user.id]
+        ))
+        self._save_sprint()
+
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['j'])
     @in_channels_cfg('sprint', 'channel')
     async def join(self, ctx: commands.Context, wordcount: int):
@@ -886,11 +898,7 @@ class WritingSprint(KazCog):
 
             self._save_sprint()
         else:
-            logger.info("User {} updated initial wc to {:d} words".format(user.name, wordcount))
-            self.sprint_data.start[user.id] = wordcount
-            await self.bot.say(self.DISP_STRINGS['rejoin']
-                .format(mention=user.mention, wc=wordcount))
-            self._save_sprint()
+            await self.update_initial_wordcount(user, wordcount)
 
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['l'])
     @in_channels_cfg('sprint', 'channel')
@@ -937,41 +945,80 @@ class WritingSprint(KazCog):
     @in_channels_cfg('sprint', 'channel')
     async def wordcount(self, ctx, count: int):
         """
-        Report your wordcount at the end of the sprint.
+        Report your wordcount.
+
+        If used before a sprint starts, this changes your starting wordcount. During or after a
+        sprint, it sets your current wordcount and calculates how much you've written during the
+        sprint.
+
+        If you're setting your final wordcount for the end of the sprint, make sure to use the
+        `.w final` command.
 
         Arguments:
         * <wordcount>: Required. Your final wordcount at the end of the sprint. The bot will
           automatically calculate your total words written during the sprint.
 
         Example:
-            .w c 12888 - Report that your wordcount at the end of the sprint is 12888.
+            .w c 12888 - Report that your wordcount is 12888.
         """
         logger.info("wordcount: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
-        elif state is SprintState.PREPARE or state is SprintState.SPRINT:
-            raise SprintRunningError()
 
         user = ctx.message.author
 
-        if user.id in self.sprint_data.start:
-            logger.info("User {} set final wordcount {:d}".format(user.name, count))
-            self.sprint_data.end[user.id] = count
-            await self.bot.say(self.DISP_STRINGS['wordcount']
-                .format(mention=user.mention, wc=count))
-
-            # If everyone has submitted, fast forward
-            if set(self.sprint_data.start.keys()) == set(self.sprint_data.end.keys()):
-                logger.info("All wordcounts submitted. Fast-forwarding to result announcement.")
-                self.state_task.cancel()
-                self.sprint_data.finalize_time = self._get_time()  # finalize NOW
-                self.state_task = self.bot.loop.create_task(self.on_sprint_results())
-            else:
-                self._save_sprint()
-        else:
+        if user.id not in self.sprint_data.start:
             logger.warning("Cannot set wordcount: user {} not in sprint".format(user.name))
-            await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(user.mention))
+            await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(mention=user.mention))
+            return
+
+        if state is SprintState.PREPARE:
+            await self.update_initial_wordcount(user, count)
+        elif state is SprintState.SPRINT or state is SprintState.COLLECT_RESULTS:
+            await self.update_final_wordcount(user, count)
+
+    @sprint.command(pass_context=True, ignore_extra=False)
+    @in_channels_cfg('sprint', 'channel', allow_pm=True)
+    async def final(self, ctx: commands.Context):
+        """
+        Finalize your wordcount. Use this when you're sure you're done and your wordcount is
+        correct.
+        """
+        logger.info("final: {}".format(message_log_str(ctx.message)))
+        state = self.get_state()
+        if state is SprintState.IDLE or state is SprintState.PREPARE:
+            raise SprintNotRunningError()
+
+        user = ctx.message.author
+
+        # check if user is in sprint and has submitted a final wordcount
+        if user.id not in self.sprint_data.start:
+            logger.warning("Cannot finalize: user {} not in sprint".format(user.name))
+            await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(mention=user.mention))
+            return
+        elif user.id not in self.sprint_data.end:
+            logger.warning("Cannot finalize: user {} has not submitted a wordcount"
+                .format(user.name))
+            await self.bot.say(self.DISP_STRINGS['finalize_error'].format(mention=user.mention))
+            return
+
+        # record user's finalization
+        self.sprint_data.finalized.add(user.id)
+        await self.bot.say(self.DISP_STRINGS['final'].format(
+            mention=user.mention,
+            wc=self.sprint_data.end[user.id] - self.sprint_data.start[user.id])
+        )
+
+        # If everyone has submitted, fast forward
+        if state is SprintState.COLLECT_RESULTS and \
+                set(self.sprint_data.start.keys()) == self.sprint_data.finalized:
+            logger.info("All wordcounts submitted. Fast-forwarding to result announcement.")
+            self.state_task.cancel()
+            self.sprint_data.finalize_time = self._get_time()  # finalize NOW
+            self.state_task = self.bot.loop.create_task(self.on_sprint_results())
+        else:
+            self._save_sprint()
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
@@ -1124,9 +1171,11 @@ class WritingSprint(KazCog):
 
     @task_handled_errors
     async def on_sprint_results(self):
-        wait_time = self.sprint_data.finalize_time - self._get_time()
-        logger.debug("Waiting for sprint finalize time ({:.1f}s)...".format(wait_time))
-        await asyncio.sleep(wait_time)
+        # Wait the finalize time (unless everyone's already finalized)
+        if set(self.sprint_data.start.keys()) != self.sprint_data.finalized:
+            wait_time = self.sprint_data.finalize_time - self._get_time()
+            logger.debug("Waiting for sprint finalize time ({:.1f}s)...".format(wait_time))
+            await asyncio.sleep(wait_time)
 
         try:
             logger.info("Finalize done; announcing results...")

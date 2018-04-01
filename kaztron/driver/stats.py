@@ -5,29 +5,23 @@ import math
 
 
 class MeanVarianceAccumulator:
-    def __init__(self):
-        self._sum = 0
-        self._count = 0
-        self._m2 = 0
-
-    @classmethod
-    def from_state(cls, sum_, count, m2):
+    def __init__(self, sum_=0, count=0, m2=0):
         """
-        Restore this object from serialised form, for use with the :meth:`~.dump_state` method.
+        Constructor.
+
+         Can be used to restore the accumulator from a  :meth:`~.dump_state`:
 
         .. code-block:: python
 
             acc = MeanVarianceAccumulator()
             # ...
-            acc_state = acc.dump_state()
+            acc_state = acc.dump()
             # later ...
-            acc = MeanVarianceAccumulator.from_state(*acc_state)
+            acc = MeanVarianceAccumulator(*acc_state)
         """
-        self = MeanVarianceAccumulator()
-        self._sum = sum_
-        self._count = count
-        self._m2 = m2
-        return self
+        self._sum = 0
+        self._count = 0
+        self._m2 = 0
 
     def update(self, value):
         """
@@ -76,7 +70,7 @@ class MeanVarianceAccumulator:
 
     def dump_state(self) -> tuple:
         """
-        Dump the full state of the object. Can be used with :meth:`~.from_state` to restore later;
+        Dump the full state of the object. Can be restored with the constructor,
         useful for serialisation.
         """
         return self._sum, self._count, self._m2
@@ -91,7 +85,7 @@ class MeanVarianceAccumulator:
         if not isinstance(other, MeanVarianceAccumulator):
             raise ValueError("Expected instance of 'MeanVarianceAccumulator'")
 
-        return MeanVarianceAccumulator.from_state(
+        return MeanVarianceAccumulator(
             sum_=self.sum + other.sum,
             count=self.count + other.count,
             m2=(self._m2 + other._m2 + (self.mean - other.mean) ** 2 *
