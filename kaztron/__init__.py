@@ -16,11 +16,28 @@ bot_info["links"]["Bugs/Issues"] = "https://github.com/Worldbuilding/KazTron/iss
 
 cfg_defaults = {
     "discord": {
-        "mod_roles": []
+        "mod_roles": [],
+        "admin_roles": [],
+        "mod_channels": [],
+        "admin_channels": [],
+        "playing": ""
     },
     "core": {
         "name": "UnnamedBot",
         "log_level": "INFO",
-        "log_file": "kaztron.log"
+        "log_file": "kaztron.log",
+        "log_dependencies": {
+            "sqlalchemy.engine": "WARN",
+            "websockets.protocol": "INFO",
+            "discord": "INFO"
+        },
+        "daemon": False,
+        "daemon_pidfile": "kaztron.pid",
+        "daemon_username": "",
+        "daemon_group": "",
+        "daemon_log": "daemon.log",
+        "date_format": "%Y-%m-%d",
+        "datetime_format": "%Y-%m-%d %H:%M",
+        "datetime_seconds_format": "%Y-%m-%d %H:%M:%S"
     }
 }

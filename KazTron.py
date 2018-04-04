@@ -2,15 +2,12 @@
 # coding=utf8
 
 import sys
-import asyncio
 import logging
-
-import time
 
 import kaztron
 from kaztron import runner
 from kaztron.config import get_kaztron_config
-from kaztron.utils.logging import setup_logging
+from kaztron.utils.logging import setup_logging, get_logging_info
 
 # In the loving memory of my time as a moderator of r/worldbuilding network
 # To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
@@ -25,36 +22,58 @@ except OSError as e:
     sys.exit(runner.ErrorCodes.CFG_FILE)
 
 # setup logging
-setup_logging(logging.getLogger(), config)  # setup the root logger
-logger = logging.getLogger("kaztron.bootstrap")
-
-
-def reset_backoff(backoff: runner.Backoff, sequence):
-    if sequence == backoff.n:  # don't do it if we had a retry in the meantime
-        backoff.reset()
-
+setup_logging(logging.getLogger(), config, console=not config.get('core', 'daemon', False))
+logger = logging.getLogger("kaztron.launcher")
 
 if __name__ == '__main__':
-    logger.info("Welcome to KazTron v{}, booting up...".format(kaztron.__version__))
+    import asyncio
+    import os
+    import signal
 
-    loop = asyncio.get_event_loop()
     try:
-        bo_timer = runner.Backoff(initial_time=3.0, base=1.58, max_attempts=12)
-        wait_time = 0
-        while True:
-            reset_task = loop.call_later(wait_time, reset_backoff, bo_timer, bo_timer.n)
-            runner.run(loop)
-            logger.error("Bot halted unexpectedly.")
-            reset_task.cancel()
-            wait_time = bo_timer.next()
-            logger.info("Restarting bot in {:.1f} seconds...".format(wait_time))
-            time.sleep(wait_time)
-            logger.info("Restarting bot...")
-    except StopIteration:
-        logger.error("Too many failed attempts. Exiting.")
-        sys.exit(runner.ErrorCodes.RETRY_MAX_ATTEMPTS)
-    except KeyboardInterrupt:  # outside of runner.run
-        logger.info("Interrupted by user. Exiting.")
-    finally:
-        logger.info("Exiting.")
-        loop.close()
+        cmd = sys.argv[1].lower()
+    except IndexError:
+        cmd = None
+
+    if cmd == 'start' and config.get('core', 'daemon', False):
+        with runner.get_daemon_context(config):
+            print("Starting KazTron (daemon mode)...")
+            loop = asyncio.get_event_loop()
+            runner.run_reboot_loop(loop)
+
+    elif cmd == 'start':  # non-daemon
+        print("Starting KazTron (non-daemon mode)...")
+        loop = asyncio.get_event_loop()
+        runner.run_reboot_loop(loop)
+
+    elif cmd == 'debug':
+        # override logging levels
+        logging.getLogger().setLevel(logging.DEBUG)
+        info = get_logging_info()
+        info.console_handler.setLevel(logging.DEBUG)
+        info.file_handler.setLevel(logging.DEBUG)
+        print("Starting in debug mode...")
+
+        # run in console (non-daemon)
+        loop = asyncio.get_event_loop()
+        runner.run_reboot_loop(loop)
+
+    elif cmd == 'stop':
+        if config.get('core', 'daemon', False):
+            try:
+                print("Reading pidfile...")
+                from daemon import pidfile
+                pidf = pidfile.TimeoutPIDLockFile(config.get('core', 'daemon_pidfile'))
+                pid = pidf.read_pid()
+                print("Stopping KazTron (PID={:d})...".format(pid))
+                os.kill(pid, signal.SIGINT)
+                print("Stopped.")
+            except TypeError:
+                logger.error("Cannot stop: daemon not running")
+                sys.exit(runner.ErrorCodes.DAEMON_NOT_RUNNING)
+        else:
+            logger.error("Cannot stop: daemon mode disabled")
+            sys.exit(runner.ErrorCodes.DAEMON_NOT_RUNNING)
+
+    else:
+        print("Usage: ./kaztron.py <start|stop|debug|help>\n")

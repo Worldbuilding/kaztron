@@ -5,10 +5,23 @@ import discord
 from kaztron.utils.datetime import format_timestamp
 
 
-def setup_logging(logger, config):
+class LoggingInfo:
+    is_setup = False
+    cfg_level = logging.INFO
+    cfg_packages = {}
+    file_handler = None  # type: logging.FileHandler
+    console_handler = None  # type: logging.StreamHandler
+
+
+_logging_info = LoggingInfo()
+
+
+def setup_logging(logger, config, console=True):
     from kaztron.config import log_level
+    global _logging_info
     cfg_level = config.get("core", "log_level", converter=log_level)
     logger.setLevel(cfg_level)
+    _logging_info.cfg_level = cfg_level
 
     # Specific packages
     cfg_packages = {  # defaults
@@ -17,6 +30,7 @@ def setup_logging(logger, config):
         "discord": "INFO"
     }
     cfg_packages.update(config.get("core", "log_dependencies"))
+    _logging_info.cfg_packages = cfg_packages
 
     for name, s_value in cfg_packages.items():
         logging.getLogger(name).setLevel(max(log_level(s_value), cfg_level))
@@ -28,13 +42,20 @@ def setup_logging(logger, config):
     )
     fh.setFormatter(fh_formatter)
     logger.addHandler(fh)
+    _logging_info.file_handler = fh
 
     # Console handler - fixed log level
-    ch = logging.StreamHandler()
-    ch_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s')
-    ch.setLevel(max(cfg_level, logging.INFO))  # never below INFO - avoid cluttering console
-    ch.setFormatter(ch_formatter)
-    logger.addHandler(ch)
+    if console:
+        ch = logging.StreamHandler()
+        ch_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s')
+        ch.setLevel(max(cfg_level, logging.INFO))  # never below INFO - avoid cluttering console
+        ch.setFormatter(ch_formatter)
+        logger.addHandler(ch)
+        _logging_info.console_handler = ch
+
+
+def get_logging_info() -> LoggingInfo:
+    return _logging_info
 
 
 def message_log_str(message: discord.Message) -> str:

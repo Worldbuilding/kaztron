@@ -14,6 +14,11 @@
     "name": "KazTronExampleBot",
     "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
     "channel_request": "channel ID for requests",
+    "daemon": true,
+    "daemon_pidfile": "kaztron.pid",
+    "daemon_user": "For daemon mode, Linux/UNIX username to switch to (optional, leave blank to keep executing user)",
+    "daemon_group": "For daemon mode, Linux/UNIX group to switch to (optional, can leave blank)",
+    "daemon_log": "daemon.log",
     "log_level": "INFO",
     "log_file": "kaztron.log",
     "log_dependencies": {
@@ -103,7 +108,8 @@
     "duration_default": 1500,
     "duration_min": 300,
     "duration_max": 3600,
-    "finalize_time": 300
+    "finalize_time": 300,
+    "report_time": "time at which reports are generated weekly, default 17:00"
   },
   "quotedb": {
     "grab_search_max": 100
