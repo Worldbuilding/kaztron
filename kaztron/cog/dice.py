@@ -19,6 +19,7 @@ class DiceCog(KazCog):
         config.get("discord", "channel_test"),
         config.get("discord", "channel_output")
     )
+    MAX_CHOICES = 20
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -27,6 +28,7 @@ class DiceCog(KazCog):
     async def on_ready(self):
         self.ch_dice = self.validate_channel(self.config.get('dice', 'channel_dice'))
         await super().on_ready()
+
 
     @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
     @in_channels(ch_allowed_list)
@@ -63,7 +65,7 @@ class DiceCog(KazCog):
             total = sum(result)
             await self.bot.say("{!s}\n**Sum:** {:d}".format(result, total))
             logger.info("Rolled dice: {:d}d{:d} = {!r} (sum={})"
-                .format(num_rolls, num_sides, result, total))
+                        .format(num_rolls, num_sides, result, total))
 
     @commands.command(pass_context=True, ignore_extra=False)
     @in_channels(ch_allowed_list)
@@ -82,6 +84,33 @@ class DiceCog(KazCog):
         await self.bot.say("[{}]\n**Sum:** {:d}".format(' '.join(rolls_str), total))
         logger.info("Rolled FATE dice: {!r} (sum={})".format(rolls_str, total))
 
+    @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
+    async def choose(self, ctx, *, choices: str):
+        """
+        Need some help making a decision? Let the bot choose for you!
+
+        Arguments:
+        * choices - Two or more choices, separated by commas `,`.
+
+        Examples:
+        `.choose a, b, c`
+        """
+        logger.info("choose: {}".format(message_log_str(ctx.message)))
+        choices = list(map(str.strip, choices.split(",")))
+        if "" in choices:
+            logger.warning("choose(): argument empty")
+            await self.bot.say("I cannot decide if there's an empty choice.")
+        elif len(choices) < 2:
+            logger.warning("choose(): arguments out of range")
+            await self.bot.say("I need something to choose from.")
+        elif len(choices) > self.MAX_CHOICES:
+            logger.warning("choose(): arguments out of range")
+            await self.bot.say("I don't know, that's too much to choose from! "
+                "I can't handle more than {:d} choices!".format(self.MAX_CHOICES))
+        else:
+            r = random.randint(0, len(choices) - 1)
+            await self.bot.say(choices[r])
+
     @roll.error
     @rollf.error
     async def roll_on_error(self, exc, ctx):
@@ -91,7 +120,7 @@ class DiceCog(KazCog):
 
             if isinstance(root_exc, errors.UnauthorizedChannelError):
                 logger.error("Unauthorized use of command in #{1}: {0}"
-                    .format(cmd_string, ctx.message.channel.name))
+                             .format(cmd_string, ctx.message.channel.name))
                 await self.bot.send_message(
                     ctx.message.channel,
                     "Sorry, this command can only be used in {}"
