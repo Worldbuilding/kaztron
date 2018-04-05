@@ -463,7 +463,11 @@ class WritingSprint(KazCog):
 
         await super().on_ready()
 
-        self.bot.loop.create_task(self.weekly_report_tick())
+        self.report_task = self.bot.loop.create_task(self.weekly_report_tick())
+
+    async def unload_kazcog(self):
+        self.report_task.cancel()
+        self.report_task = None
 
     @commands.group(invoke_without_command=True, pass_context=True, aliases=['w'])
     @in_channels_cfg('sprint', 'channel')
