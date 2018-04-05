@@ -6,7 +6,6 @@ import gzip
 import hashlib
 import logging
 import os
-import secrets
 from datetime import datetime, timedelta
 from os import path
 from typing import Union, Tuple, Optional, List
@@ -16,6 +15,13 @@ import discord
 from kaztron import utils
 import kaztron.utils.datetime
 from kaztron.utils.datetime import utctimestamp
+
+try:
+    from secrets import token_urlsafe
+except ImportError:
+    def token_urlsafe(n: int):
+        import base64
+        return base64.b64encode(os.urandom(n)).decode('ascii')
 
 logger = logging.getLogger(__name__)
 
@@ -315,9 +321,9 @@ class Anonymizer:
         self._anons = set()
 
     def _get_random_id(self):
-        uid = secrets.token_urlsafe(6)
+        uid = token_urlsafe(6)
         while uid in self._anons:
-            uid = secrets.token_urlsafe(6)
+            uid = token_urlsafe(6)
         return uid
 
     def anonymize(self, row: CsvRow) -> CsvRow:
