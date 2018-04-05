@@ -897,7 +897,7 @@ class WritingSprint(KazCog):
         Arguments:
         * <user>: An @mention of the user to look up, or "all" for global stats.
         * [date]: Optional. Various date formats are accepted like 2018-03-14, 14 Mar 2018,
-          yesterday. If not given, shows leaderboard for all time; if specified, shows leaderboard
+          yesterday. If not given, shows stats for all time; if specified, shows stats
           for the week that includes the given date.
 
         Examples:
