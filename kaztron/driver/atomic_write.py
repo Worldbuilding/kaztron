@@ -104,9 +104,12 @@ def atomic_write(filename, text=True, keep=True,
         # POSIX systems, and Windows for Python 3.3 or higher.
         os.replace(tmp, filename)
         tmp = None
-        os.chown(filename, uid, gid)
         if mod is not None:
             os.chmod(filename, mod)
+        try:
+            os.chown(filename, uid, gid)
+        except PermissionError:
+            pass
     finally:
         if (tmp is not None) and (not keep):
             # Silently delete the temporary file. Ignore any errors.

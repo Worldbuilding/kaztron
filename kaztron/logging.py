@@ -15,10 +15,16 @@ class LoggingInfo:
 _logging_info = LoggingInfo()
 
 
-def setup_logging(logger, config, console=True):
+def setup_logging(logger, config, *, debug=False, console=True):
     from kaztron.config import log_level
     global _logging_info
-    cfg_level = config.get("logging", "level", converter=log_level)
+
+    if not debug:
+        cfg_level = config.get("logging", "level", converter=log_level)
+        console_level = max(cfg_level, logging.INFO)  # console never above INFO - avoid clutter
+    else:
+        cfg_level = console_level = logging.DEBUG
+
     logger.setLevel(cfg_level)
     _logging_info.cfg_level = cfg_level
 
@@ -51,10 +57,10 @@ def setup_logging(logger, config, console=True):
     _logging_info.file_handler = fh
 
     # Console handler - fixed log level
-    if console:
+    if console and not debug:
         ch = logging.StreamHandler()
         ch_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s')
-        ch.setLevel(max(cfg_level, logging.INFO))  # never below INFO - avoid cluttering console
+        ch.setLevel(console_level)
         ch.setFormatter(ch_formatter)
         logger.addHandler(ch)
         _logging_info.console_handler = ch

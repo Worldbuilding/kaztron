@@ -166,13 +166,11 @@ def get_daemon_context(config: KaztronConfig):
 
     bot_dir = Path(sys.modules['__main__'].__file__).resolve().parent
     pid = pidfile.TimeoutPIDLockFile(config.get('core', 'daemon_pidfile'))
-    log_stream = get_logging_info().file_handler.stream
     daemon_log = open(config.get('core', 'daemon_log'), 'w+')
     daemon_context = DaemonContext(
-        working_directory=bot_dir,
+        working_directory=str(bot_dir),
         umask=0o002,
         pidfile=pid,
-        files_preserve=[log_stream],
         stdout=daemon_log,
         stderr=daemon_log
     )

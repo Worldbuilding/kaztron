@@ -13,17 +13,12 @@ from kaztron.logging import setup_logging, get_logging_info
 # To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
 # (Assuming this is from Kazandaki -- Laogeodritt)
 
-
 # load configuration
 try:
     config = get_kaztron_config(kaztron.cfg_defaults)
 except OSError as e:
     print(str(e), file=sys.stderr)
     sys.exit(runner.ErrorCodes.CFG_FILE)
-
-# setup logging
-setup_logging(logging.getLogger(), config, console=not config.get('core', 'daemon', False))
-logger = logging.getLogger("kaztron.launcher")
 
 if __name__ == '__main__':
     import asyncio
@@ -38,21 +33,20 @@ if __name__ == '__main__':
     if cmd == 'start' and config.get('core', 'daemon', False):
         with runner.get_daemon_context(config):
             print("Starting KazTron (daemon mode)...")
+            setup_logging(logging.getLogger(), config, console=False)
             loop = asyncio.get_event_loop()
             runner.run_reboot_loop(loop)
 
     elif cmd == 'start':  # non-daemon
         print("Starting KazTron (non-daemon mode)...")
+        setup_logging(logging.getLogger(), config, console=True)
         loop = asyncio.get_event_loop()
         runner.run_reboot_loop(loop)
 
     elif cmd == 'debug':
         # override logging levels
-        logging.getLogger().setLevel(logging.DEBUG)
-        info = get_logging_info()
-        info.console_handler.setLevel(logging.DEBUG)
-        info.file_handler.setLevel(logging.DEBUG)
         print("Starting in debug mode...")
+        setup_logging(logging.getLogger(), config, debug=True)
 
         # run in console (non-daemon)
         loop = asyncio.get_event_loop()
@@ -69,10 +63,10 @@ if __name__ == '__main__':
                 os.kill(pid, signal.SIGINT)
                 print("Stopped.")
             except TypeError:
-                logger.error("Cannot stop: daemon not running")
+                print("[ERROR] Cannot stop: daemon not running", file=sys.stderr)
                 sys.exit(runner.ErrorCodes.DAEMON_NOT_RUNNING)
         else:
-            logger.error("Cannot stop: daemon mode disabled")
+            print("[ERROR] Cannot stop: daemon mode disabled", file=sys.stderr)
             sys.exit(runner.ErrorCodes.DAEMON_NOT_RUNNING)
 
     else:

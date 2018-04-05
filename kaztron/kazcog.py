@@ -25,20 +25,33 @@ class KazCog:
     :var KaztronConfig config: Ready-only user configuration. Class variable available always.
     :var KaztronConfig state: Read/write bot state. Class variable available always.
     """
-    _config = get_kaztron_config()
-    _state = get_runtime_config()
+    _config = None
+    _state = None
     _custom_states = []
 
     _core_cache = None
 
-    _ch_out_id = _config.get("discord", "channel_output")
-    _ch_test_id = _config.get("discord", "channel_test")
+    _ch_out_id = None
+    _ch_test_id = None
 
     def __init__(self, bot: commands.Bot):
+        self.static_init()
         self._bot = bot
         setattr(self, '_{0.__class__.__name__}__unload'.format(self), self.unload)
         self._ch_out = discord.Object(self._ch_out_id)  # type: discord.Channel
         self._ch_test = discord.Object(self._ch_test_id)  # type: discord.Channel
+
+    @classmethod
+    def static_init(cls):
+        """
+        Executes one-time class setup. Called on KazCog __init__ to verify that setup.
+        """
+        if cls._config is None:
+            cls._config = get_kaztron_config()
+            cls._ch_out_id = cls._config.get("discord", "channel_output")
+            cls._ch_test_id = cls._config.get("discord", "channel_test")
+        if cls._state is None:
+            cls._state = get_runtime_config()
 
     async def on_ready(self):
         """
