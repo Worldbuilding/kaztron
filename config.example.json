@@ -33,7 +33,7 @@
     "max_size_kb": 0,
     "max_backups": 0,
     "gzip_backups": true,
-    "sub_loggers": {
+    "tags": {
       "sqlalchemy.engine": "WARN",
       "websockets.protocol": "INFO",
       "discord": "INFO"

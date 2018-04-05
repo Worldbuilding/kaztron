@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import discord
 from collections import deque
 from functools import total_ordering
-from typing import Dict, Callable, List, Tuple, Deque
+from typing import Dict, Callable, List, Tuple
 
 from kaztron.driver.stats import MeanVarianceAccumulator
 from kaztron.utils.datetime import utctimestamp
@@ -170,7 +170,7 @@ class SprintData:
         # loop times
         self.start_time = 0  # type: float
         self.end_time = 0  # type: float
-        self.warn_times = deque()  # type: Deque[float]
+        self.warn_times = deque()  # type: deque[float]
         self.finalize_time = 0  # type: float
 
     def to_dict(self):
