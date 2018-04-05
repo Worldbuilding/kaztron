@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import functools
 import logging
 import random
@@ -12,7 +11,7 @@ from discord.ext import commands
 import kaztron
 from kaztron import KazCog
 from kaztron.config import get_kaztron_config, KaztronConfig
-from kaztron.utils.logging import get_logging_info
+from kaztron.logging import get_logging_info
 
 logger = logging.getLogger("kaztron.bootstrap")
 

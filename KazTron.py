@@ -7,7 +7,7 @@ import logging
 import kaztron
 from kaztron import runner
 from kaztron.config import get_kaztron_config
-from kaztron.utils.logging import setup_logging, get_logging_info
+from kaztron.logging import setup_logging, get_logging_info
 
 # In the loving memory of my time as a moderator of r/worldbuilding network
 # To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
