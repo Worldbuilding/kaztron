@@ -1,5 +1,8 @@
+import gzip
+import os
 import traceback
 import logging
+import logging.handlers
 
 import discord
 from kaztron.utils.datetime import format_timestamp
@@ -19,7 +22,7 @@ _logging_info = LoggingInfo()
 def setup_logging(logger, config, console=True):
     from kaztron.config import log_level
     global _logging_info
-    cfg_level = config.get("core", "log_level", converter=log_level)
+    cfg_level = config.get("logging", "level", converter=log_level)
     logger.setLevel(cfg_level)
     _logging_info.cfg_level = cfg_level
 
@@ -29,14 +32,21 @@ def setup_logging(logger, config, console=True):
         "websockets.protocol": "INFO",
         "discord": "INFO"
     }
-    cfg_packages.update(config.get("core", "log_dependencies"))
+    cfg_packages.update(config.get("logging", "tags"))
     _logging_info.cfg_packages = cfg_packages
 
     for name, s_value in cfg_packages.items():
         logging.getLogger(name).setLevel(max(log_level(s_value), cfg_level))
 
     # File handler
-    fh = logging.FileHandler(config.get("core", "log_file"))
+    fh = logging.handlers.RotatingFileHandler(
+        config.get("logging", "file"),
+        maxBytes=config.get("logging", "max_size_kb")*1024,
+        backupCount=config.get("logging", "max_backups")
+    )
+    if config.get("logging", "gzip_backups"):
+        fh.namer = gzip_namer
+        fh.rotator = gzip_rotator
     fh_formatter = logging.Formatter(
         '[%(asctime)s] (%(levelname)s) %(name)s: %(message)s [in %(pathname)s:%(lineno)d]'
     )
@@ -56,6 +66,17 @@ def setup_logging(logger, config, console=True):
 
 def get_logging_info() -> LoggingInfo:
     return _logging_info
+
+
+def gzip_rotator(source, dest):
+    with open(source, "rb") as sf:
+        with gzip.open(dest, 'wb') as df:
+            df.writelines(sf)
+    os.remove(source)
+
+
+def gzip_namer(name):
+    return name + '.gz'
 
 
 def message_log_str(message: discord.Message) -> str:

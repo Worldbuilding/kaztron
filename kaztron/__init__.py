@@ -24,13 +24,6 @@ cfg_defaults = {
     },
     "core": {
         "name": "UnnamedBot",
-        "log_level": "INFO",
-        "log_file": "kaztron.log",
-        "log_dependencies": {
-            "sqlalchemy.engine": "WARN",
-            "websockets.protocol": "INFO",
-            "discord": "INFO"
-        },
         "daemon": False,
         "daemon_pidfile": "kaztron.pid",
         "daemon_username": "",
@@ -39,5 +32,17 @@ cfg_defaults = {
         "date_format": "%Y-%m-%d",
         "datetime_format": "%Y-%m-%d %H:%M",
         "datetime_seconds_format": "%Y-%m-%d %H:%M:%S"
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "kaztron.log",
+        "max_size_kb": 0,
+        "max_backups": 0,
+        "gzip_backups": True,
+        "sub_loggers": {
+            "sqlalchemy.engine": "WARN",
+            "websockets.protocol": "INFO",
+            "discord": "INFO"
+        }
     }
 }
