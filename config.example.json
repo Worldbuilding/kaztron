@@ -12,25 +12,41 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
     "channel_request": "channel ID for requests",
-    "log_level": "INFO",
-    "log_file": "kaztron.log",
-    "log_dependencies": {
-      "sqlalchemy.engine": "WARN",
-      "websockets.protocol": "INFO",
-      "discord": "INFO"
+    "info_links": {
+      "link name 1": "http://potato.example/url/to/something",
+      "link name 2": "http://google.com"
     },
     "date_format": "%Y-%m-%d",
     "datetime_format": "%Y-%m-%d %H:%M",
-    "datetime_seconds_format": "%Y-%m-%d %H:%M:%S"
+    "datetime_seconds_format": "%Y-%m-%d %H:%M:%S",
+    "daemon": true,
+    "daemon_pidfile": "kaztron.pid",
+    "daemon_user": "For daemon mode, Linux/UNIX username to switch to (optional, leave blank to keep executing user)",
+    "daemon_group": "For daemon mode, Linux/UNIX group to switch to (optional, can leave blank)",
+    "daemon_log": "daemon.log"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "kaztron.log",
+    "max_size_kb": 0,
+    "max_backups": 0,
+    "gzip_backups": true,
+    "sub_loggers": {
+      "sqlalchemy.engine": "WARN",
+      "websockets.protocol": "INFO",
+      "discord": "INFO"
+    }
   },
   "spotlight": {
     "channel": "Channel ID",
     "audience_role": "Spotlight Audience role name",
     "host_role": "Spotlight Host role name",
     "spreadsheet_id": "Google Spreadsheet ID",
-    "spreadsheet_range": "Google Spreadsheet range name"
+    "spreadsheet_range": "Google Spreadsheet range name",
+    "start_date_format": "%d",
+    "end_date_format": "%d %B"
   },
   "welcome": {
     "channel_welcome": "channel ID for public welcome messages",
@@ -43,8 +59,6 @@
     "channel_dice": "channel ID where dice are allowed"
   },
   "role_man": {
-    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
-    "role_voice": "Name of the role to assign while in voice channels",
     "user_roles": {
       "role_name1": {
         "join": "join command name",
@@ -99,6 +113,19 @@
     "duration_default": 1500,
     "duration_min": 300,
     "duration_max": 3600,
-    "finalize_time": 300
+    "finalize_time": 300,
+    "report_time": "time at which reports are generated weekly, default 17:00"
+  },
+  "quotedb": {
+    "grab_search_max": 100
+  },
+  "userstats": {
+    "ignore_users": ["user ID 1", "user ID 2", "etc"],
+    "ignore_channels": ["channel ID 1", "channel ID 2", "etc"]
+  },
+  "voicelog": {
+    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
+    "channel_text": "text channel ID to output voice status messages to",
+    "role_voice": "Name of the role to assign while in voice channels"
   }
 }

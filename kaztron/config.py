@@ -2,6 +2,9 @@ import json
 import logging
 import errno
 import copy
+from collections import OrderedDict
+
+from kaztron.driver.atomic_write import atomic_write
 
 logger = logging.getLogger("kaztron.config")
 
@@ -63,7 +66,7 @@ class KaztronConfig:
         self._data = copy.deepcopy(self._defaults)
         try:
             with open(self.filename) as cfg_file:
-                read_data = json.load(cfg_file)
+                read_data = json.load(cfg_file, object_pairs_hook=OrderedDict)
         except OSError as e:
             if e.errno == errno.ENOENT:  # file not found, just create it
                 if not self._read_only:
@@ -75,7 +78,7 @@ class KaztronConfig:
         else:
             self._data.update(read_data)
 
-    def write(self):
+    def write(self, log=True):
         """
         Write the current config data to the configured file.
         :raises OSError: Error opening or writing file.
@@ -83,8 +86,9 @@ class KaztronConfig:
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
-        logger.info("config({}) Writing file...".format(self.filename))
-        with open(self.filename, "w") as cfg_file:
+        if log:
+            logger.info("config({}) Writing file...".format(self.filename))
+        with atomic_write(self.filename) as cfg_file:
             json.dump(self._data, cfg_file)
 
     def get_section(self, section: str):
@@ -169,8 +173,8 @@ class KaztronConfig:
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
-        logger.debug("config:set: file={!r} section={!r} key={!r} value={!r}"
-            .format(self.filename, section, key, value))
+        logger.debug("config:set: file={!r} section={!r} key={!r}"
+            .format(self.filename, section, key,))
 
         try:
             section_data = self._data[section]

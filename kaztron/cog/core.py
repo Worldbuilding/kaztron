@@ -8,17 +8,17 @@ import kaztron
 from kaztron.errors import *
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str
-from kaztron.utils.strings import get_timestamp_str, get_command_str, get_help_str, \
-    get_command_prefix, get_usage_str
+from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str
+from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
 
 
 class CoreCog(kaztron.KazCog):
+
     def __init__(self, bot):
         super().__init__(bot)
         self.ch_request = discord.Object(self.config.get('core', 'channel_request'))
-        self.dest_output = discord.Object(id=self.config.get('discord', 'channel_output'))
         self.name = self.config.get("core", "name", "KazTron")
 
         self.bot.event(self.on_error)  # register this as a global event handler, not just local
@@ -45,6 +45,12 @@ class CoreCog(kaztron.KazCog):
         logger.info("Cog ready: {}".format(type(cog).__name__))
         self.ready_cogs.add(cog)
 
+    def set_cog_shutdown(self, cog):
+        logger.info("Cog has been shutdown: {}".format(type(cog).__name__))
+        self.ready_cogs.remove(cog)
+        if cog.state != self.state:  # not using global state (saving handled in runner)
+            cog.state.write()
+
     async def on_ready(self):
         logger.debug("on_ready")
 
@@ -66,8 +72,7 @@ class CoreCog(kaztron.KazCog):
             print(msg)  # in case console logger is below INFO level - display startup info
 
         try:
-            await self.bot.send_message(
-                self.dest_output,
+            await self.send_output(
                 "**{} is running**\n".format(self.name) + '\n'.join(startup_info)
             )
         except discord.HTTPException:
@@ -91,8 +96,7 @@ class CoreCog(kaztron.KazCog):
             ', '.join(repr(arg) for arg in args),
             ', '.join(key + '=' + repr(value) for key, value in kwargs.items()))
         logger.exception(log_msg)
-        await self.bot.send_message(self.dest_output,
-            "[ERROR] {} - see logs for details".format(exc_log_str(exc_info[1])))
+        await self.send_output("[ERROR] {} - see logs for details".format(exc_log_str(exc_info[1])))
 
         try:
             message = args[0]
@@ -142,14 +146,14 @@ class CoreCog(kaztron.KazCog):
                 err_msg = 'While executing {c}\n\nDiscord API error {e!s}' \
                     .format(c=cmd_string, e=root_exc)
                 logger.error(err_msg + "\n\n{}".format(tb_log_str(root_exc)))
-                await self.bot.send_message(self.dest_output,
+                await self.send_output(
                     "[ERROR] " + err_msg + "\n\nSee log for details")
             else:
                 logger.error("An error occurred while processing the command: {}\n\n{}"
                     .format(cmd_string, tb_log_str(root_exc)))
-                await self.bot.send_message(self.dest_output,
+                await self.send_output(
                     "[ERROR] While executing {}\n\n{}\n\nSee logs for details"
-                        .format(cmd_string, exc_log_str(root_exc)))
+                    .format(cmd_string, exc_log_str(root_exc)))
 
             # In all cases (except if return early/re-raise)
             await self.bot.send_message(ctx.message.channel,
@@ -167,14 +171,14 @@ class CoreCog(kaztron.KazCog):
             err_msg = "Unauthorised user for this command (not a moderator): {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "Only mods can use that command.")
 
         elif isinstance(exc, AdminOnlyError):
             err_msg = "Unauthorised user for this command (not an admin): {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "Only admins can use that command.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
@@ -188,7 +192,7 @@ class CoreCog(kaztron.KazCog):
             err_msg = "Unauthorised channel for this command: {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
-            await self.bot.send_message(self.dest_output, '[WARNING] ' + err_msg)
+            await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
 
         elif isinstance(exc, commands.NoPrivateMessage):
@@ -234,13 +238,16 @@ class CoreCog(kaztron.KazCog):
             await self.bot.send_message(
                 ctx.message.channel,
                 "Sorry, I'm still loading the {} module! Try again in a few seconds."
-                    .format(cog_name)
+                .format(cog_name)
             )
 
         elif isinstance(exc, commands.CommandNotFound):
             msg = "Unknown command: {}".format(cmd_string)
-            # avoid some natural language things that start with period (ellipsis, etc.)
-            if ctx.invoked_with not in ['.', '..'] and not ctx.invoked_with.startswith('.'):
+            # safe to assume commands usually words - symbolic commands are rare
+            # and we want to avoid emoticons ('._.', etc.), punctuation ('...') and decimal numbers
+            # without leading 0 (.12) being detected
+            if ctx.invoked_with and all(c.isalnum() for c in ctx.invoked_with) \
+                    and not ctx.invoked_with[0].isdigit():
                 logger.warning(msg)
                 await self.bot.send_message(ctx.message.channel,
                     "Sorry, I don't know the command `{}{.invoked_with}`"
@@ -251,7 +258,7 @@ class CoreCog(kaztron.KazCog):
             await self.bot.send_message(ctx.message.channel,
                 "An unexpected error occurred! Details have been logged. Let a mod know so we can "
                 "investigate.")
-            await self.bot.send_message(self.dest_output,
+            await self.send_output(
                 ("[ERROR] Unknown error while trying to process command {}\n"
                  "Error: {!s}\n\nSee logs for details").format(cmd_string, exc))
 
@@ -273,7 +280,10 @@ class CoreCog(kaztron.KazCog):
                      value="v{}".format(kaztron.bot_info["version"]), inline=True)
         em.add_field(name="discord.py version",
             value="v{}".format(discord.__version__), inline=True)
-        for title, url in kaztron.bot_info["links"].items():
+
+        links = kaztron.bot_info["links"].copy()
+        links.update(self.config.get('core', 'info_links', {}))
+        for title, url in links.items():
             em.add_field(name=title, value="[{0}]({1})".format(title, url), inline=True)
         await self.bot.say(embed=em)
 
@@ -304,7 +314,7 @@ class CoreCog(kaztron.KazCog):
             em.add_field(name="Channel", value=ctx.message.channel.mention, inline=True)
         except AttributeError:  # probably a private channel
             em.add_field(name="Channel", value=ctx.message.channel, inline=True)
-        em.add_field(name="Timestamp", value=get_timestamp_str(ctx.message), inline=True)
+        em.add_field(name="Timestamp", value=format_timestamp(ctx.message), inline=True)
         em.add_field(name="Content", value=content, inline=False)
         await self.bot.send_message(self.ch_request, embed=em)
         await self.bot.say("Your issue was submitted to the bot DevOps team. "

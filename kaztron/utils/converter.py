@@ -1,8 +1,7 @@
-import dateparser
-
 import discord
 from discord.ext import commands
 
+import kaztron.utils.datetime as utils_dt
 from kaztron.utils.discord import extract_user_id
 
 
@@ -14,7 +13,7 @@ class NaturalDateConverter(commands.Converter):
     considered a single argument.
     """
     def convert(self):
-        date = dateparser.parse(self.argument)
+        date = utils_dt.parse(self.argument)
         if date is None:
             raise commands.BadArgument("Argument {!r} could not be parsed as a date string"
                 .format(self.argument))

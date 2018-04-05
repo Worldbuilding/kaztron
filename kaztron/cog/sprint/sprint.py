@@ -1,26 +1,24 @@
 import asyncio
-import copy
-import enum
 import logging
-import math
-from collections import deque
-from datetime import datetime, timedelta
-from functools import total_ordering
-from typing import Dict, List, Callable, Tuple, Deque
+from datetime import time
+from typing import Optional
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.role_man import RoleManager
-from kaztron.config import get_kaztron_config, get_runtime_config
-from kaztron.errors import UnauthorizedUserError
+from kaztron.cog.sprint.model import *
+from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
+from kaztron.utils.converter import NaturalDateConverter
+from kaztron.utils.datetime import utctimestamp, format_date, format_timedelta, parse as dt_parse
 from kaztron.utils.decorators import task_handled_errors
-from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all
+from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all, get_help_str, \
+    get_member
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import get_help_str, format_list, format_timedelta
+from kaztron.utils.strings import format_list
 
 logger = logging.getLogger(__name__)
 
@@ -41,234 +39,6 @@ def format_seconds(seconds: float, timespec='seconds'):
     return format_timedelta(timedelta(microseconds=int(seconds*1e6)), timespec=timespec)
 
 
-@total_ordering
-class SprintState(enum.Enum):
-    IDLE = 0
-    PREPARE = 10
-    SPRINT = 20
-    COLLECT_RESULTS = 30
-
-    def __lt__(self, other):
-        if self.__class__ is other.__class__:
-            return self.value < other.value
-        return NotImplemented
-
-
-class SprintStats:
-    def __init__(self):
-        self.sprints = 0
-        self.words = 0
-        self.rate_sum = 0  # sum of writing rate (words/s) for each sprint
-        self.time = 0
-        self.wins = 0
-        # cumulative quantity related to variance of rate for each sprint
-        self.m2rate = 0
-
-    def update(self, words: int, rate: float, time: int, winner=False):
-        """
-        Update the stats with info from a new sprint.
-
-        For the M2/variance algorithm:
-        https://en.wikipedia.org/w/index.php?title=Algorithms_for_calculating_variance&oldid=824616944#Online_algorithm
-
-        :param words: Words written this sprint.
-        :param rate: Rate (words per minute)
-        :param time: Total time this sprint.
-        :param winner: Whether the user associated to this record is the sprint winner.
-        """
-        if winner:
-            self.wins += 1
-
-        prev_rate_avg = self.rate_sum/self.sprints if self.sprints > 0 else 0
-
-        self.sprints += 1
-        self.words += words
-        self.rate_sum += rate
-        self.time += time
-
-        next_rate_avg = self.rate_sum/self.sprints
-
-        last_delta = rate - prev_rate_avg
-        new_delta = rate - next_rate_avg
-
-        self.m2rate = self.m2rate + last_delta * new_delta
-
-    @property
-    def words_mean(self):
-        """ Number of words per sprint on average. """
-        return self.words / self.sprints if self.sprints > 0 else 0
-
-    @property
-    def wpm_mean(self):
-        """ Writing speed, average per sprint, in wpm. """
-        return self.rate_sum / self.sprints if self.sprints > 0 else 0
-
-    @property
-    def wpm_stdev(self):
-        """ Standard deviation of writing speed (wpm) over all sprints. """
-        return math.sqrt(self.m2rate / (self.sprints - 1)) if self.sprints > 1 else 0
-
-    @property
-    def time_mean(self):
-        """ Time per sprint, average, in minutes. """
-        return (self.time / 60 / self.sprints) if self.sprints > 0 else 0
-
-    @property
-    def win_rate(self):
-        """ Win rate as a fractional value (0 <= x <= 1). """
-        return self.wins / self.sprints
-
-    def to_dict(self):
-        return {
-            "sprints": self.sprints,
-            "words": self.words,
-            "rate_sum": self.rate_sum,
-            "m2rate": self.m2rate,
-            "time": self.time,
-            "wins": self.wins
-        }
-
-    @classmethod
-    def from_dict(cls, stats_dict: Dict):
-        s = SprintStats()
-        s.sprints = stats_dict.get('sprints', 0)
-        s.words = stats_dict.get('words', 0)
-        s.rate_sum = stats_dict.get('rate_sum', 0)
-        s.m2rate = stats_dict.get('m2rate', 0)
-        s.time = stats_dict.get('time', 0)
-        s.wins = stats_dict.get('wins', 0)
-        return s
-
-
-class SprintData:
-    def __init__(self, time_callback: Callable[[], float]):
-        self.time_callback = time_callback
-        self.founder = None  # type: discord.Member
-        self.members = []  # type: List[discord.Member]
-
-        # {user_id: start/end wordcounts}
-        self.start = {}  # type: Dict[str, int]
-        self.end = {}  # type: Dict[str, int]
-
-        # loop times
-        self.start_time = 0  # type: float
-        self.end_time = 0  # type: float
-        self.warn_times = deque()  # type: Deque[float]
-        self.finalize_time = 0  # type: float
-
-    def to_dict(self):
-        return {
-            'founder': self.founder.id if self.founder else None,
-            'members': [u.id for u in self.members],
-            'start': copy.deepcopy(self.start),
-            'end': copy.deepcopy(self.end),
-            'start_time': self._datetime(self.start_time).timestamp() if self.start_time else 0,
-            'end_time': self._datetime(self.end_time).timestamp() if self.end_time else 0,
-            'warn_times': [self._datetime(t).timestamp() for t in self.warn_times],
-            'finalize_time': (
-                self._datetime(self.finalize_time).timestamp() if self.finalize_time else 0
-            ),
-        }
-
-    def _loop_time(self, timestamp: float) -> float:
-        now_loop = self.time_callback()
-        now_timestamp = datetime.utcnow().timestamp()
-        return now_loop + (timestamp - now_timestamp)
-
-    def _datetime(self, loop_time: float) -> datetime:
-        return datetime.utcnow() + timedelta(seconds=loop_time - self.time_callback())
-
-    @classmethod
-    def from_dict(cls, time_callback: Callable[[], float], server: discord.Server, data: Dict):
-        self = SprintData(time_callback)
-        self.founder = server.get_member(data['founder'])
-        member_uids = []
-        for u_id in data['members']:
-            member = server.get_member(u_id)
-            if member is not None:
-                self.members.append(member)
-                member_uids.append(member.id)
-            else:
-                logger.warning("Can't restore member: ID {} not found on server".format(u_id))
-        self.start = {u_id: value for u_id, value in data['start'].items() if u_id in member_uids}
-        self.end = {u_id: value for u_id, value in data['end'].items() if u_id in member_uids}
-        self.start_time = self._loop_time(data['start_time'])
-        self.end_time = self._loop_time(data['end_time'])
-        self.warn_times = deque(self._loop_time(t) for t in data['warn_times'])
-        self.finalize_time = self._loop_time(data['finalize_time'])
-        return self
-
-    @property
-    def start_dt(self):
-        return self._datetime(self.start_time)
-
-    @property
-    def end_dt(self):
-        return self._datetime(self.end_time)
-
-    @property
-    def warn_dts(self):
-        for loop_time in self.warn_times:
-            yield self._datetime(loop_time)
-
-    @property
-    def starts_in(self):
-        return self.start_time - self.time_callback()
-
-    @property
-    def duration(self):
-        return self.end_time - self.start_time
-
-    @property
-    def remaining(self):
-        return min(self.duration, self.end_time - self.time_callback())
-
-    @property
-    def remaining_finalize(self):
-        return self.finalize_time - self.time_callback()
-
-
-class EmbedInfo:
-    """
-    Data container for display information (mostly strings) in Discord's Embeds.
-    """
-    def __init__(self, *, title: str, author: str=None, color: int, msg: str,
-                 strings: List[Tuple[str, str, bool]]):
-        self.title = title
-        self.author = author
-        self.color = color
-        self.msg = msg
-        self.strings = strings
-
-    def __copy__(self):
-        return EmbedInfo(
-            title=self.title,
-            author=self.author,
-            color=self.color,
-            msg=self.msg,
-            strings=list(self.strings)
-        )
-
-    def __deepcopy__(self, memo):
-        return EmbedInfo(
-            title=copy.deepcopy(self.title, memo),
-            author=copy.deepcopy(self.author, memo),
-            color=copy.deepcopy(self.color, memo),
-            msg=copy.deepcopy(self.msg, memo),
-            strings=copy.deepcopy(self.strings, memo)
-        )
-
-    def __repr__(self):
-        return "<EmbedInfo {}>".format(' '.join(
-            '{!r}={!r}'.format(title, value) for title, value in [
-                ('title', self.title),
-                ('author', self.author),
-                ('color', self.color),
-                ('msg', self.msg),
-            ] + [(title, value) for title, value, _ in self.strings]
-        ))
-
-
 class WritingSprint(KazCog):
     """
     Welcome to writing sprints, where everything's made up and the words don't matter!
@@ -276,7 +46,7 @@ class WritingSprint(KazCog):
     For help with this feature, please type `.help sprint`.
     """
 
-    INLINE = True
+    INLINE = True  # makes DISP_EMBEDS prettier
     MAX_LEADERS = 5
 
     DISP_COLORS = {
@@ -369,7 +139,7 @@ class WritingSprint(KazCog):
             ]
         ),
         "leader": EmbedInfo(
-            title="Leaderboards",
+            title="Leaderboard ({weekname})",
             color=DISP_COLORS["leader"],
             msg="",
             strings=[
@@ -380,7 +150,7 @@ class WritingSprint(KazCog):
             ]
         ),
         "stats_global": EmbedInfo(
-            title="Global Stats",
+            title="Global stats ({weekname})",
             color=DISP_COLORS["stats"],
             msg="",
             strings=[
@@ -389,7 +159,8 @@ class WritingSprint(KazCog):
                 ("Total words", "{stats.words:.0f} words", INLINE),
                 ("Average sprint", "{average_time}", INLINE),
                 ("Average cumulative productivity",
-                 "{stats.wpm_mean:.1f} wpm overall (σ = {stats.wpm_stdev:.1f})", INLINE)
+                 "{stats.wpm_mean:.1f} wpm overall (σ = {stats.wpm_stdev:.1f})", INLINE),
+                ("Since", "{since}", INLINE)
             ]
         ),
         "stats": EmbedInfo(
@@ -397,14 +168,18 @@ class WritingSprint(KazCog):
             color=DISP_COLORS["stats"],
             msg="",
             strings=[
-                ("User Stats", "<@{user_id}>", not INLINE),
+                ("User Stats", "<@{user_id}>", INLINE),
+                ("Period", "{weekname}", INLINE),
                 ("Sprints", "{stats.sprints:.0f}", INLINE),
+
                 ("Wins", "{stats.wins:.0f} ({stats.win_rate:.0%})", INLINE),
                 ("Total time",  "{total_time}", INLINE),
                 ("Total words", "{stats.words:.0f} words", INLINE),
+
                 ("Average sprint", "{average_time}", INLINE),
                 ("Average speed",
                  "{stats.wpm_mean:.1f} wpm (σ = {stats.wpm_stdev:.1f})", INLINE),
+                ("Since", "{since}", INLINE)
             ]
         ),
     }
@@ -415,8 +190,13 @@ class WritingSprint(KazCog):
         "rejoin": "{mention} Updated your initial wordcount to {wc:d} words.",
         "leave": "{mention} You have left the writing sprint! Sorry you can't stick around.",
         "leave_error": "{mention} You're not in the writing sprint!",
-        "wordcount": "{mention} Your wordcount has been recorded.",
-        "wordcount_error": "{mention} You're not in the writing sprint!",
+        "wordcount": "{mention} Your wordcount is now {wc:d} ({diff:+d}). "
+                     "If you're done writing for this sprint, don't forget to use `.w final`!",
+        "wordcount_error": "{mention} You're not in the writing sprint! "
+                           "Use `.w join <wordcount>` to join.",
+        "final": "{mention} Your wordcount has been finalized at {wc:d} words.",
+        'finalize_error': "{mention} You haven't submitted an end wordcount yet! "
+                          "Use `.w wc <count>` to set your current wordcount.",
 
         "status_idle_tuple": ("Nobody's sprinting right now!",
                               "Start a sprint with `.w start`! Type `.help w start` for help.",
@@ -435,6 +215,8 @@ class WritingSprint(KazCog):
 
         "cancel_leave": "No participants are left in the sprint.",
         "cancel_start": "I can't start a sprint with no participants.",
+        "report": "**Weekly report now available!** You can use `.w stats` and `.w leader` "
+                  "to re-show these reports or get individual statistics.",
 
         "err_running_general": "Sorry, you can't do that while a sprint is running. "
                                "Please wait for the sprint to end.\n\nSprint creator and mods "
@@ -453,22 +235,18 @@ class WritingSprint(KazCog):
         "err_wtf": "NonsenseError: You can't do that, there's a blazing bunny on your head."
     }
 
-    TICK_INTERVAL = 15
-
     def __init__(self, bot):
         super().__init__(bot)
         self.state.set_defaults(
             'sprint',
             state=SprintState.IDLE.value,
             sprint_data=SprintData(self._get_time).to_dict(),
-            stats_global=SprintStats().to_dict(),
-            stats_users={}
+            stats=SprintUserStats().to_dict(),
+            weekly_stats={}
         )
 
         self.channel_id = self.config.get('sprint', 'channel')
         self.channel = None
-        self.dest_output_id = self.config.get('discord', 'channel_output')
-        self.dest_output = discord.Object(id=self.dest_output_id)
 
         self.role_sprint_name = self.config.get('sprint', 'role_sprint')
         self.role_follow_name = self.config.get('sprint', 'role_follow')
@@ -490,6 +268,9 @@ class WritingSprint(KazCog):
         self.sprint_data = SprintData(self._get_time)
         self.state_task = None
 
+        self.report_time = dt_parse(self.config.get('sprint', 'report_time', '17:00')).time()
+        self.report_task = None
+
     def get_state(self):
         return SprintState(self.state.get('sprint', 'state'))
 
@@ -504,7 +285,7 @@ class WritingSprint(KazCog):
             logger.error("Error persisting sprint")
 
     def _load_sprint(self):
-        # state is always directly read from the config, so no need to set it here
+        # state is always directly read from the config (see get_state), so no need to set it here
         if self.get_state() is not SprintState.IDLE:
             try:
                 self.sprint_data = SprintData.from_dict(self._get_time, self.channel.server,
@@ -512,13 +293,43 @@ class WritingSprint(KazCog):
             except KeyError:
                 logger.warning("Old sprint data incorrectly formatted, ignoring")
 
+    def save_stats(self, s: SprintUserStats):
+        """
+        Store the stats in the config. This does NOT write to disk (call :meth:`_save_sprint`).
+        """
+        self.state.set('sprint', 'stats', s.to_dict())
+
+    def load_stats(self) -> SprintUserStats:
+        return SprintUserStats.from_dict(self.state.get('sprint', 'stats'))
+
+    def save_weekly_stats(self, dt: datetime, stats: SprintUserStats):
+        """
+        Store the weekly stats to the config. The stats will be associated to the week that
+        includes the given date.
+        """
+        self.state.get('sprint', 'weekly_stats')[dt.strftime('%Y%U')] = stats.to_dict()
+
+    def load_weekly_stats(self, dt: datetime) -> SprintUserStats:
+        """ Load the weekly stats that include the given date. """
+        try:
+            return SprintUserStats.from_dict(
+                self.state.get('sprint', 'weekly_stats')[dt.strftime('%Y%U')]
+            )
+        except KeyError:
+            return SprintUserStats()
+
     def _get_time(self) -> float:
         """ Convenience function: get the current event loop time, in seconds. """
         return self.bot.loop.time()
 
     async def _display_embed(self, dest, embed_info: EmbedInfo, *args, **kwargs):
         """ Convenience function: display an embed from the EmbedInfo """
-        em = discord.Embed(title=embed_info.title, color=embed_info.color)
+        if isinstance(embed_info.title, str):
+            title = embed_info.title.format(*args, **kwargs)
+        else:
+            title = embed_info.title
+
+        em = discord.Embed(title=title, color=embed_info.color)
 
         if embed_info.author:
             em.set_author(name=embed_info.author)
@@ -548,17 +359,17 @@ class WritingSprint(KazCog):
             self.role_follow = get_named_role(server, self.role_follow_name)
             self.role_follow_mention = self.role_follow.mention
         except ValueError:
-            logger.warning("Cannot find role: " + self.role_follow_name)
             self.role_follow = None
             self.role_follow_mention = ''
+            raise
 
         try:
             self.role_sprint = get_named_role(server, self.role_sprint_name)
             self.role_sprint_mention = self.role_sprint.mention
         except ValueError:
-            logger.warning("Cannot find role: " + self.role_sprint_name)
             self.role_sprint = None
             self.role_sprint_mention = ''
+            raise
 
     async def _cancel_sprint(self, msg: str=None):
         """
@@ -591,14 +402,7 @@ class WritingSprint(KazCog):
         """
         logger.debug("on_ready")
         logger.debug("Validating sprint channel...")
-        self.channel = self.bot.get_channel(self.channel_id)
-        if self.channel is None:
-            err_msg = "Channel does not exist: {}".format(self.channel_id)
-            logger.warning(err_msg)
-            try:
-                await self.bot.send_message(self.dest_output, err_msg)
-            except discord.HTTPException:
-                logger.exception("Error sending error to {}".format(self.dest_output_id))
+        self.channel = self.validate_channel(self.channel_id)
 
         state = self.get_state()
         if state is not SprintState.IDLE:
@@ -635,11 +439,11 @@ class WritingSprint(KazCog):
                                "this is OK if client reconnected")
         else:
             err_msg = "Cannot find RoleManager - is it enabled in config?"
-            logger.error(err_msg)
+            logger.warning(err_msg)
             try:
-                await self.bot.send_message(self.dest_output, err_msg)
+                await self.send_output(err_msg)
             except discord.HTTPException:
-                logger.exception("Error sending error to {}".format(self.dest_output_id))
+                logger.exception("Error sending error to output ch")
 
         logger.info("Restoring task for current state...")
         if self.state_task:  # in case this isn't the first time on_ready is called (reconnect)
@@ -658,6 +462,12 @@ class WritingSprint(KazCog):
             self.state_task = self.bot.loop.create_task(self.on_sprint_results())
 
         await super().on_ready()
+
+        self.report_task = self.bot.loop.create_task(self.weekly_report_tick())
+
+    async def unload_kazcog(self):
+        self.report_task.cancel()
+        self.report_task = None
 
     @commands.group(invoke_without_command=True, pass_context=True, aliases=['w'])
     @in_channels_cfg('sprint', 'channel')
@@ -717,9 +527,8 @@ class WritingSprint(KazCog):
             em_data.strings = em_data.strings[0:2] + em_data.strings[3:4] + em_data.strings[5:]
         else:
             logger.error("Unknown state! {!r}".format(state))
-            await self.bot.send_message(
-                self.dest_output,
-                "status: Unknown modnotes state {!r} - probably a bug somewhere!"
+            await self.send_output(
+                "status: Unknown sprint state {!r} - probably a bug somewhere!"
                 .format(state)
             )
             await self.bot.send_message(
@@ -846,6 +655,22 @@ class WritingSprint(KazCog):
         else:
             raise UnauthorizedUserError
 
+    async def update_initial_wordcount(self, user: discord.Member, wordcount: int):
+        logger.info("User {} updated initial wc to {:d} words".format(user.name, wordcount))
+        self.sprint_data.start[user.id] = wordcount
+        await self.bot.say(self.DISP_STRINGS['rejoin'].format(mention=user.mention, wc=wordcount))
+        self._save_sprint()
+
+    async def update_final_wordcount(self, user: discord.Member, wordcount: int):
+        logger.info("User {} set wordcount {:d}".format(user.name, wordcount))
+        self.sprint_data.end[user.id] = wordcount
+        await self.bot.say(self.DISP_STRINGS['wordcount'].format(
+            mention=user.mention,
+            wc=wordcount,
+            diff=wordcount - self.sprint_data.start[user.id]
+        ))
+        self._save_sprint()
+
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['j'])
     @in_channels_cfg('sprint', 'channel')
     async def join(self, ctx: commands.Context, wordcount: int):
@@ -892,11 +717,7 @@ class WritingSprint(KazCog):
 
             self._save_sprint()
         else:
-            logger.info("User {} updated initial wc to {:d} words".format(user.name, wordcount))
-            self.sprint_data.start[user.id] = wordcount
-            await self.bot.say(self.DISP_STRINGS['rejoin']
-                .format(mention=user.mention, wc=wordcount))
-            self._save_sprint()
+            await self.update_initial_wordcount(user, wordcount)
 
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['l'])
     @in_channels_cfg('sprint', 'channel')
@@ -943,56 +764,112 @@ class WritingSprint(KazCog):
     @in_channels_cfg('sprint', 'channel')
     async def wordcount(self, ctx, count: int):
         """
-        Report your wordcount at the end of the sprint.
+        Report your wordcount.
+
+        If used before a sprint starts, this changes your starting wordcount. During or after a
+        sprint, it sets your current wordcount and calculates how much you've written during the
+        sprint.
+
+        If you're setting your final wordcount for the end of the sprint, make sure to use the
+        `.w final` command.
 
         Arguments:
         * <wordcount>: Required. Your final wordcount at the end of the sprint. The bot will
           automatically calculate your total words written during the sprint.
 
         Example:
-            .w c 12888 - Report that your wordcount at the end of the sprint is 12888.
+            .w c 12888 - Report that your wordcount is 12888.
         """
         logger.info("wordcount: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
-        elif state is SprintState.PREPARE or state is SprintState.SPRINT:
-            raise SprintRunningError()
 
         user = ctx.message.author
 
-        if user.id in self.sprint_data.start:
-            logger.info("User {} set final wordcount {:d}".format(user.name, count))
-            self.sprint_data.end[user.id] = count
-            await self.bot.say(self.DISP_STRINGS['wordcount']
-                .format(mention=user.mention, wc=count))
-
-            # If everyone has submitted, fast forward
-            if set(self.sprint_data.start.keys()) == set(self.sprint_data.end.keys()):
-                logger.info("All wordcounts submitted. Fast-forwarding to result announcement.")
-                self.state_task.cancel()
-                self.sprint_data.finalize_time = self._get_time()  # finalize NOW
-                self.state_task = self.bot.loop.create_task(self.on_sprint_results())
-            else:
-                self._save_sprint()
-        else:
+        if user.id not in self.sprint_data.start:
             logger.warning("Cannot set wordcount: user {} not in sprint".format(user.name))
-            await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(user.mention))
+            await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(mention=user.mention))
+            return
+
+        if state is SprintState.PREPARE:
+            await self.update_initial_wordcount(user, count)
+        elif state is SprintState.SPRINT or state is SprintState.COLLECT_RESULTS:
+            await self.update_final_wordcount(user, count)
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
-    async def leader(self, ctx):
+    async def final(self, ctx: commands.Context):
+        """
+        Finalize your wordcount. Use this when you're sure you're done and your wordcount is
+        correct.
+        """
+        logger.info("final: {}".format(message_log_str(ctx.message)))
+        state = self.get_state()
+        if state is SprintState.IDLE or state is SprintState.PREPARE:
+            raise SprintNotRunningError()
+
+        user = ctx.message.author
+
+        # check if user is in sprint and has submitted a final wordcount
+        if user.id not in self.sprint_data.start:
+            logger.warning("Cannot finalize: user {} not in sprint".format(user.name))
+            await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(mention=user.mention))
+            return
+        elif user.id not in self.sprint_data.end:
+            logger.warning("Cannot finalize: user {} has not submitted a wordcount"
+                .format(user.name))
+            await self.bot.say(self.DISP_STRINGS['finalize_error'].format(mention=user.mention))
+            return
+
+        # record user's finalization
+        self.sprint_data.finalized.add(user.id)
+        await self.bot.say(self.DISP_STRINGS['final'].format(
+            mention=user.mention,
+            wc=self.sprint_data.end[user.id] - self.sprint_data.start[user.id])
+        )
+
+        # If everyone has submitted, fast forward
+        if state is SprintState.COLLECT_RESULTS and \
+                set(self.sprint_data.start.keys()) == self.sprint_data.finalized:
+            logger.info("All wordcounts submitted. Fast-forwarding to result announcement.")
+            self.state_task.cancel()
+            self.sprint_data.finalize_time = self._get_time()  # finalize NOW
+            self.state_task = self.bot.loop.create_task(self.on_sprint_results())
+        else:
+            self._save_sprint()
+
+    @sprint.command(pass_context=True, ignore_extra=False)
+    @in_channels_cfg('sprint', 'channel', allow_pm=True)
+    async def leader(self, ctx, *, date: NaturalDateConverter=None):
         """
         Show the leaderboards.
+
+        Arguments:
+        * [date]: Optional. Various date formats are accepted like 2018-03-14, 14 Mar 2018,
+          yesterday. If not given, shows leaderboard for all time; if specified, shows leaderboard
+          for the week that includes the given date.
+
+        Examples:
+            .w leader - All-time leaderboard.
+            .w leader 2018-03-14 - Leaderboard for the week that contains 14 March 2018.
         """
         logger.info("leader: {}".format(message_log_str(ctx.message)))
-        entry_user_map = {uid: SprintStats.from_dict(d)
-                          for uid, d in self.state.get('sprint', 'stats_users').items()}
+        date = date  # type: datetime
+        await self._leader_inner(ctx.message.channel, date)
+
+    async def _leader_inner(self, dest, date: datetime):
+        # Get stats and sort them by each leaderboard criterion
+        if date is None:
+            entry_user_map = {uid: d for uid, d in self.load_stats().users.items()}
+        else:
+            entry_user_map = {uid: d for uid, d in self.load_weekly_stats(date).users.items()}
         entries_by_t = sorted(entry_user_map.items(), key=lambda e: e[1].time, reverse=True)
         entries_by_w = sorted(entry_user_map.items(), key=lambda e: e[1].words, reverse=True)
         entries_by_wpm = sorted(entry_user_map.items(), key=lambda e: e[1].wpm_mean, reverse=True)
         entries_by_wins = sorted(entry_user_map.items(), key=lambda e: e[1].wins, reverse=True)
 
+        # Generate strings for each
         list_by_t = ["<@{}>: {:.1f} hours".format(uid, s.time/3600)
                      for uid, s in entries_by_t[:self.MAX_LEADERS]]
         list_by_w = ["<@{}>: {:d} words".format(uid, s.words)
@@ -1003,7 +880,8 @@ class WritingSprint(KazCog):
                        for uid, s in entries_by_wins[:self.MAX_LEADERS]]
 
         await self._display_embed(
-            ctx.message.channel, self.DISP_EMBEDS['leader'],
+            dest, self.DISP_EMBEDS['leader'],
+            weekname="all time" if not date else date.strftime("%Y week %U"),
             leaders_time=format_list(list_by_t) or "None",
             leaders_words=format_list(list_by_w) or "None",
             leaders_wpm=format_list(list_by_wpm) or "None",
@@ -1012,39 +890,140 @@ class WritingSprint(KazCog):
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
-    async def stats(self, ctx, user: discord.Member=None):
+    async def stats(self, ctx, user: str, *, date: NaturalDateConverter=None):
         """
         Show stats, either global or per-user.
 
         Arguments:
-        * [user]: Optional. An @mention of the user to look up. If not specified, shows global
-          stats.
+        * <user>: An @mention of the user to look up, or "all" for global stats.
+        * [date]: Optional. Various date formats are accepted like 2018-03-14, 14 Mar 2018,
+          yesterday. If not given, shows stats for all time; if specified, shows stats
+          for the week that includes the given date.
+
+        Examples:
+            .w stats all - Global stats for all time.
+            .w stats @JaneDoe - Stats for JaneDoe for all time.
+            .w stats all 2018-03-14 - Global stats for the week including 14 March.
         """
         logger.info("stats: {}".format(message_log_str(ctx.message)))
+        date = date  # type: datetime
+        member = get_member(ctx, user) if user != 'all' else None
+        await self._stats_inner(ctx.message.channel, member, date)
 
+    async def _stats_inner(self, dest, user: Optional[discord.Member], date: datetime):
         if user:
             logger.debug("stats: user: id={user.id} name={user.name}".format(user=user))
             try:
-                stats = SprintStats.from_dict(self.state.get('sprint', 'stats_users')[user.id])
+                if not date:
+                    stats = self.load_stats().users[user.id]
+                else:
+                    stats = self.load_weekly_stats(date).users[user.id]
             except KeyError:
                 await self.bot.say(self.DISP_STRINGS["err_stats_user"].format(user=user))
             else:
                 await self._display_embed(
-                    ctx.message.channel, self.DISP_EMBEDS['stats'],
+                    dest, self.DISP_EMBEDS['stats'],
                     user_id=user.id,
                     stats=stats,
+                    weekname="all time" if not date else date.strftime("%Y week %U"),
                     average_time=format_seconds(stats.time_mean),
-                    total_time=format_seconds(stats.time, timespec='minutes')
+                    total_time=format_seconds(stats.time, timespec='minutes'),
+                    since=format_date(stats.since)
                 )
         else:  # global stats
             logger.debug("stats: requested global")
-            stats = SprintStats.from_dict(self.state.get('sprint', 'stats_global'))
+            if not date:
+                stats = self.load_stats().overall
+            else:
+                stats = self.load_weekly_stats(date).overall
             await self._display_embed(
-                ctx.message.channel, self.DISP_EMBEDS['stats_global'],
+                dest, self.DISP_EMBEDS['stats_global'],
                 stats=stats,
+                weekname="all time" if not date else date.strftime("%Y week %U"),
                 average_time=format_seconds(stats.time_mean),
-                total_time=format_seconds(stats.time, timespec='minutes')
+                total_time=format_seconds(stats.time, timespec='minutes'),
+                since=format_date(stats.since)
             )
+
+    @sprint.command(name="statreset", pass_context=True, ignore_extra=False)
+    @in_channels_cfg('sprint', 'channel', allow_pm=True)
+    async def stats_reset(self, ctx, user: str=None):
+        """
+        Reset your own stats (or any user's stats, for mods).
+
+        THIS CANNOT BE UNDONE.
+
+        Resetting one user's stats will not affect global stats.
+
+        Arguments:
+        * [user]: Optional, for mods only. Reset another user's stats. Can be an @mention of another
+          user, "global" or "all".
+
+        Examples:
+            .w stats_reset - Reset your own stats.
+            .w stats_reset @JaneDoe - Reset Jane Doe's stats (mods only).
+            .w statsreset global - Reset global stats only (user stats are preserved).
+        """
+        logger.info("statreset: {}".format(message_log_str(ctx.message)))
+        if user == 'global' or user == 'all':
+            member = user
+        elif user:
+            member = get_member(ctx, user)
+        elif user is None:
+            member = ctx.message.author
+        else:
+            raise commands.BadArgument("Invalid user argument")
+
+        if not check_mod(ctx) and not member == ctx.message.author:
+            raise ModOnlyError("Only moderators can reset stats.")
+
+        if member == 'global':
+            logger.info("Clearing global stats...")
+            stats = self.load_stats()
+            stats.clear_overall()
+            self.save_stats(stats)
+
+            now = datetime.utcnow()
+            w_stats = self.load_weekly_stats(now)
+            w_stats.clear_overall()
+            self.save_weekly_stats(now, w_stats)
+            await self.bot.say("Cleared global stats.")
+        elif member == 'all':
+            logger.info("Clearing all stats...")
+            self.save_stats(SprintUserStats())
+            await self.bot.say("Cleared all stats.")
+        else:
+            logger.info("Clearing stats for {}...".format(member.nick or member.name))
+            stats = self.load_stats()
+            stats.clear_user(member)
+            self.save_stats(stats)
+
+            now = datetime.utcnow()
+            w_stats = self.load_weekly_stats(now)
+            w_stats.clear_user(member)
+            self.save_weekly_stats(now, w_stats)
+            await self.bot.say("Cleared all stats for {}.".format(member.mention))
+
+        self._save_sprint()
+
+    @task_handled_errors
+    async def weekly_report_tick(self):
+        while True:
+            now = datetime.utcnow()
+            today = now.date()
+            next_report_date = today + timedelta(days=(6 - today.weekday() + 7) % 7)
+            last_report_dt = datetime.combine(next_report_date - timedelta(days=1), time())
+            next_report_time = datetime.combine(next_report_date, self.report_time)
+            if next_report_time < now:
+                next_report_time += timedelta(days=7)
+            wait_time = (next_report_time - now).total_seconds()
+            logger.debug("Waiting for weekly report tick ({:.1f}s)...".format(wait_time))
+            await asyncio.sleep(wait_time)
+
+            logger.info("Generating weekly report...")
+            await self._stats_inner(self.channel, None, last_report_dt)
+            await self._leader_inner(self.channel, last_report_dt)
+            await self.bot.send_message(self.channel, self.DISP_STRINGS['report'])
 
     @task_handled_errors
     async def on_sprint_start(self):
@@ -1087,7 +1066,8 @@ class WritingSprint(KazCog):
             try:
                 await self._display_embed(
                     self.channel, self.DISP_EMBEDS['on_sprint_warning'],
-                    founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
+                    founder=self.sprint_data.founder.mention
+                    if self.sprint_data.founder else "None",
                     remaining=format_seconds(self.sprint_data.remaining),
                     notif=self.role_sprint_mention,
                     participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
@@ -1125,40 +1105,42 @@ class WritingSprint(KazCog):
 
     @task_handled_errors
     async def on_sprint_results(self):
-        wait_time = self.sprint_data.finalize_time - self._get_time()
-        logger.debug("Waiting for sprint finalize time ({:.1f}s)...".format(wait_time))
-        await asyncio.sleep(wait_time)
+        # Wait the finalize time (unless everyone's already finalized)
+        if set(self.sprint_data.start.keys()) != self.sprint_data.finalized:
+            wait_time = self.sprint_data.finalize_time - self._get_time()
+            logger.debug("Waiting for sprint finalize time ({:.1f}s)...".format(wait_time))
+            await asyncio.sleep(wait_time)
 
         try:
             logger.info("Finalize done; announcing results...")
 
-            results_struct = {}  # type: Dict[discord.User, Tuple[int, float]]
-            for u in self.sprint_data.members:
-                try:
-                    wc = self.sprint_data.end[u.id] - self.sprint_data.start[u.id]
-                    rate = wc/(self.sprint_data.duration/60)
-                    results_struct[u] = (wc, rate)
-                except KeyError:
-                    logger.warning("User {!s} did not submit a wordcount".format(u))
-                    results_struct[u] = (0, 0.0)
+            # update stats with this sprint's results
+            stats = self.load_stats()
+            stats.update(self.sprint_data)
+            self.save_stats(stats)
 
-            results_list = sorted(results_struct.items(), key=lambda kv: kv[1][0], reverse=True)
-            results = ['{} ({:d} words, {:.1f} wpm)'.format(u.mention, v[0], v[1])
-                       for u, v in results_list]
+            now = datetime.utcnow()
+            w_stats = self.load_weekly_stats(now)
+            w_stats.update(self.sprint_data)
+            self.save_weekly_stats(now, stats)
+
+            #
+            # Prepare the output message
+            #
+            sorted_members = self.sprint_data.get_sorted_members()
+            results = []
+            for u in sorted_members:
+                results.append('{} ({:d} words, {:.1f} wpm)'.format(
+                    u.mention, self.sprint_data.get_wordcount(u), self.sprint_data.get_wpm(u)))
             results_str = '\n'.join('{:d}. {}'.format(i+1, s) for i, s in enumerate(results))
 
-            if results_list:
-                winner, winner_info = results_list[0]
-                winner_id = winner.id
-                winner_name = winner.name
-                winner_wc = winner_info[0]
-            else:
-                winner_id = None
+            try:
+                winner = self.sprint_data.find_winner()
+                winner_name = winner.mention
+                winner_wc = self.sprint_data.get_wordcount(winner)
+            except ValueError:
                 winner_name = 'nobody'
                 winner_wc = 0
-
-            # update stats with this sprint
-            self.update_stats(results_struct, winner_id)
 
             await remove_role_from_all(self.bot, self.channel.server, self.role_sprint)
             logger.debug("Removed all users from {} role".format(self.role_sprint_name))
@@ -1177,42 +1159,6 @@ class WritingSprint(KazCog):
             self.set_state(SprintState.IDLE)
             self.sprint_data = SprintData(self._get_time)
             self._save_sprint()  # also calls self.state.write() - OK for stats too
-
-    def update_stats(self, results: Dict[discord.User, Tuple[int, float]], winner_id: str):
-        """
-        Update stats with the current sprint_data (should be a finished sprint!).
-        Won't save - you need to call self.state.write()
-        """
-        duration = int(round(self.sprint_data.duration))
-        total_words = 0
-        total_rate = 0
-
-        stats_users_map = self.state.get('sprint', 'stats_users')
-        for u, result in results.items():
-            try:
-                stats_user = SprintStats.from_dict(stats_users_map[u.id])
-            except KeyError:
-                stats_user = SprintStats()
-            stats_user.update(
-                words=result[0],
-                rate=result[1],
-                time=duration,
-                winner=(winner_id == u.id)
-            )
-            total_words += result[0]
-            total_rate += result[1]
-            stats_users_map[u.id] = stats_user.to_dict()
-
-        stats_global = SprintStats.from_dict(self.state.get('sprint', 'stats_global'))
-        stats_global.update(
-            words=total_words,
-            rate=total_rate,
-            time=duration,
-            winner=False  # not meaningful for global stats
-        )
-
-        self.state.set('sprint', 'stats_global', stats_global.to_dict())
-        self.state.set('sprint', 'stats_users', stats_users_map)
 
     @start.error
     @stop.error

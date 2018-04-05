@@ -1,11 +1,5 @@
-import datetime
 import re
-from typing import List, Union, Dict, Iterable
-
-import discord
-from discord.ext import commands
-
-from kaztron.config import get_kaztron_config
+from typing import List, Dict, Iterable
 
 
 def format_list(list_) -> str:
@@ -59,112 +53,21 @@ def split_code_chunks_on(str_: str, maxlen: int, split_char='\n', lang: str=None
     return ["{}{}{}".format(head, part, tail) for part in raw_parts]
 
 
-def natural_truncate(str_: str, maxlen: int, ellipsis='[…]') -> str:
+def natural_truncate(str_: str, maxlen: int, ellipsis_='[…]') -> str:
     """
-    If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis
+    If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis_
     appended to the end.
     """
-    maxlen_net = maxlen - len(ellipsis)
+    maxlen_net = maxlen - len(ellipsis_)
     if len(str_) > maxlen:
             trunc_str = str_[:maxlen_net]
             match = re.search(r'\W.*?$', trunc_str)
             if match:
-                return str_[:match.start() + 1] + ellipsis
+                return str_[:match.start() + 1] + ellipsis_
             else:
                 return trunc_str
     else:
         return str_
-
-
-def get_command_prefix(ctx: commands.Context) -> str:
-    prefix = ctx.bot.command_prefix
-    if callable(prefix):
-        prefix = prefix(ctx.bot, ctx.message)
-    return prefix
-
-
-def get_command_str(ctx: commands.Context) -> str:
-    """
-    Get the command string, with subcommand if passed. Arguments are not included.
-    :param ctx:
-    :return:
-    """
-    # apparently in a subcommand, invoked_with == the SUBcommand, invoked_subcommand == None???
-    # ... what???
-
-    # cmd_str = "{0.bot.command_prefix}{0.invoked_with}".format(ctx)
-    # if ctx.subcommand_passed:
-    #    cmd_str += " {0.subcommand_passed}".format(ctx)
-    # return cmd_str
-    return "{0}{1.command!s}".format(get_command_prefix(ctx), ctx)
-
-
-def get_help_str(ctx: commands.Context) -> str:
-    """
-    Gets the help string for the invoked command, with subcommand if passed.
-    :param ctx:
-    :return:
-    """
-    # Same remark as above ... what???
-
-    # cmd_str = "{0.bot.command_prefix}help {0.invoked_with}".format(ctx)
-    # if ctx.subcommand_passed:
-    #     cmd_str += " {0.subcommand_passed}".format(ctx)
-    # return cmd_str
-
-    return "{0}help {1.command!s}".format(get_command_prefix(ctx), ctx)
-
-
-def get_usage_str(ctx: commands.Context) -> str:
-    """
-    Retrieves the signature portion of the help page.
-
-    Based on discord.ext.commands.formatter.HelpFormatter.get_command_signature()
-    https://github.com/Rapptz/discord.py/blob/async/discord/ext/commands/formatter.py
-
-    Copyright (c) 2015-2016 Rapptz. Distributed under the MIT Licence.
-    """
-    result = []
-    prefix = get_command_prefix(ctx)
-    cmd = ctx.command
-    parent = cmd.full_parent_name
-    if len(cmd.aliases) > 0:
-        aliases = '|'.join(cmd.aliases)
-        fmt = '{0}[{1.name}|{2}]'
-        if parent:
-            fmt = '{0}{3} [{1.name}|{2}]'
-        result.append(fmt.format(prefix, cmd, aliases, parent))
-    else:
-        name = prefix + cmd.name if not parent else prefix + parent + ' ' + cmd.name
-        result.append(name)
-
-    params = cmd.clean_params
-    if len(params) > 0:
-        for name, param in params.items():
-            if param.default is not param.empty:
-                # We don't want None or '' to trigger the [name=value] case and instead it should
-                # do [name] since [name=None] or [name=] are not exactly useful for the user.
-                should_print = param.default if isinstance(param.default, str)\
-                               else param.default is not None
-                if should_print:
-                    result.append('[{}={}]'.format(name, param.default))
-                else:
-                    result.append('[{}]'.format(name))
-            elif param.kind == param.VAR_POSITIONAL:
-                result.append('[{}...]'.format(name))
-            else:
-                result.append('<{}>'.format(name))
-
-    return ' '.join(result)
-
-
-def get_timestamp_str(dt: Union[discord.Message, datetime.datetime]) -> str:
-    """
-    Get the timestamp string of a message in ISO format, to second precision.
-    """
-    if isinstance(dt, discord.Message):
-        dt = dt.timestamp
-    return format_datetime(dt, seconds=True) + ' UTC'
 
 
 def none_wrapper(value, default=""):
@@ -197,83 +100,3 @@ def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], s
     return kwargs, args.strip()
 
 
-def format_datetime(dt: datetime.datetime, seconds=False) -> str:
-    """
-    Format a datetime object as a datetime (as specified in config).
-    :param dt: The datetime object to format.
-    :param seconds: Whether or not to display seconds (this determines which config format to use).
-    :return:
-    """
-    format_key = 'datetime_format' if not seconds else 'datetime_seconds_format'
-    return dt.strftime(get_kaztron_config().get('core', format_key))
-
-
-def format_date(d: Union[datetime.datetime, datetime.date]) -> str:
-    """
-    Format a datetime object as a date (as specified in config).
-
-    :param d: The date or datetime object to format.
-    :return:
-    """
-    return d.strftime(get_kaztron_config().get('core', 'date_format'))
-
-
-def format_timedelta(delta: datetime.timedelta, timespec="seconds") -> str:
-    """
-    Format a timedelta object into "x days y hours" etc. format.
-
-    This is ugly. Sorry.
-
-    :param delta: The delta to format.
-    :param timespec: One of "days", "hours", "minutes", "seconds", "microseconds" - the level of
-        resolution to show.
-    :return:
-    """
-    str_parts = []
-
-    timespec_list = ['days', 'hours', 'minutes', 'seconds', 'microseconds']
-    timespec_prio = timespec_list.index(timespec)
-
-    # get a resolution object to round against
-    if timespec == 'days':
-        res = datetime.timedelta(days=1)
-    elif timespec == 'hours':
-        res = datetime.timedelta(hours=1)
-    elif timespec == 'minutes':
-        res = datetime.timedelta(minutes=1)
-    elif timespec == 'seconds':
-        res = datetime.timedelta(seconds=1)
-    elif timespec == 'microseconds':
-        res = None
-    else:
-        raise ValueError("Invalid timespec")
-
-    # round
-    if res:
-        delta = (delta + res/2) // res * res
-
-    # split up seconds into hours, minutes, seconds
-    # (because timedelta only stores days and seconds???)
-    rem = datetime.timedelta(seconds=delta.seconds, microseconds=delta.microseconds)
-    hours, rem = divmod(rem, datetime.timedelta(hours=1))
-    minutes, rem = divmod(rem, datetime.timedelta(minutes=1))
-    seconds, rem = divmod(rem, datetime.timedelta(seconds=1))
-
-    if delta.days:
-        str_parts.append("{:d} day{}".format(delta.days, 's' if abs(delta.days) != 1 else ''))
-    if hours and timespec_prio >= timespec_list.index('hours'):
-        str_parts.append("{:d} hour{}".format(hours, 's' if abs(hours) != 1 else ''))
-    if minutes and timespec_prio >= timespec_list.index('minutes'):
-        str_parts.append("{:d} minute{}".format(minutes, 's' if abs(minutes) != 1 else ''))
-    if (seconds or delta.microseconds) and timespec_prio >= timespec_list.index('microseconds'):
-        f_seconds = seconds + delta.microseconds/1e6
-        str_parts.append("{:.6f} second{}".format(f_seconds, 's' if f_seconds != 1.0 else ''))
-    elif seconds and timespec_prio >= timespec_list.index('seconds'):
-        str_parts.append("{:d} second{}".format(seconds, 's' if seconds != 1 else ''))
-
-    if not str_parts:
-        if timespec == 'microseconds':
-            timespec = 'seconds'
-        str_parts.append("0 {}".format(timespec))
-
-    return ' '.join(str_parts)

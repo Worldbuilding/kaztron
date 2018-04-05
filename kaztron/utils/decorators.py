@@ -2,6 +2,7 @@ import asyncio
 import functools
 
 
+# noinspection PyPep8Naming
 def error_handler(ErrorType, return_value):
     """
     Decorator: handles a specified error, returning a constant return_value if that error is raised

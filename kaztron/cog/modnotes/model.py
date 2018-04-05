@@ -20,7 +20,8 @@ class User(Base):
         back_populates='author')
 
     def __repr__(self):
-        return ("<User(user_id={:d}, discord_id={!r}, name={!r}, aliases=[{}], " \
+        # noinspection PyTypeChecker
+        return ("<User(user_id={:d}, discord_id={!r}, name={!r}, aliases=[{}], "
                "group_id={!s})>") \
             .format(self.user_id, self.discord_id, self.name,
                     ', '.join([repr(a) for a in self.aliases]),
