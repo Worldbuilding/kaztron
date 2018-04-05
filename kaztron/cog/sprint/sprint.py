@@ -956,12 +956,13 @@ class WritingSprint(KazCog):
         Resetting one user's stats will not affect global stats.
 
         Arguments:
-        * <user>: Optional, for mods only. Reset another user's stats. Can be an @mention of another
+        * [user]: Optional, for mods only. Reset another user's stats. Can be an @mention of another
           user, "global" or "all".
 
         Examples:
             .w stats_reset - Reset your own stats.
             .w stats_reset @JaneDoe - Reset Jane Doe's stats (mods only).
+            .w statsreset global - Reset global stats only (user stats are preserved).
         """
         logger.info("statreset: {}".format(message_log_str(ctx.message)))
         if user == 'global' or user == 'all':
