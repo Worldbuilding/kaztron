@@ -158,6 +158,7 @@ def run_reboot_loop(loop: asyncio.AbstractEventLoop):
 
 
 def get_daemon_context(config: KaztronConfig):
+    import os
     import pwd
     import grp
     from pathlib import Path
@@ -180,6 +181,7 @@ def get_daemon_context(config: KaztronConfig):
         pw = pwd.getpwnam(username)
         daemon_context.uid = pw.pw_uid
         daemon_context.gid = pw.pw_gid
+        os.environ['HOME'] = pw.pw_dir
     if group:
         daemon_context.gid = grp.getgrnam(group).gr_gid
     return daemon_context
