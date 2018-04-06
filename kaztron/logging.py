@@ -57,7 +57,7 @@ def setup_logging(logger, config, *, debug=False, console=True):
     _logging_info.file_handler = fh
 
     # Console handler - fixed log level
-    if console and not debug:
+    if console or debug:
         ch = logging.StreamHandler()
         ch_formatter = logging.Formatter('[%(asctime)s] (%(levelname)s) %(name)s: %(message)s')
         ch.setLevel(console_level)
