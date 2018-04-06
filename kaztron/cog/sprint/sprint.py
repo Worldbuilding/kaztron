@@ -465,7 +465,7 @@ class WritingSprint(KazCog):
 
         self.report_task = self.bot.loop.create_task(self.weekly_report_tick())
 
-    async def unload_kazcog(self):
+    def unload_kazcog(self):
         self.report_task.cancel()
         self.report_task = None
 

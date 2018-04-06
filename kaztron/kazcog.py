@@ -35,7 +35,7 @@ class KazCog:
     _ch_test_id = None
 
     def __init__(self, bot: commands.Bot):
-        self.static_init()
+        KazCog.static_init()
         self._bot = bot
         setattr(self, '_{0.__class__.__name__}__unload'.format(self), self.unload)
         self._ch_out = discord.Object(self._ch_out_id)  # type: discord.Channel

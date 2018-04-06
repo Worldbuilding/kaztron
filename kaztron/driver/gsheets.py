@@ -23,7 +23,7 @@ except ImportError:
     argparse = None
 
 if argparse:
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+    flags, _ = argparse.ArgumentParser(parents=[tools.argparser]).parse_known_args()
 else:
     flags = None
 
