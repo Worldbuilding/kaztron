@@ -1,25 +1,22 @@
 import asyncio
-import copy
-import enum
 import logging
-import math
-from collections import deque
-from datetime import datetime, timedelta
-from functools import total_ordering
-from typing import Dict, List, Callable, Tuple, Deque
+from datetime import time
+from typing import Optional
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.role_man import RoleManager
-from kaztron.driver.stats import MeanVarianceAccumulator
-from kaztron.errors import UnauthorizedUserError
+from kaztron.cog.sprint.model import *
+from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
-from kaztron.utils.datetime import utctimestamp, format_date, format_timedelta
+from kaztron.utils.converter import NaturalDateConverter
+from kaztron.utils.datetime import utctimestamp, format_date, format_timedelta, parse as dt_parse
 from kaztron.utils.decorators import task_handled_errors
-from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all, get_help_str
+from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all, get_help_str, \
+    get_member
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list
 
@@ -42,225 +39,6 @@ def format_seconds(seconds: float, timespec='seconds'):
     return format_timedelta(timedelta(microseconds=int(seconds*1e6)), timespec=timespec)
 
 
-@total_ordering
-class SprintState(enum.Enum):
-    IDLE = 0
-    PREPARE = 10
-    SPRINT = 20
-    COLLECT_RESULTS = 30
-
-    def __lt__(self, other):
-        if self.__class__ is other.__class__:
-            return self.value < other.value
-        return NotImplemented
-
-
-class SprintStats:
-    def __init__(self):
-        self.words = 0
-        self.time = 0
-        self.wins = 0
-        self.rate_stats = MeanVarianceAccumulator()
-
-    def update(self, words: int, rate: float, time: int, winner=False):
-        """
-        Update the stats with info from a new sprint.
-
-        For the M2/variance algorithm:
-        https://en.wikipedia.org/w/index.php?title=Algorithms_for_calculating_variance&oldid=824616944#Online_algorithm
-
-        :param words: Words written this sprint.
-        :param rate: Rate (words per minute)
-        :param time: Total time this sprint.
-        :param winner: Whether the user associated to this record is the sprint winner.
-        """
-        if winner:
-            self.wins += 1
-        self.words += words
-        self.time += time
-        self.rate_stats.update(rate)
-
-    @property
-    def sprints(self):
-        return self.rate_stats.count
-
-    @property
-    def words_mean(self):
-        """ Number of words per sprint on average. """
-        return self.words / self.sprints if self.sprints > 0 else 0
-
-    @property
-    def wpm_mean(self):
-        """ Writing speed, average per sprint, in wpm. """
-        return self.rate_stats.mean
-
-    @property
-    def wpm_stdev(self):
-        """ Standard deviation of writing speed (wpm) over all sprints. """
-        return self.rate_stats.std_dev
-
-    @property
-    def time_mean(self):
-        """ Time per sprint, average, in seconds. """
-        return (self.time / self.sprints) if self.sprints > 0 else 0
-
-    @property
-    def win_rate(self):
-        """ Win rate as a fractional value (0 <= x <= 1). """
-        return self.wins / self.sprints
-
-    def to_dict(self):
-        return {
-            "sprints": self.sprints,
-            "words": self.words,
-            "rate_acc": self.rate_stats.dump_state(),
-            "time": self.time,
-            "wins": self.wins
-        }
-
-    @classmethod
-    def from_dict(cls, stats_dict: Dict):
-        s = SprintStats()
-        s.words = stats_dict.get('words', 0)
-        s.rate_acc = MeanVarianceAccumulator(*stats_dict.get('rate_acc'))
-        s.time = stats_dict.get('time', 0)
-        s.wins = stats_dict.get('wins', 0)
-        return s
-
-
-class SprintData:
-    def __init__(self, time_callback: Callable[[], float]):
-        self.time_callback = time_callback
-        self.founder = None  # type: discord.Member
-        self.members = []  # type: List[discord.Member]
-
-        # {user_id: start/end wordcounts}
-        self.start = {}  # type: Dict[str, int]
-        self.end = {}  # type: Dict[str, int]
-        self.finalized = set()
-
-        # loop times
-        self.start_time = 0  # type: float
-        self.end_time = 0  # type: float
-        self.warn_times = deque()  # type: Deque[float]
-        self.finalize_time = 0  # type: float
-
-    def to_dict(self):
-        return {
-            'founder': self.founder.id if self.founder else None,
-            'members': [u.id for u in self.members],
-            'start': copy.deepcopy(self.start),
-            'end': copy.deepcopy(self.end),
-            'finalized': list(self.finalized),
-            'start_time': utctimestamp(self._datetime(self.start_time)) if self.start_time else 0,
-            'end_time': utctimestamp(self._datetime(self.end_time)) if self.end_time else 0,
-            'warn_times': [self._datetime(t).timestamp() for t in self.warn_times],
-            'finalize_time': (
-                utctimestamp(self._datetime(self.finalize_time)) if self.finalize_time else 0
-            ),
-        }
-
-    def _loop_time(self, timestamp: float) -> float:
-        now_loop = self.time_callback()
-        now_timestamp = utctimestamp(datetime.utcnow())
-        return now_loop + (timestamp - now_timestamp)
-
-    def _datetime(self, loop_time: float) -> datetime:
-        return datetime.utcnow() + timedelta(seconds=loop_time - self.time_callback())
-
-    @classmethod
-    def from_dict(cls, time_callback: Callable[[], float], server: discord.Server, data: Dict):
-        self = SprintData(time_callback)
-        self.founder = server.get_member(data['founder'])
-        member_uids = []
-        for u_id in data['members']:
-            member = server.get_member(u_id)
-            if member is not None:
-                self.members.append(member)
-                member_uids.append(member.id)
-            else:
-                logger.warning("Can't restore member: ID {} not found on server".format(u_id))
-        self.start = {u_id: value for u_id, value in data['start'].items() if u_id in member_uids}
-        self.end = {u_id: value for u_id, value in data['end'].items() if u_id in member_uids}
-        self.finalized = set(data['finalized'])
-        self.start_time = self._loop_time(data['start_time'])
-        self.end_time = self._loop_time(data['end_time'])
-        self.warn_times = deque(self._loop_time(t) for t in data['warn_times'])
-        self.finalize_time = self._loop_time(data['finalize_time'])
-        return self
-
-    @property
-    def start_dt(self):
-        return self._datetime(self.start_time)
-
-    @property
-    def end_dt(self):
-        return self._datetime(self.end_time)
-
-    @property
-    def warn_dts(self):
-        for loop_time in self.warn_times:
-            yield self._datetime(loop_time)
-
-    @property
-    def starts_in(self):
-        return self.start_time - self.time_callback()
-
-    @property
-    def duration(self):
-        return self.end_time - self.start_time
-
-    @property
-    def remaining(self):
-        return min(self.duration, self.end_time - self.time_callback())
-
-    @property
-    def remaining_finalize(self):
-        return self.finalize_time - self.time_callback()
-
-
-class EmbedInfo:
-    """
-    Data container for display information (mostly strings) in Discord's Embeds.
-    """
-    def __init__(self, *, title: str, author: str=None, color: int, msg: str,
-                 strings: List[Tuple[str, str, bool]]):
-        self.title = title
-        self.author = author
-        self.color = color
-        self.msg = msg
-        self.strings = strings
-
-    def __copy__(self):
-        return EmbedInfo(
-            title=self.title,
-            author=self.author,
-            color=self.color,
-            msg=self.msg,
-            strings=list(self.strings)
-        )
-
-    # noinspection PyArgumentList
-    def __deepcopy__(self, memo):
-        return EmbedInfo(
-            title=copy.deepcopy(self.title, memo),
-            author=copy.deepcopy(self.author, memo),
-            color=copy.deepcopy(self.color, memo),
-            msg=copy.deepcopy(self.msg, memo),
-            strings=copy.deepcopy(self.strings, memo)
-        )
-
-    def __repr__(self):
-        return "<EmbedInfo {}>".format(' '.join(
-            '{!r}={!r}'.format(title, value) for title, value in [
-                ('title', self.title),
-                ('author', self.author),
-                ('color', self.color),
-                ('msg', self.msg),
-            ] + [(title, value) for title, value, _ in self.strings]
-        ))
-
-
 class WritingSprint(KazCog):
     """
     Welcome to writing sprints, where everything's made up and the words don't matter!
@@ -268,7 +46,7 @@ class WritingSprint(KazCog):
     For help with this feature, please type `.help sprint`.
     """
 
-    INLINE = True
+    INLINE = True  # makes DISP_EMBEDS prettier
     MAX_LEADERS = 5
 
     DISP_COLORS = {
@@ -361,7 +139,7 @@ class WritingSprint(KazCog):
             ]
         ),
         "leader": EmbedInfo(
-            title="Leaderboards",
+            title="Leaderboard ({weekname})",
             color=DISP_COLORS["leader"],
             msg="",
             strings=[
@@ -372,7 +150,7 @@ class WritingSprint(KazCog):
             ]
         ),
         "stats_global": EmbedInfo(
-            title="Global Stats",
+            title="Global stats ({weekname})",
             color=DISP_COLORS["stats"],
             msg="",
             strings=[
@@ -390,11 +168,14 @@ class WritingSprint(KazCog):
             color=DISP_COLORS["stats"],
             msg="",
             strings=[
-                ("User Stats", "<@{user_id}>", not INLINE),
+                ("User Stats", "<@{user_id}>", INLINE),
+                ("Period", "{weekname}", INLINE),
                 ("Sprints", "{stats.sprints:.0f}", INLINE),
+
                 ("Wins", "{stats.wins:.0f} ({stats.win_rate:.0%})", INLINE),
                 ("Total time",  "{total_time}", INLINE),
                 ("Total words", "{stats.words:.0f} words", INLINE),
+
                 ("Average sprint", "{average_time}", INLINE),
                 ("Average speed",
                  "{stats.wpm_mean:.1f} wpm (σ = {stats.wpm_stdev:.1f})", INLINE),
@@ -434,6 +215,8 @@ class WritingSprint(KazCog):
 
         "cancel_leave": "No participants are left in the sprint.",
         "cancel_start": "I can't start a sprint with no participants.",
+        "report": "**Weekly report now available!** You can use `.w stats` and `.w leader` "
+                  "to re-show these reports or get individual statistics.",
 
         "err_running_general": "Sorry, you can't do that while a sprint is running. "
                                "Please wait for the sprint to end.\n\nSprint creator and mods "
@@ -452,17 +235,14 @@ class WritingSprint(KazCog):
         "err_wtf": "NonsenseError: You can't do that, there's a blazing bunny on your head."
     }
 
-    TICK_INTERVAL = 15
-
     def __init__(self, bot):
         super().__init__(bot)
         self.state.set_defaults(
             'sprint',
             state=SprintState.IDLE.value,
             sprint_data=SprintData(self._get_time).to_dict(),
-            stats_global=SprintStats().to_dict(),
-            stats_users={},
-            stats_since=utctimestamp(datetime.utcnow())
+            stats=SprintUserStats().to_dict(),
+            weekly_stats={}
         )
 
         self.channel_id = self.config.get('sprint', 'channel')
@@ -488,6 +268,9 @@ class WritingSprint(KazCog):
         self.sprint_data = SprintData(self._get_time)
         self.state_task = None
 
+        self.report_time = dt_parse(self.config.get('sprint', 'report_time', '17:00')).time()
+        self.report_task = None
+
     def get_state(self):
         return SprintState(self.state.get('sprint', 'state'))
 
@@ -502,7 +285,7 @@ class WritingSprint(KazCog):
             logger.error("Error persisting sprint")
 
     def _load_sprint(self):
-        # state is always directly read from the config, so no need to set it here
+        # state is always directly read from the config (see get_state), so no need to set it here
         if self.get_state() is not SprintState.IDLE:
             try:
                 self.sprint_data = SprintData.from_dict(self._get_time, self.channel.server,
@@ -510,13 +293,43 @@ class WritingSprint(KazCog):
             except KeyError:
                 logger.warning("Old sprint data incorrectly formatted, ignoring")
 
+    def save_stats(self, s: SprintUserStats):
+        """
+        Store the stats in the config. This does NOT write to disk (call :meth:`_save_sprint`).
+        """
+        self.state.set('sprint', 'stats', s.to_dict())
+
+    def load_stats(self) -> SprintUserStats:
+        return SprintUserStats.from_dict(self.state.get('sprint', 'stats'))
+
+    def save_weekly_stats(self, dt: datetime, stats: SprintUserStats):
+        """
+        Store the weekly stats to the config. The stats will be associated to the week that
+        includes the given date.
+        """
+        self.state.get('sprint', 'weekly_stats')[dt.strftime('%Y%U')] = stats.to_dict()
+
+    def load_weekly_stats(self, dt: datetime) -> SprintUserStats:
+        """ Load the weekly stats that include the given date. """
+        try:
+            return SprintUserStats.from_dict(
+                self.state.get('sprint', 'weekly_stats')[dt.strftime('%Y%U')]
+            )
+        except KeyError:
+            return SprintUserStats()
+
     def _get_time(self) -> float:
         """ Convenience function: get the current event loop time, in seconds. """
         return self.bot.loop.time()
 
     async def _display_embed(self, dest, embed_info: EmbedInfo, *args, **kwargs):
         """ Convenience function: display an embed from the EmbedInfo """
-        em = discord.Embed(title=embed_info.title, color=embed_info.color)
+        if isinstance(embed_info.title, str):
+            title = embed_info.title.format(*args, **kwargs)
+        else:
+            title = embed_info.title
+
+        em = discord.Embed(title=title, color=embed_info.color)
 
         if embed_info.author:
             em.set_author(name=embed_info.author)
@@ -649,6 +462,8 @@ class WritingSprint(KazCog):
             self.state_task = self.bot.loop.create_task(self.on_sprint_results())
 
         await super().on_ready()
+
+        self.bot.loop.create_task(self.weekly_report_tick())
 
     @commands.group(invoke_without_command=True, pass_context=True, aliases=['w'])
     @in_channels_cfg('sprint', 'channel')
@@ -1022,18 +837,35 @@ class WritingSprint(KazCog):
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
-    async def leader(self, ctx):
+    async def leader(self, ctx, *, date: NaturalDateConverter=None):
         """
         Show the leaderboards.
+
+        Arguments:
+        * [date]: Optional. Various date formats are accepted like 2018-03-14, 14 Mar 2018,
+          yesterday. If not given, shows leaderboard for all time; if specified, shows leaderboard
+          for the week that includes the given date.
+
+        Examples:
+            .w leader - All-time leaderboard.
+            .w leader 2018-03-14 - Leaderboard for the week that contains 14 March 2018.
         """
         logger.info("leader: {}".format(message_log_str(ctx.message)))
-        entry_user_map = {uid: SprintStats.from_dict(d)
-                          for uid, d in self.state.get('sprint', 'stats_users').items()}
+        date = date  # type: datetime
+        await self._leader_inner(ctx.message.channel, date)
+
+    async def _leader_inner(self, dest, date: datetime):
+        # Get stats and sort them by each leaderboard criterion
+        if date is None:
+            entry_user_map = {uid: d for uid, d in self.load_stats().users.items()}
+        else:
+            entry_user_map = {uid: d for uid, d in self.load_weekly_stats(date).users.items()}
         entries_by_t = sorted(entry_user_map.items(), key=lambda e: e[1].time, reverse=True)
         entries_by_w = sorted(entry_user_map.items(), key=lambda e: e[1].words, reverse=True)
         entries_by_wpm = sorted(entry_user_map.items(), key=lambda e: e[1].wpm_mean, reverse=True)
         entries_by_wins = sorted(entry_user_map.items(), key=lambda e: e[1].wins, reverse=True)
 
+        # Generate strings for each
         list_by_t = ["<@{}>: {:.1f} hours".format(uid, s.time/3600)
                      for uid, s in entries_by_t[:self.MAX_LEADERS]]
         list_by_w = ["<@{}>: {:d} words".format(uid, s.words)
@@ -1044,7 +876,8 @@ class WritingSprint(KazCog):
                        for uid, s in entries_by_wins[:self.MAX_LEADERS]]
 
         await self._display_embed(
-            ctx.message.channel, self.DISP_EMBEDS['leader'],
+            dest, self.DISP_EMBEDS['leader'],
+            weekname="all time" if not date else date.strftime("%Y week %U"),
             leaders_time=format_list(list_by_t) or "None",
             leaders_words=format_list(list_by_w) or "None",
             leaders_wpm=format_list(list_by_wpm) or "None",
@@ -1053,43 +886,139 @@ class WritingSprint(KazCog):
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
-    async def stats(self, ctx, user: discord.Member=None):
+    async def stats(self, ctx, user: str, *, date: NaturalDateConverter=None):
         """
         Show stats, either global or per-user.
 
         Arguments:
-        * [user]: Optional. An @mention of the user to look up. If not specified, shows global
-          stats.
+        * <user>: An @mention of the user to look up, or "all" for global stats.
+        * [date]: Optional. Various date formats are accepted like 2018-03-14, 14 Mar 2018,
+          yesterday. If not given, shows leaderboard for all time; if specified, shows leaderboard
+          for the week that includes the given date.
+
+        Examples:
+            .w stats all - Global stats for all time.
+            .w stats @JaneDoe - Stats for JaneDoe for all time.
+            .w stats all 2018-03-14 - Global stats for the week including 14 March.
         """
         logger.info("stats: {}".format(message_log_str(ctx.message)))
+        date = date  # type: datetime
+        member = get_member(ctx, user) if user != 'all' else None
+        await self._stats_inner(ctx.message.channel, member, date)
 
-        stats_since = datetime.utcfromtimestamp(self.state.get('sprint', 'stats_since'))
-
+    async def _stats_inner(self, dest, user: Optional[discord.Member], date: datetime):
         if user:
             logger.debug("stats: user: id={user.id} name={user.name}".format(user=user))
             try:
-                stats = SprintStats.from_dict(self.state.get('sprint', 'stats_users')[user.id])
+                if not date:
+                    stats = self.load_stats().users[user.id]
+                else:
+                    stats = self.load_weekly_stats(date).users[user.id]
             except KeyError:
                 await self.bot.say(self.DISP_STRINGS["err_stats_user"].format(user=user))
             else:
                 await self._display_embed(
-                    ctx.message.channel, self.DISP_EMBEDS['stats'],
+                    dest, self.DISP_EMBEDS['stats'],
                     user_id=user.id,
                     stats=stats,
+                    weekname="all time" if not date else date.strftime("%Y week %U"),
                     average_time=format_seconds(stats.time_mean),
                     total_time=format_seconds(stats.time, timespec='minutes'),
-                    since=format_date(stats_since)
+                    since=format_date(stats.since)
                 )
         else:  # global stats
             logger.debug("stats: requested global")
-            stats = SprintStats.from_dict(self.state.get('sprint', 'stats_global'))
+            if not date:
+                stats = self.load_stats().overall
+            else:
+                stats = self.load_weekly_stats(date).overall
             await self._display_embed(
-                ctx.message.channel, self.DISP_EMBEDS['stats_global'],
+                dest, self.DISP_EMBEDS['stats_global'],
                 stats=stats,
+                weekname="all time" if not date else date.strftime("%Y week %U"),
                 average_time=format_seconds(stats.time_mean),
                 total_time=format_seconds(stats.time, timespec='minutes'),
-                since=format_date(stats_since)
+                since=format_date(stats.since)
             )
+
+    @sprint.command(name="statreset", pass_context=True, ignore_extra=False)
+    @in_channels_cfg('sprint', 'channel', allow_pm=True)
+    async def stats_reset(self, ctx, user: str=None):
+        """
+        Reset your own stats (or any user's stats, for mods).
+
+        THIS CANNOT BE UNDONE.
+
+        Resetting one user's stats will not affect global stats.
+
+        Arguments:
+        * <user>: Optional, for mods only. Reset another user's stats. Can be an @mention of another
+          user, "global" or "all".
+
+        Examples:
+            .w stats_reset - Reset your own stats.
+            .w stats_reset @JaneDoe - Reset Jane Doe's stats (mods only).
+        """
+        logger.info("statreset: {}".format(message_log_str(ctx.message)))
+        if user == 'global' or user == 'all':
+            member = user
+        elif user:
+            member = get_member(ctx, user)
+        elif user is None:
+            member = ctx.message.author
+        else:
+            raise commands.BadArgument("Invalid user argument")
+
+        if not check_mod(ctx) and not member == ctx.message.author:
+            raise ModOnlyError("Only moderators can reset stats.")
+
+        if member == 'global':
+            logger.info("Clearing global stats...")
+            stats = self.load_stats()
+            stats.clear_overall()
+            self.save_stats(stats)
+
+            now = datetime.utcnow()
+            w_stats = self.load_weekly_stats(now)
+            w_stats.clear_overall()
+            self.save_weekly_stats(now, w_stats)
+            await self.bot.say("Cleared global stats.")
+        elif member == 'all':
+            logger.info("Clearing all stats...")
+            self.save_stats(SprintUserStats())
+            await self.bot.say("Cleared all stats.")
+        else:
+            logger.info("Clearing stats for {}...".format(member.nick or member.name))
+            stats = self.load_stats()
+            stats.clear_user(member)
+            self.save_stats(stats)
+
+            now = datetime.utcnow()
+            w_stats = self.load_weekly_stats(now)
+            w_stats.clear_user(member)
+            self.save_weekly_stats(now, w_stats)
+            await self.bot.say("Cleared all stats for {}.".format(member.mention))
+
+        self._save_sprint()
+
+    @task_handled_errors
+    async def weekly_report_tick(self):
+        while True:
+            now = datetime.utcnow()
+            today = now.date()
+            next_report_date = today + timedelta(days=(6 - today.weekday() + 7) % 7)
+            last_report_dt = datetime.combine(next_report_date - timedelta(days=1), time())
+            next_report_time = datetime.combine(next_report_date, self.report_time)
+            if next_report_time < now:
+                next_report_time += timedelta(days=7)
+            wait_time = (next_report_time - now).total_seconds()
+            logger.debug("Waiting for weekly report tick ({:.1f}s)...".format(wait_time))
+            await asyncio.sleep(wait_time)
+
+            logger.info("Generating weekly report...")
+            await self._stats_inner(self.channel, None, last_report_dt)
+            await self._leader_inner(self.channel, last_report_dt)
+            await self.bot.send_message(self.channel, self.DISP_STRINGS['report'])
 
     @task_handled_errors
     async def on_sprint_start(self):
@@ -1180,33 +1109,33 @@ class WritingSprint(KazCog):
         try:
             logger.info("Finalize done; announcing results...")
 
-            results_struct = {}  # type: Dict[discord.User, Tuple[int, float]]
-            for u in self.sprint_data.members:
-                try:
-                    wc = self.sprint_data.end[u.id] - self.sprint_data.start[u.id]
-                    rate = wc/(self.sprint_data.duration/60)
-                    results_struct[u] = (wc, rate)
-                except KeyError:
-                    logger.warning("User {!s} did not submit a wordcount".format(u))
-                    results_struct[u] = (0, 0.0)
+            # update stats with this sprint's results
+            stats = self.load_stats()
+            stats.update(self.sprint_data)
+            self.save_stats(stats)
 
-            results_list = sorted(results_struct.items(), key=lambda kv: kv[1][0], reverse=True)
-            results = ['{} ({:d} words, {:.1f} wpm)'.format(u.mention, v[0], v[1])
-                       for u, v in results_list]
+            now = datetime.utcnow()
+            w_stats = self.load_weekly_stats(now)
+            w_stats.update(self.sprint_data)
+            self.save_weekly_stats(now, stats)
+
+            #
+            # Prepare the output message
+            #
+            sorted_members = self.sprint_data.get_sorted_members()
+            results = []
+            for u in sorted_members:
+                results.append('{} ({:d} words, {:.1f} wpm)'.format(
+                    u.mention, self.sprint_data.get_wordcount(u), self.sprint_data.get_wpm(u)))
             results_str = '\n'.join('{:d}. {}'.format(i+1, s) for i, s in enumerate(results))
 
-            if results_list:
-                winner, winner_info = results_list[0]
-                winner_id = winner.id
+            try:
+                winner = self.sprint_data.find_winner()
                 winner_name = winner.mention
-                winner_wc = winner_info[0]
-            else:
-                winner_id = None
+                winner_wc = self.sprint_data.get_wordcount(winner)
+            except ValueError:
                 winner_name = 'nobody'
                 winner_wc = 0
-
-            # update stats with this sprint
-            self.update_stats(results_struct, winner_id)
 
             await remove_role_from_all(self.bot, self.channel.server, self.role_sprint)
             logger.debug("Removed all users from {} role".format(self.role_sprint_name))
@@ -1225,42 +1154,6 @@ class WritingSprint(KazCog):
             self.set_state(SprintState.IDLE)
             self.sprint_data = SprintData(self._get_time)
             self._save_sprint()  # also calls self.state.write() - OK for stats too
-
-    def update_stats(self, results: Dict[discord.User, Tuple[int, float]], winner_id: str):
-        """
-        Update stats with the current sprint_data (should be a finished sprint!).
-        Won't save - you need to call self.state.write()
-        """
-        duration = int(round(self.sprint_data.duration))
-        total_words = 0
-        total_rate = 0
-
-        stats_users_map = self.state.get('sprint', 'stats_users')
-        for u, result in results.items():
-            try:
-                stats_user = SprintStats.from_dict(stats_users_map[u.id])
-            except KeyError:
-                stats_user = SprintStats()
-            stats_user.update(
-                words=result[0],
-                rate=result[1],
-                time=duration,
-                winner=(winner_id == u.id)
-            )
-            total_words += result[0]
-            total_rate += result[1]
-            stats_users_map[u.id] = stats_user.to_dict()
-
-        stats_global = SprintStats.from_dict(self.state.get('sprint', 'stats_global'))
-        stats_global.update(
-            words=total_words,
-            rate=total_rate,
-            time=duration,
-            winner=False  # not meaningful for global stats
-        )
-
-        self.state.set('sprint', 'stats_global', stats_global.to_dict())
-        self.state.set('sprint', 'stats_users', stats_users_map)
 
     @start.error
     @stop.error
