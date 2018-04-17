@@ -53,6 +53,20 @@ def split_code_chunks_on(str_: str, maxlen: int, split_char='\n', lang: str=None
     return ["{}{}{}".format(head, part, tail) for part in raw_parts]
 
 
+def natural_split(str_: str, maxlen: int, ellipsis_='[…]') -> List[str]:
+    """
+    If the string is too long, split into chunks of up to maxlen along word boundaries, with
+    ellipsis_ at the beginning and end of continued chunks.
+    """
+    chunks = []
+    remainder = str_
+    while remainder:
+        # add current field
+        chunks.append(natural_truncate(remainder, maxlen=maxlen, ellipsis_=ellipsis_))
+        remainder = remainder[len(chunks[-1]):]
+    return chunks
+
+
 def natural_truncate(str_: str, maxlen: int, ellipsis_='[…]') -> str:
     """
     If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis_

@@ -4,7 +4,7 @@ import functools
 from sqlalchemy import *
 from sqlalchemy import event
 # noinspection PyUnresolvedReferences
-from sqlalchemy.orm import relationship, sessionmaker, Query
+from sqlalchemy.orm import relationship, sessionmaker, Query, aliased
 # noinspection PyUnresolvedReferences
 from sqlalchemy.orm import exc as orm_exc
 # noinspection PyUnresolvedReferences

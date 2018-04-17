@@ -82,7 +82,7 @@ class EmbedSplitter:
     def add_field(self, *, name, value, inline=True):
         """
         Add field to the embed(s). This method allows for breaking (splitting) into a new embed
-        BEFORE this new field.
+        AFTER this new field.
 
         A field value that exceeds the max length will split the field if auto_truncate is
         enabled, or raise a ValueError otherwise.
@@ -95,7 +95,7 @@ class EmbedSplitter:
     def add_field_no_break(self, *, name, value, inline=True):
         """
         Add field to the embed(s). This method does not allow for breaking (splitting) into a new
-        embed BEFORE this new field (it may allow it after, however).
+        embed AFTER this new field (it may allow it before, if :meth:`~.add_field` was used).
 
         A field value that exceeds the max length will split the field if auto_truncate is
         enabled, or raise a ValueError otherwise.
@@ -193,6 +193,7 @@ class EmbedSplitter:
 
     def finalize(self) -> List[Embed]:
         """ Finalize and return the list of split embeds. """
+        self._flush_field_cache()
         if not self.repeat_footer:
             footer = self.template.footer
             self.cur_embed.set_footer(text=footer.text, icon_url=footer.icon_url)
