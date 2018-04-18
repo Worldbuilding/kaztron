@@ -30,11 +30,6 @@ class QuoteCog(KazCog):
     def __init__(self, bot):
         super().__init__(bot)
         self.grab_max = self.config.get("quotedb", "grab_search_max", 100)
-        self.server = None  # type: discord.Server
-
-    async def on_ready(self):
-        await super().on_ready()
-        self.server = self.channel_out.server
 
     def make_single_embed(self, quote: Quote,
                           index: int=None, total: int=None, title: str=None):
