@@ -12,10 +12,11 @@ from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller as c, model
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
+from kaztron.utils.converter import MemberConverter2
 from kaztron.utils.decorators import task_handled_errors
-from kaztron.utils.discord import get_named_role
+from kaztron.utils.discord import get_named_role, Limits
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import parse_keyword_args
+from kaztron.utils.strings import parse_keyword_args, split_chunks_on
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +220,7 @@ class ModToolsCog(KazCog):
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def whois(self, ctx, user: discord.Member):
+    async def whois(self, ctx, user: str):
         """
         [MOD ONLY] Finds a Discord user from their ID, name, or name with discriminator.
 
@@ -229,8 +230,35 @@ class ModToolsCog(KazCog):
         Arguments:
         * user_: An ID number, name, name with discriminator, etc. of a user to find.
         """
-        logger.info("whois: found {}. {}".format(user, message_log_str(ctx.message)))
-        await self.bot.say("Found user {0.mention} with ID {0.id}".format(user))
+        logger.info("whois: {}".format(message_log_str(ctx.message)))
+        await self._whois_match(ctx, user) or await self._whois_search(ctx, user)
+
+    async def _whois_match(self, ctx, user: str):
+        try:
+            member = MemberConverter2(ctx, user).convert()
+            msg = "Found user {0.mention} with ID {0.id}".format(member)
+            logger.debug(msg)
+            await self.bot.say(msg)
+            return True
+        except commands.BadArgument:
+            return False
+
+    async def _whois_search(self, ctx, user: str):
+        logger.info("whois: searching for name match")
+        members = [m for m in ctx.message.server.members
+                   if (m.nick and user.lower() in m.nick.lower()) or user.lower() in m.name.lower()]
+        if members:
+            member_list_str = ', '.join(str(m) for m in members)
+            logger.debug("Found {:d} users: {}".format(len(members), member_list_str))
+
+            s = '**{:d} users found**\n'.format(len(members)) +\
+                '\n'.join("{0.mention} ID {0.id}".format(m) for m in members)
+            for part in split_chunks_on(s, maxlen=Limits.MESSAGE):
+                await self.bot.say(part)
+            return True
+        else:
+            await self.bot.say("No matching user found.")
+            return False
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()

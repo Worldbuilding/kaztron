@@ -30,7 +30,7 @@ class MemberConverter2(commands.MemberConverter):
         except discord.InvalidArgument:
             s_user_id = self.argument
         self.argument = s_user_id
-        super().convert()
+        return super().convert()
 
 
 class NaturalInteger(commands.Converter):
