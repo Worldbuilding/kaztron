@@ -410,8 +410,8 @@ class Spotlight(KazCog):
             try:
                 roleman.add_managed_role(
                     role_name=self.role_audience_name,
-                    join="join",
-                    leave="leave",
+                    join_name="join",
+                    leave_name="leave",
                     join_msg=self.msg_join,
                     leave_msg=self.msg_leave,
                     join_err=self.msg_join_err,
