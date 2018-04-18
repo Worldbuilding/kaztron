@@ -780,9 +780,15 @@ class Spotlight(KazCog):
         then immediately use `.spotlight showcase` to announce it publicly.
         """
         logger.debug("queue next: {}".format(message_log_str(ctx.message)))
+        try:
+            queue_item = self.queue_data.popleft()
+        except IndexError:
+            logger.warning("queue next: Queue is empty")
+            await self.bot.say("**Error:** The queue is empty!")
+            return
+
         self._load_applications()
         old_index = self.current_app_index
-        queue_item = self.queue_data.popleft()
         self.current_app_index = queue_item['index']
         start_str, end_str = self.format_date_range(
             date.fromtimestamp(queue_item['start']),
@@ -791,7 +797,6 @@ class Spotlight(KazCog):
         try:
             app = await self._get_current()
         except IndexError:
-            self.bot.say("Sorry, the queued index seems to have become invalid!")
             self.queue_data.appendleft(queue_item)
             self.current_app_index = old_index
             return  # get_current() already handles this
