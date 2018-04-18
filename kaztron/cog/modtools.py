@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import random
-from typing import Iterable
+from typing import List
 
 import discord
 from discord.ext import commands
@@ -109,12 +109,12 @@ class ModToolsCog(KazCog):
             await self.send_output("[WARNING] " + err_msg)
 
     @staticmethod
-    def _get_tempbanned_members_db(server: discord.Server) -> Iterable[model.Record]:
+    def _get_tempbanned_members_db(server: discord.Server) -> List[model.Record]:
         records = c.query_unexpired_records(types=RecordType.temp)
         members_raw = (server.get_member(record.user.discord_id) for record in records)
         return [m for m in members_raw if m is not None]
 
-    def _get_tempbanned_members_server(self, server: discord.Server):
+    def _get_tempbanned_members_server(self, server: discord.Server) -> List[discord.Member]:
         tempban_role = get_named_role(server, self.role_name)
         return [m for m in server.members if tempban_role in m.roles]
 
@@ -208,7 +208,7 @@ class ModToolsCog(KazCog):
             if not kwargs:
                 reason = 'expires="{}" {}'.format("in 7 days", reason)
             if not rem:
-                reason += "No reason specified."
+                reason += " No reason specified."
 
         # Write the note
         await ctx.invoke(self.cog_modnotes.add, user, 'temp', note_contents=reason)

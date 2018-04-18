@@ -357,6 +357,8 @@ class ModNotes(KazCog):
         if len(note_contents) > self.EMBED_FIELD_LEN:
             raise commands.BadArgument('Note contents too long: '
                                        'max {:d} characters'.format(self.EMBED_FIELD_LEN))
+        elif not note_contents:
+            raise commands.BadArgument("No note contents.")
 
         # Record and user
         record = c.insert_note(user=db_user, author=db_author, type_=record_type,
