@@ -416,8 +416,8 @@ class WritingSprint(KazCog):
             try:
                 roleman.add_managed_role(
                     role_name=self.role_follow_name,
-                    join="follow",
-                    leave="unfollow",
+                    join_name="follow",
+                    leave_name="unfollow",
                     join_msg="You will now receive notifications when others start a sprint. You "
                              "can stop getting notifications by using the `.w unfollow` command.",
                     leave_msg="You will no longer receive notifications when others start a "
