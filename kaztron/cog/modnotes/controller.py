@@ -17,7 +17,7 @@ db_file = 'modnotes.sqlite'
 
 engine = None
 Session = db.sessionmaker()
-session = Session()
+session = None
 
 
 class UserNotFound(RuntimeError):
@@ -32,7 +32,7 @@ def init_db():
     Base.metadata.create_all(engine)
 
 
-on_error_rollback = make_error_handler_decorator(session, logger)
+on_error_rollback = make_error_handler_decorator(lambda *args, **kwargs: session, logger)
 
 
 async def create_user(discord_id: str, bot: discord.Client) -> User:

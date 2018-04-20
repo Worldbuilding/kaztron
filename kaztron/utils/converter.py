@@ -33,6 +33,21 @@ class MemberConverter2(commands.MemberConverter):
         return super().convert()
 
 
+class BooleanConverter(commands.Converter):
+    """ Convert true/false words to boolean. """
+    true_words = ['true', 'yes', '1', 'enabled', 'enable', 'on', 'y', 'ok', 'confirm']
+    false_words = ['false', 'no', '0', 'disabled', 'disable', 'off', 'n', 'null', 'none', 'cancel']
+
+    def convert(self):
+        arg = self.argument.lower()
+        if arg in self.true_words:
+            return True
+        elif arg in self.false_words:
+            return False
+        else:
+            raise commands.BadArgument("{!r} is not a true/false word.".format(self.argument))
+
+
 class NaturalInteger(commands.Converter):
     """
     Integer converter that is tolerant of various natural number input conventions (e.g. commas as

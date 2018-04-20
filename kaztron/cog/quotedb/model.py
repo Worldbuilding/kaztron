@@ -11,7 +11,7 @@ class User(Base):
     discord_id = db.Column(db.String(24), unique=True, nullable=False)
     name = db.Column(db.String(Limits.NAME, collation='NOCASE'))
     username = db.Column(db.String(Limits.NAME, collation='NOCASE'))
-    quotes = db.relationship('Quote', foreign_keys='Quote.author_id', back_populates='author')
+    quotes = db.relationship('Quote', foreign_keys='Quote.author_id', back_populates='user')
     saved_quotes = db.relationship('Quote', foreign_keys='Quote.saved_by_id',
         back_populates='saved_by')
 

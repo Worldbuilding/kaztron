@@ -131,5 +131,30 @@
     "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
     "channel_text": "text channel ID to output voice status messages to",
     "role_voice": "Name of the role to assign while in voice channels"
+  },
+  "blots": {
+    "check_in_weekday": 4,
+    "check_in_time": "5:00",
+    "check_in_channel": "channel ID here",
+    "milestone_map": {
+      "words": {
+        "role 1 name": 0,
+        "role 2 name": 10000,
+        "role 3 name": 25000,
+        "etc.": 50000
+      },
+      "script": {
+        "role 1 name": 0,
+        "role 2 name": 100,
+        "role 3 name": 250,
+        "etc.": 500
+      },
+      "visual": {
+        "role 1 name": 0,
+        "role 2 name": 50,
+        "role 3 name": 100,
+        "etc.": 200
+      }
+    }
   }
 }

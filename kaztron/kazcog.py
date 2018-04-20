@@ -126,9 +126,10 @@ class KazCog:
     @property
     def core(self):
         # cached since we need this when handling disconnect, after cog potentially unloaded...
+        from kaztron.cog.core import CoreCog
         if not self._core_cache:
             self._core_cache = self.bot.get_cog('CoreCog')
-        return self._core_cache
+        return self._core_cache  # type: CoreCog
 
     @property
     def is_ready(self):
@@ -162,6 +163,10 @@ class KazCog:
         :meth:`discord.Client.send_message` and similar.
         """
         return self._ch_test
+
+    @property
+    def server(self) -> discord.Server:
+        return self._ch_out.server
 
 
 def ready_only(func):
