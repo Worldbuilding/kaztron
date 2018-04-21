@@ -625,7 +625,7 @@ class WritingSprint(KazCog):
 
         self._save_sprint()
 
-    @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['x'])
+    @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['x', 'cancel'])
     @in_channels_cfg('sprint', 'channel')
     async def stop(self, ctx: commands.Context):
         """
