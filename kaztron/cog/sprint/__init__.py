@@ -1,4 +1,4 @@
-from kaztron.cog.sprint.sprint import WritingSprint
+from .sprint import WritingSprint
 
 
 def setup(bot):

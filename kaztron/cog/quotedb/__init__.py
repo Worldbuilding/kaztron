@@ -1,5 +1,5 @@
-from kaztron.cog.quotedb.quotecog import QuoteCog
-from kaztron.cog.quotedb.controller import init_db
+from .quotecog import QuoteCog
+from .controller import init_db
 
 
 def setup(bot):

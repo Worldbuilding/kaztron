@@ -1,6 +1,6 @@
-from kaztron.cog.blots.checkin import CheckInManager
-from kaztron.cog.blots.badges import BadgeManager
-from kaztron.cog.blots.controller import init_db
+from .checkin import CheckInManager
+from .badges import BadgeManager
+from .controller import init_db
 
 
 def setup(bot):
