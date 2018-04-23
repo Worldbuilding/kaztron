@@ -224,11 +224,14 @@ class ModToolsCog(KazCog):
         """
         [MOD ONLY] Finds a Discord user from their ID, name, or name with discriminator.
 
+        If an exact match isn't found, then this tool will do a substring search on all visible
+        users' names and nicknames.
+
         Warning: If the user is in the channel where you use this command, the user will receive a
         notification.
 
         Arguments:
-        * user_: An ID number, name, name with discriminator, etc. of a user to find.
+        * user: An ID number, name, name with discriminator, etc. of a user to find.
         """
         logger.info("whois: {}".format(message_log_str(ctx.message)))
         await self._whois_match(ctx, user) or await self._whois_search(ctx, user)
