@@ -9,6 +9,7 @@ client_secret.json
 *.sqlite
 *.orig
 *.log
+*.log.gz
 *.log.*.gz
 *.bak
 temp.csv.gz

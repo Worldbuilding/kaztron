@@ -416,8 +416,8 @@ class WritingSprint(KazCog):
             try:
                 roleman.add_managed_role(
                     role_name=self.role_follow_name,
-                    join="follow",
-                    leave="unfollow",
+                    join_name="follow",
+                    leave_name="unfollow",
                     join_msg="You will now receive notifications when others start a sprint. You "
                              "can stop getting notifications by using the `.w unfollow` command.",
                     leave_msg="You will no longer receive notifications when others start a "
@@ -463,9 +463,12 @@ class WritingSprint(KazCog):
 
         await super().on_ready()
 
+        if self.report_task:
+            self.report_task.cancel()
+
         self.report_task = self.bot.loop.create_task(self.weekly_report_tick())
 
-    async def unload_kazcog(self):
+    def unload_kazcog(self):
         self.report_task.cancel()
         self.report_task = None
 
@@ -625,7 +628,7 @@ class WritingSprint(KazCog):
 
         self._save_sprint()
 
-    @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['x'])
+    @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['x', 'cancel'])
     @in_channels_cfg('sprint', 'channel')
     async def stop(self, ctx: commands.Context):
         """
@@ -908,42 +911,46 @@ class WritingSprint(KazCog):
         logger.info("stats: {}".format(message_log_str(ctx.message)))
         date = date  # type: datetime
         member = get_member(ctx, user) if user != 'all' else None
-        await self._stats_inner(ctx.message.channel, member, date)
 
-    async def _stats_inner(self, dest, user: Optional[discord.Member], date: datetime):
-        if user:
-            logger.debug("stats: user: id={user.id} name={user.name}".format(user=user))
-            try:
-                if not date:
-                    stats = self.load_stats().users[user.id]
-                else:
-                    stats = self.load_weekly_stats(date).users[user.id]
-            except KeyError:
-                await self.bot.say(self.DISP_STRINGS["err_stats_user"].format(user=user))
-            else:
-                await self._display_embed(
-                    dest, self.DISP_EMBEDS['stats'],
-                    user_id=user.id,
-                    stats=stats,
-                    weekname="all time" if not date else date.strftime("%Y week %U"),
-                    average_time=format_seconds(stats.time_mean),
-                    total_time=format_seconds(stats.time, timespec='minutes'),
-                    since=format_date(stats.since)
-                )
-        else:  # global stats
-            logger.debug("stats: requested global")
+        if member:
+            await self._stats_user(ctx.message.channel, member, date)
+        else:
+            await self._stats_global(ctx.message.channel, date)
+
+    async def _stats_user(self, dest, user: Optional[discord.Member], date: datetime):
+        logger.debug("stats: user: id={user.id} name={user.name}".format(user=user))
+        try:
             if not date:
-                stats = self.load_stats().overall
+                stats = self.load_stats().users[user.id]
             else:
-                stats = self.load_weekly_stats(date).overall
+                stats = self.load_weekly_stats(date).users[user.id]
+        except KeyError:
+            await self.bot.say(self.DISP_STRINGS["err_stats_user"].format(user=user))
+        else:
             await self._display_embed(
-                dest, self.DISP_EMBEDS['stats_global'],
+                dest, self.DISP_EMBEDS['stats'],
+                user_id=user.id,
                 stats=stats,
                 weekname="all time" if not date else date.strftime("%Y week %U"),
                 average_time=format_seconds(stats.time_mean),
                 total_time=format_seconds(stats.time, timespec='minutes'),
                 since=format_date(stats.since)
             )
+
+    async def _stats_global(self, dest, date: datetime):
+        logger.debug("stats: requested global")
+        if not date:
+            stats = self.load_stats().overall
+        else:
+            stats = self.load_weekly_stats(date).overall
+        await self._display_embed(
+            dest, self.DISP_EMBEDS['stats_global'],
+            stats=stats,
+            weekname="all time" if not date else date.strftime("%Y week %U"),
+            average_time=format_seconds(stats.time_mean),
+            total_time=format_seconds(stats.time, timespec='minutes'),
+            since=format_date(stats.since)
+        )
 
     @sprint.command(name="statreset", pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
@@ -1122,7 +1129,7 @@ class WritingSprint(KazCog):
             now = datetime.utcnow()
             w_stats = self.load_weekly_stats(now)
             w_stats.update(self.sprint_data)
-            self.save_weekly_stats(now, stats)
+            self.save_weekly_stats(now, w_stats)
 
             #
             # Prepare the output message

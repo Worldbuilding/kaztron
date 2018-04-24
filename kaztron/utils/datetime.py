@@ -32,7 +32,9 @@ def parse(timespec: str, future=False, **kwargs):
         # workaround for https://github.com/scrapinghub/dateparser/issues/403
         # we'll try it out without this setting and return if it's in the future
         dt = dateparser.parse(timespec, settings=settings)
-        if dt > datetime.utcnow():
+        if dt is None:  # not parsable
+            return dt
+        elif dt > datetime.utcnow():
             return dt
         else:
             settings['PREFER_DATES_FROM'] = 'future'
@@ -198,6 +200,6 @@ def parse_daterange(daterange: str, future=False) -> Tuple[datetime, datetime]:
 
     # if the order is wrong, swap
     if dates[0] > dates[1]:
-        dates[0], dates[1] = dates[1], dates[0]
+        dates = (dates[1], dates[0])
 
     return dates

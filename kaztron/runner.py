@@ -135,6 +135,7 @@ def run_reboot_loop(loop: asyncio.AbstractEventLoop):
 
     logger.info("Welcome to KazTron v{}, booting up...".format(kaztron.__version__))
 
+    # noinspection PyBroadException
     try:
         bo_timer = Backoff(initial_time=3.0, base=1.58, max_attempts=12)
         wait_time = 0
@@ -152,12 +153,16 @@ def run_reboot_loop(loop: asyncio.AbstractEventLoop):
         sys.exit(ErrorCodes.RETRY_MAX_ATTEMPTS)
     except KeyboardInterrupt:  # outside of runner.run
         logger.info("Interrupted by user. Exiting.")
+    except Exception:
+        logger.exception("Exception in reboot loop.")
+        raise
     finally:
         logger.info("Exiting.")
         loop.close()
 
 
 def get_daemon_context(config: KaztronConfig):
+    import os
     import pwd
     import grp
     from pathlib import Path
@@ -180,6 +185,7 @@ def get_daemon_context(config: KaztronConfig):
         pw = pwd.getpwnam(username)
         daemon_context.uid = pw.pw_uid
         daemon_context.gid = pw.pw_gid
+        os.environ['HOME'] = pw.pw_dir
     if group:
         daemon_context.gid = grp.getgrnam(group).gr_gid
     return daemon_context

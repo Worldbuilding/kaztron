@@ -77,7 +77,7 @@ def none_wrapper(value, default=""):
     return value if value is not None else default
 
 
-_KWARG_RE = re.compile('\s*([A-Za-z0-9_-]+)=("[^"]+"|[^ ]+)\s+(.*)')
+_KWARG_RE = re.compile('\s*([A-Za-z0-9_-]+)=("[^"]+"|[^ ]+)(\s*.*)')
 
 
 def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], str):
