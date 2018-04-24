@@ -123,6 +123,7 @@ class CoreCog(kaztron.KazCog):
         a CommandInvokeError from it).
         """
         cmd_string = message_log_str(ctx.message)
+        author_mention = ctx.message.author.mention + ' '
 
         if not force and hasattr(ctx.command, "on_error"):
             return
@@ -132,8 +133,17 @@ class CoreCog(kaztron.KazCog):
         else:
             usage_str = '(Unable to retrieve usage information)'
 
+        if isinstance(exc, DeleteMessage):
+            try:
+                await self.bot.delete_message(exc.message)
+                logger.info("on_command_error: Deleted invoking message")
+            except discord.errors.DiscordException:
+                logger.exception("Can't delete invoking message!")
+            exc = exc.cause
+        # and continue on to handle the cause of the DeleteMessage...
+
         if isinstance(exc, commands.CommandOnCooldown):
-            await self.bot.send_message(ctx.message.channel,
+            await self.bot.send_message(ctx.message.channel, author_mention +
                 "`{}` is on cooldown! Try again in {:.0f} seconds."
                     .format(get_command_str(ctx), max(exc.retry_after, 1.0)))
 
@@ -156,7 +166,7 @@ class CoreCog(kaztron.KazCog):
                     .format(cmd_string, exc_log_str(root_exc)))
 
             # In all cases (except if return early/re-raise)
-            await self.bot.send_message(ctx.message.channel,
+            await self.bot.send_message(ctx.message.channel, author_mention +
                 "An error occurred! Details have been logged. Let a mod know so we can "
                 "investigate.")
 
@@ -172,19 +182,21 @@ class CoreCog(kaztron.KazCog):
                 cmd_string)
             logger.warning(err_msg)
             await self.send_output('[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel, "Only mods can use that command.")
+            await self.bot.send_message(ctx.message.channel,
+                author_mention + "Only mods can use that command.")
 
         elif isinstance(exc, AdminOnlyError):
             err_msg = "Unauthorised user for this command (not an admin): {!r}".format(
                 cmd_string)
             logger.warning(err_msg)
             await self.send_output('[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel, "Only admins can use that command.")
+            await self.bot.send_message(ctx.message.channel,
+                author_mention +"Only admins can use that command.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
             logger.warning(
                 "Check failed on command: {!r}\n\n{}".format(cmd_string, tb_log_str(exc)))
-            await self.bot.send_message(ctx.message.channel,
+            await self.bot.send_message(ctx.message.channel, author_mention +
                 "You're not allowed to use that command. "
                 " *(Dev note: Implement error handler with more precise reason)*")
 
@@ -193,7 +205,8 @@ class CoreCog(kaztron.KazCog):
                 cmd_string)
             logger.warning(err_msg)
             await self.send_output('[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel, "You can't use that command here.")
+            await self.bot.send_message(ctx.message.channel,
+                author_mention + "You can't use that command here.")
 
         elif isinstance(exc, commands.NoPrivateMessage):
             msg = "Attempt to use non-PM command in PM: {}".format(cmd_string)
@@ -206,17 +219,16 @@ class CoreCog(kaztron.KazCog):
             exc_msg = exc.args[0] if len(exc.args) > 0 else '(No error message).'
             msg = "Bad argument passed in command: {}\n{}".format(cmd_string, exc_msg)
             logger.warning(msg)
-            await self.bot.send_message(ctx.message.channel,
-                ("Invalid argument(s) for the command `{}`. {}\n\n**Usage:** `{}`\n\n"
-                 "Use `{}` for help. "
-                 "*(Dev note: Add error handler with more precise reason when possible)*")
+            await self.bot.send_message(ctx.message.channel, author_mention +
+                ("Invalid argument(s): {}\n\n**Usage:** `{}`\n\n"
+                 "Use `{}` for help.")
                     .format(get_command_str(ctx), exc_msg, usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
         elif isinstance(exc, commands.TooManyArguments):
             msg = "Too many arguments passed in command: {}".format(cmd_string)
             logger.warning(msg)
-            await self.bot.send_message(ctx.message.channel,
+            await self.bot.send_message(ctx.message.channel, author_mention +
                 "Too many arguments.\n\n**Usage:** `{}`\n\nUse `{}` for help."
                     .format(usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
@@ -224,8 +236,8 @@ class CoreCog(kaztron.KazCog):
         elif isinstance(exc, commands.MissingRequiredArgument):
             msg = "Missing required arguments in command: {}".format(cmd_string)
             logger.warning(msg)
-            await self.bot.send_message(ctx.message.channel,
-                "Missing argument(s) for the command `{}`.\n\n**Usage:** `{}`\n\nUse `{}` for help."
+            await self.bot.send_message(ctx.message.channel, author_mention +
+                "Missing argument(s).\n\n**Usage:** `{}`\n\nUse `{}` for help."
                     .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
@@ -236,7 +248,7 @@ class CoreCog(kaztron.KazCog):
                 cog_name = 'unknown'
             logger.warning("Attempted to use command while cog is not ready: {}".format(cmd_string))
             await self.bot.send_message(
-                ctx.message.channel,
+                ctx.message.channel, author_mention +
                 "Sorry, I'm still loading the {} module! Try again in a few seconds."
                 .format(cog_name)
             )
@@ -249,13 +261,13 @@ class CoreCog(kaztron.KazCog):
             if ctx.invoked_with and all(c.isalnum() for c in ctx.invoked_with) \
                     and not ctx.invoked_with[0].isdigit():
                 logger.warning(msg)
-                await self.bot.send_message(ctx.message.channel,
+                await self.bot.send_message(ctx.message.channel, author_mention +
                     "Sorry, I don't know the command `{}{.invoked_with}`"
                         .format(get_command_prefix(ctx), ctx))
 
         else:
             logger.exception("Unknown exception occurred")
-            await self.bot.send_message(ctx.message.channel,
+            await self.bot.send_message(ctx.message.channel, author_mention +
                 "An unexpected error occurred! Details have been logged. Let a mod know so we can "
                 "investigate.")
             await self.send_output(

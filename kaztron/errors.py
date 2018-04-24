@@ -1,3 +1,4 @@
+from discord import Message
 from discord.ext import commands
 
 
@@ -19,3 +20,10 @@ class AdminOnlyError(UnauthorizedUserError):
 
 class UnauthorizedChannelError(commands.CommandError):
     pass
+
+
+class DeleteMessage(commands.CommandError):
+    def __init__(self, message: Message, cause: Exception):
+        self.message = message
+        self.cause = cause
+        super().__init__("Delete message due to exception: {}".format(self.cause))
