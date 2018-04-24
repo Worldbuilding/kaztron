@@ -30,6 +30,11 @@ class QuoteCog(KazCog):
     def __init__(self, bot):
         super().__init__(bot)
         self.grab_max = self.config.get("quotedb", "grab_search_max", 100)
+        self.server = None  # type: discord.Server
+
+    async def on_ready(self):
+        await super().on_ready()
+        self.server = self.channel_out.server
 
     def make_single_embed(self, quote: Quote,
                           index: int=None, total: int=None, title: str=None):
@@ -241,9 +246,11 @@ class QuoteCog(KazCog):
         logger.info("quote grab: {}".format(message_log_str(ctx.message)))
         async for message in self.bot.logs_from(ctx.message.channel, self.grab_max): \
                 # type: discord.Message
-            if message.author == user and (not search or search in message.content):
-                grabbed_message = message
-                break
+            # if requested author, and this message isn't the invoking one (in case of self-grab)
+            if message.author == user and message.id != ctx.message.id:
+                if not search or search in message.content:
+                    grabbed_message = message
+                    break
         else:  # Nothing found
             if search:
                 await self.bot.say(("No message from {} matching '{}' "

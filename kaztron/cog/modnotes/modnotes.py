@@ -179,7 +179,7 @@ class ModNotes(KazCog):
     @commands.group(aliases=['note'], invoke_without_command=True, pass_context=True,
         ignore_extra=False)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def notes(self, ctx, user: str, page: int=None):
         """
         [MOD ONLY] Access moderation logs.
@@ -257,7 +257,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True, aliases=['a'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def add(self, ctx, user: str, type_: str, *, note_contents):
         """
         [MOD ONLY] Add a new note.
@@ -370,7 +370,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['x', 'expire'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def expires(self, ctx, note_id: int, *, timespec: str="now"):
         """
 
@@ -405,7 +405,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def rem(self, ctx, note_id: int):
         """
 
@@ -433,7 +433,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
-    @admin_channels()
+    @admin_channels(delete_on_fail=True)
     async def removed(self, ctx, user: str, page: int=None):
         """
 
@@ -465,7 +465,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def restore(self, ctx, note_id: int):
         """
         [ADMIN ONLY] Restore a removed note.
@@ -484,7 +484,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def purge(self, ctx, note_id: int):
         """
         [ADMIN ONLY] Permanently destroy a removed note.
@@ -505,7 +505,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True, ignore_extra=False)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def finduser(self, ctx, search_term: str, page: int=1):
         """
 
@@ -585,7 +585,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def name(self, ctx, user: str, *, new_name: str):
         """
 
@@ -613,7 +613,7 @@ class ModNotes(KazCog):
 
     @notes.command(pass_context=True)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def alias(self, ctx, addrem: str, user: str, *, alias: str):
         """
 
@@ -660,7 +660,7 @@ class ModNotes(KazCog):
 
     @notes.group(pass_context=True, invoke_without_command=True, ignore_extra=True)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def group(self, ctx):
         """
         [MOD ONLY] Group and ungroup users together.
@@ -678,7 +678,7 @@ class ModNotes(KazCog):
 
     @group.command(name='add', pass_context=True, ignore_extra=False, aliases=['a'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def group_add(self, ctx, user1: str, user2: str):
         """
         Group two users together.
@@ -710,7 +710,7 @@ class ModNotes(KazCog):
 
     @group.command(name='rem', pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def group_rem(self, ctx, user: str):
         """
         Remove a user from the group.
@@ -745,14 +745,14 @@ class ModNotes(KazCog):
 
             if isinstance(root_exc, ValueError) and root_exc.args and 'user ID' in root_exc.args[0]:
                 logger.warning("Invalid user argument: {!s}. For {}".format(root_exc, cmd_string))
-                await self.bot.send_message(ctx.message.channel,
-                    "User format is not valid. User must be specified as an @mention, as a Discord "
+                await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
+                    " User format is not valid. User must be specified as an @mention, as a Discord "
                     "ID (numerical only), or a KazTron ID (`*` followed by a number).")
 
             elif isinstance(root_exc, c.UserNotFound):
                 logger.warning("User not found: {!s}. For {}".format(root_exc, cmd_string))
-                await self.bot.send_message(ctx.message.channel,
-                    "User was not found. The user must either exist in the KazTron modnotes "
+                await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
+                    " User was not found. The user must either exist in the KazTron modnotes "
                     "database already, or exist on Discord (for @mentions and Discord IDs).")
 
             else:
@@ -774,8 +774,8 @@ class ModNotes(KazCog):
         if isinstance(exc, commands.BadArgument):
             msg = "Bad argument passed in command: {}".format(cmd_string)
             logger.warning(msg)
-            await self.bot.send_message(ctx.message.channel,
-                ("Invalid argument(s) for the command `{}`. Did you mean `.notes add`?"
+            await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
+                (" Invalid argument(s). Did you mean `.notes add`?"
                  "\n\n**Usage:** `{}`\n\nUse `{}` for help.")
                     .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
@@ -783,8 +783,8 @@ class ModNotes(KazCog):
         elif isinstance(exc, commands.TooManyArguments):
             msg = "Too many arguments passed in command: {}".format(cmd_string)
             logger.warning(msg)
-            await self.bot.send_message(ctx.message.channel,
-                ("Too many arguments. Did you mean `.notes add`?\n\n"
+            await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
+                (" Too many arguments. Did you mean `.notes add`?\n\n"
                  "**Usage:** `{}`\n\nUse `{}` for help.")
                     .format(usage_str, get_help_str(ctx)))
         else:
@@ -795,8 +795,8 @@ class ModNotes(KazCog):
         cmd_string = message_log_str(ctx.message)
         if isinstance(exc, commands.TooManyArguments):
             logger.warning("Too many args: {}".format(exc, cmd_string))
-            await self.bot.send_message(ctx.message.channel,
-                "Too many arguments. Note that you can only `{}` two users at a time."
+            await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
+                " Too many arguments. Note that you can only `{}` two users at a time."
                 .format(get_command_str(ctx)))
         else:
             await self.on_error_query_user(exc, ctx)
@@ -806,8 +806,8 @@ class ModNotes(KazCog):
         cmd_string = message_log_str(ctx.message)
         if isinstance(exc, commands.TooManyArguments):
             logger.warning("Too many args: {}".format(exc, cmd_string))
-            await self.bot.send_message(ctx.message.channel,
-                "Too many arguments. "
+            await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
+                " Too many arguments. "
                 "Note that you can only `{}` *one* user from its group at a time."
                     .format(get_command_str(ctx)))
         else:

@@ -127,7 +127,7 @@ class WordFilter(KazCog):
 
     @commands.group(name="filter", invoke_without_command=True, pass_context=True)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def word_filter(self, ctx):
         """
         [MOD ONLY] Manages the filter lists. This feature is used to notify moderators of keywords
@@ -143,7 +143,7 @@ class WordFilter(KazCog):
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def filter_list(self, ctx, filter_type: str=None):
         """
         [MOD ONLY] Lists the current filters.
@@ -186,7 +186,7 @@ class WordFilter(KazCog):
 
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['a'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def add(self, ctx, filter_type: str, word: str):
         """
         [MOD ONLY] Add a new filter word/expression.
@@ -223,7 +223,7 @@ class WordFilter(KazCog):
 
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def rem(self, ctx, filter_type: str, word: str):
         """
         [MOD ONLY] Remove a filter word/expression by word.
@@ -266,7 +266,7 @@ class WordFilter(KazCog):
 
     @word_filter.command(pass_context=True, ignore_extra=False)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def rnum(self, ctx, filter_type: str, index: int):
         """
         [MOD ONLY] Remove a filter word/expression by list index.
@@ -312,7 +312,7 @@ class WordFilter(KazCog):
 
     @word_filter.command(name='switch', pass_context=True, ignore_extra=False, aliases=['s', 'sw'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def filter_switch(self, ctx):
         """
         [MOD ONLY] Change the bot output channel for wordfilter warnings.

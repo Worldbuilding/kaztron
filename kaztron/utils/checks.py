@@ -3,7 +3,7 @@ from typing import List
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config
-from kaztron.errors import UnauthorizedChannelError, ModOnlyError, AdminOnlyError
+from kaztron.errors import UnauthorizedChannelError, ModOnlyError, AdminOnlyError, DeleteMessage
 from kaztron.utils.discord import check_mod, check_admin
 
 import logging
@@ -55,13 +55,23 @@ def in_channels(channel_id_list: List[str], allow_pm=False):
     return commands.check(predicate)
 
 
-def in_channels_cfg(config_section: str, config_name: str, allow_pm=False):
+def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delete_on_fail=False):
     """
     Command check decorator. Only allow this command to be run in specific channels (as specified
     from the config).
 
     The configuration can point to either a single channel ID string or a list of channel ID
     strings.
+
+    :param config_section: The KaztronConfig section to access
+    :param config_name: The KaztronConfig key containing the list of channel IDs
+    :param allow_pm: Allow this command in PMs, as well as the configured channels
+    :param delete_on_fail: If this check fails, delete the original message. This option does not
+        delete the message itself, but throws an UnauthorizedChannelDelete error to allow an
+        ``on_command_error`` handler to take appropriate action.
+
+    :raise UnauthorizedChannelError:
+    :raise UnauthorizedChannelDelete:
     """
     config = get_kaztron_config()
 
@@ -75,22 +85,27 @@ def in_channels_cfg(config_section: str, config_name: str, allow_pm=False):
             )
             return True
         else:
-            raise UnauthorizedChannelError("Command not allowed in channel.", ctx)
+            if not delete_on_fail:
+                raise UnauthorizedChannelError("Command not allowed in channel.", ctx)
+            else:
+                raise DeleteMessage(ctx.message,
+                    UnauthorizedChannelError("Command not allowed in channel.", ctx))
 
     return commands.check(predicate)
 
 
-def mod_channels():
+def mod_channels(delete_on_fail=False):
     """
     Command check decorator. Only allow this command to be run in mod channels (as configured
     in "discord" -> "mod_channels" config).
     """
-    return in_channels_cfg('discord', 'mod_channels', allow_pm=True)
+    return in_channels_cfg('discord', 'mod_channels', allow_pm=True, delete_on_fail=delete_on_fail)
 
 
-def admin_channels():
+def admin_channels(delete_on_fail=False):
     """
     Command check decorator. Only allow this command to be run in admin channels (as configured
     in "discord" -> "admin_channels" config).
     """
-    return in_channels_cfg('discord', 'admin_channels', allow_pm=True)
+    return in_channels_cfg('discord', 'admin_channels', allow_pm=True,
+        delete_on_fail=delete_on_fail)

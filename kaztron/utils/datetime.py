@@ -219,6 +219,6 @@ def parse_daterange(daterange: str, future=False) -> Tuple[datetime, datetime]:
 
     # if the order is wrong, swap
     if dates[0] > dates[1]:
-        dates[0], dates[1] = dates[1], dates[0]
+        dates = (dates[1], dates[0])
 
     return dates
