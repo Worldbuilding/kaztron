@@ -191,7 +191,7 @@ class CoreCog(kaztron.KazCog):
             logger.warning(err_msg)
             await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel,
-                author_mention +"Only admins can use that command.")
+                author_mention + "Only admins can use that command.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
             logger.warning(
@@ -222,7 +222,7 @@ class CoreCog(kaztron.KazCog):
             await self.bot.send_message(ctx.message.channel, author_mention +
                 ("Invalid argument(s): {}\n\n**Usage:** `{}`\n\n"
                  "Use `{}` for help.")
-                    .format(get_command_str(ctx), exc_msg, usage_str, get_help_str(ctx)))
+                    .format(exc_msg, usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
         elif isinstance(exc, commands.TooManyArguments):
@@ -238,7 +238,7 @@ class CoreCog(kaztron.KazCog):
             logger.warning(msg)
             await self.bot.send_message(ctx.message.channel, author_mention +
                 "Missing argument(s).\n\n**Usage:** `{}`\n\nUse `{}` for help."
-                    .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
+                    .format(usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
         elif isinstance(exc, BotNotReady):
