@@ -1,0 +1,51 @@
+## if you want to list an external url, use external_url instead of url. the theme will apply a different link base.
+
+home_sections:
+- heading: "Projects"
+  items:
+  - title: KazTron Manual
+    description: Our resident Discord helper bot! Consult the manual here.
+    image: kaztron.png
+    buttons:
+      - title: Latest
+        url: /kaztron
+      - title: Dev
+        url: /kaztron/dev
+        category: default
+      - title: Versions
+        url: /kaztron/versions.html
+        category: default
+  - title: Spotlight
+    description: Apply to feature your world on the Discord server!
+    icon: "fas fa-star"
+    buttons:
+      - url: /spotlight
+        title: "Read"
+  - title: Gridbox
+    description: SI Data Portal
+    icon: "fas fa-globe"
+    buttons:
+      - url: /gridbox
+        title: "Access"
+
+
+- heading: "The /r/Worldbuilding Network"
+  items:
+  - title: /r/worldbuilding
+    description: Home sweet home!
+    icon: "fab fa-reddit-alien"
+    buttons:
+      - external_url: http://reddit.com/r/worldbuilding
+  - title: Come chat!
+    description: "Chat with a vibrant community!<br />(IRC details: #worldbuilding on irc.snoonet.org:6697)"
+    icon: "fab fa-discord"
+    buttons:
+      - title: "Discord"
+        external_url: http://discord.gg/worldbuilding
+      - title: "KiwiIRC"
+        external_url: https://kiwiirc.com/client?settings=e464ff37409c37405da31b6291b1fbad
+  - title: GitHub
+    description: See the code behind the hood!
+    icon: "fab fa-github"
+    buttons:
+      - external_url: http://github.com/worldbuilding

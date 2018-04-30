@@ -1,0 +1,44 @@
+.nav-panel .panel-heading img {
+    height: 10em;
+    width: 10em;
+    border-radius: 50%;
+    margin: 0;
+    padding: 0;
+}
+
+.sidebarImage {
+    width: 100%;
+    text-align: center;
+}
+
+.sidebarImage img {
+    height: 15em;
+    width: 15em;
+    border-radius: 50%;
+    margin: 1em auto;
+    padding: 0;
+}
+
+.btn.githubEditButton {
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+a.btn::after,
+a.icon-link::after {
+    content: none;
+}
+
+.post-content blockquote {
+    font-size: inherit;
+}
+
+.post-title-main, .post-author {
+    display: inline-block;
+}
+
+.post-author {
+    font-style: italic;
+    margin-left: 0.5em;
+    color: #808080;
+}

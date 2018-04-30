@@ -1,0 +1,46 @@
+# This is your sidebar TOC. The sidebar code loops through sections here and provides the appropriate formatting.
+
+entries:
+- title: sidebar
+  product: Site Index
+  folders:
+
+  - title: Index
+    output: web, pdf
+    folderitems:
+    - title: Index
+      type: homepage
+      url: /index.html
+      output: web, pdf
+
+  - title: Projects
+    output: web, pdf
+    folderitems:
+
+    - title: KazTron
+      url: /kaztron
+      output: web, pdf
+
+    - title: Spotlight
+      url: /spotlight
+      output: web, pdf
+
+    - title: Gridbox
+      url: /gridbox
+      output: web, pdf
+
+  - title: The Network
+    output: web, pdf
+    folderitems:
+
+    - title: Reddit
+      external_url: https://reddit.com/r/worldbuilding
+      output: web, pdf
+
+    - title: Discord
+      external_url: https://discord.gg/worldbuilding
+      output: web, pdf
+
+    - title: IRC
+      external_url: https://kiwiirc.com/client?settings=e464ff37409c37405da31b6291b1fbad
+      output: web, pdf

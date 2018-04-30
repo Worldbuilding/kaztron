@@ -1,0 +1,38 @@
+authors:
+- name: Kazandaki
+  role: Founder, developer
+  github: Kazandaki
+  reddit: Kazandaki
+  discord: Kazandaki
+
+- name: Laogeodritt
+  role: Developer
+  github: Laogeodritt
+  reddit: Laogeodritt
+  discord: Laogeobunny
+
+- name: cxcfme
+  role: Sysadmin
+  github: cxcfme
+
+contributors:
+- name: Teeteegone
+  role: "KazTron \"cat\" icon artwork"
+  links: []
+- name: Grine_
+  role: "Quality assurance, guinea pig"
+  links:
+    - title: GitHub
+      icon: "fab fa-github"
+      url: https://github.com/Grine-sudoscience
+
+# Just an example of adding a link to contributors, for later
+# - name: ContributorMan
+#   role: Made contributions
+#   links:
+#    - url: http://github.example/contributorman
+#      title: Tumblr
+#      icon: "fab fa-github"
+#    - url: http://contributorman.tumblr.example
+#      title: Tumblr
+#      icon: "fab fa-tumblr-square"

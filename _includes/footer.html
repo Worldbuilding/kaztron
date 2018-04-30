@@ -1,0 +1,9 @@
+<footer>
+    <div class="row">
+        <div class="col-lg-12 footer">
+            <p>&copy; {{ site.time | date: "%Y"  }} {{site.company_name}}. Website code and non-project contents released under the MIT license; project-related content licence depends on the project. See the LICENSE file in the relevant GitHub repository for more details.</p>
+            <p> {% if page.last_updated %}<span>Page last updated:</span> {{page.last_updated}}<br/>{% endif %} Site last generated: {{ site.time | date: "%-d %B %Y"  }}</p>
+            <p><img src="{{ "/images/world-snoo.png"| prepend: site.baseurl }}" alt="/r/worldbuilding network logo"/></p>
+        </div>
+    </div>
+</footer>
