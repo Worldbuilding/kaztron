@@ -3,6 +3,12 @@ import re
 import discord
 from discord.ext import commands
 
+from kaztron.config import get_kaztron_config
+
+import logging
+
+logger = logging.getLogger('kaztron.discord')
+
 MSG_MAX_LEN = 2000
 
 
@@ -30,7 +36,7 @@ def check_role(rolelist, message):
         try:
             if discord.utils.get(message.server.roles, name=role) in message.author.roles:
                 return True
-        except:
+        except Exception:
             pass
     else:
         return False
@@ -50,6 +56,25 @@ def get_named_role(server: discord.Server, role_name: str) -> discord.Role:
     if role is None:
         raise ValueError("Role '{!s}' not found.".format(role_name))
     return role
+
+
+def check_mod(ctx: commands.Context):
+    """
+    Check if the sender of a command is a mod or admin (as defined by the
+    roles in the "discord" -> "mod_roles" and "discord" -> "admin_roles" configs).
+    """
+    config = get_kaztron_config()
+    return check_role(config.get("discord", "mod_roles", []), ctx.message) or \
+        check_role(config.get("discord", "admin_roles", []), ctx.message)
+
+
+def check_admin(ctx: commands.Context):
+    """
+    Check if the sender of a command is an admin (as defined by the
+    roles in the "discord" -> "admin_roles" config).
+    """
+    config = get_kaztron_config()
+    return check_role(config.get("discord", "admin_roles", []), ctx.message)
 
 
 async def remove_role_from_all(client: discord.Client, server: discord.Server, role: discord.Role):
@@ -82,6 +107,15 @@ def role_mention(role_id: str) -> str:
     if not role_id.isnumeric():
         raise ValueError("Discord ID must be numeric")
     return '<@&{}>'.format(role_id)
+
+
+def channel_mention(channel_id: str) -> str:
+    """
+    Return a mention for a role that can be sent over a Discord message.
+    """
+    if not channel_id.isnumeric():
+        raise ValueError("Discord ID must be numeric")
+    return '<#{}>'.format(channel_id)
 
 
 _re_user_id = re.compile('(?:<@|@)?!?([0-9]{15,23})>?')
@@ -160,3 +194,92 @@ def get_member(ctx: commands.Context, user: str) -> discord.Member:
         raise discord.InvalidArgument(
             "User ID format {!r} is invalid or user not found".format(user)
         )
+
+
+def get_command_prefix(ctx: commands.Context) -> str:
+    prefix = ctx.bot.command_prefix
+    if callable(prefix):
+        prefix = prefix(ctx.bot, ctx.message)
+    return prefix
+
+
+def get_command_str(ctx: commands.Context) -> str:
+    """
+    Get the command string, with subcommand if passed. Arguments are not included.
+    :param ctx:
+    :return:
+    """
+    # apparently in a subcommand, invoked_with == the SUBcommand, invoked_subcommand == None???
+    # ... what???
+
+    # cmd_str = "{0.bot.command_prefix}{0.invoked_with}".format(ctx)
+    # if ctx.subcommand_passed:
+    #    cmd_str += " {0.subcommand_passed}".format(ctx)
+    # return cmd_str
+    return "{0}{1.command!s}".format(get_command_prefix(ctx), ctx)
+
+
+def get_help_str(ctx: commands.Context) -> str:
+    """
+    Gets the help string for the invoked command, with subcommand if passed.
+    :param ctx:
+    :return:
+    """
+    # Same remark as above ... what???
+
+    # cmd_str = "{0.bot.command_prefix}help {0.invoked_with}".format(ctx)
+    # if ctx.subcommand_passed:
+    #     cmd_str += " {0.subcommand_passed}".format(ctx)
+    # return cmd_str
+
+    return "{0}help {1.command!s}".format(get_command_prefix(ctx), ctx)
+
+
+def get_usage_str(ctx: commands.Context) -> str:
+    """
+    Retrieves the signature portion of the help page.
+
+    Based on discord.ext.commands.formatter.HelpFormatter.get_command_signature()
+    https://github.com/Rapptz/discord.py/blob/async/discord/ext/commands/formatter.py
+
+    Copyright (c) 2015-2016 Rapptz. Distributed under the MIT Licence.
+    """
+    result = []
+    prefix = get_command_prefix(ctx)
+    cmd = ctx.command
+    parent = cmd.full_parent_name
+    if len(cmd.aliases) > 0:
+        aliases = '|'.join(cmd.aliases)
+        fmt = '{0}[{1.name}|{2}]'
+        if parent:
+            fmt = '{0}{3} [{1.name}|{2}]'
+        result.append(fmt.format(prefix, cmd, aliases, parent))
+    else:
+        name = prefix + cmd.name if not parent else prefix + parent + ' ' + cmd.name
+        result.append(name)
+
+    params = cmd.clean_params
+    if len(params) > 0:
+        for name, param in params.items():
+            if param.default is not param.empty:
+                # We don't want None or '' to trigger the [name=value] case and instead it should
+                # do [name] since [name=None] or [name=] are not exactly useful for the user.
+                should_print = param.default if isinstance(param.default, str)\
+                               else param.default is not None
+                if should_print:
+                    result.append('[{}={}]'.format(name, param.default))
+                else:
+                    result.append('[{}]'.format(name))
+            elif param.kind == param.VAR_POSITIONAL:
+                result.append('[{}...]'.format(name))
+            else:
+                result.append('<{}>'.format(name))
+
+    return ' '.join(result)
+
+
+def get_group_help(ctx: commands.Context):
+    command_list = list(ctx.command.commands.keys())
+    return ('Invalid sub-command. Valid sub-commands are {0!s}. '
+            'Use `{1}` or `{1} <subcommand>` for instructions.') \
+        .format(command_list, get_help_str(ctx))

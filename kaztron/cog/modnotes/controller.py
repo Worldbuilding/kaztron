@@ -1,12 +1,15 @@
 import logging
 from datetime import datetime
-from typing import List, Union, Tuple, Optional, Iterable
+from typing import List, Union, Tuple, Optional, Iterable, Sequence
 
 import discord
 
+# noinspection PyUnresolvedReferences
 from kaztron.driver import database as db
 from kaztron.cog.modnotes.model import *
-from kaztron.utils.strings import get_timestamp_str
+from kaztron.driver.database import make_error_handler_decorator, format_like
+from kaztron.utils.discord import extract_user_id
+from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -21,21 +24,6 @@ class UserNotFound(RuntimeError):
     pass
 
 
-def on_error_rollback(func):
-    """
-    Decorator for database operations. Any raised exceptions will cause a rollback, and then be
-    re-raised.
-    """
-    def db_safe_exec(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.error('Error ({!s}) - rolling back'.format(e))
-            session.rollback()
-            raise
-    return db_safe_exec
-
-
 def init_db():
     global engine, session
     engine = db.make_sqlite_engine(db_file)
@@ -44,7 +32,55 @@ def init_db():
     Base.metadata.create_all(engine)
 
 
-async def query_user(bot, id_: str):
+on_error_rollback = make_error_handler_decorator(session, logger)
+
+
+async def create_user(discord_id: str, bot: discord.Client) -> User:
+    """
+    Create a database user
+    :param discord_id: The discord user ID, of the form \d+.
+    :param bot: The client instance, used to retrieve the Discord user.
+    :return:
+    """
+    # Try to find the user
+    try:
+        for server in bot.servers:
+            member = server.get_member(discord_id)  # type: discord.Member
+            if member:
+                break
+        else:  # If user has left server, see if the account still exists via the API
+            # noinspection PyUnresolvedReferences
+            member = await bot.get_user_info(discord_id)
+    except discord.NotFound as e:
+        raise UserNotFound('Discord user not found') from e
+
+    # Check names and nicknames to build name/alias profile
+    if hasattr(member, 'nick') and member.nick:
+        name = member.nick
+        alias = member.name
+    else:
+        name = member.name
+        alias = None
+
+    # Create and store the user
+    db_user = User(discord_id=discord_id, name=name)
+    if alias:
+        # noinspection PyUnresolvedReferences
+        db_user.aliases.append(UserAlias(user=db_user, name=alias))
+
+    try:
+        session.add(db_user)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    else:
+        logger.debug('Created user: {!r}'.format(db_user))
+
+    return db_user
+
+
+async def query_user(bot: discord.Client, id_: str):
     """
     Find a user given an ID string passed by command, or create it if it does not exist.
 
@@ -61,79 +97,90 @@ async def query_user(bot, id_: str):
     :raises discord.HTTPException: Discord API error occurred
     :raises db.exc.MultipleResultsFound: Should never happen - database is buggered.
     """
-    discord_id = None
-    db_id = None
-
     # Parse the passed ID
-    if id_.isnumeric():
-        discord_id = id_
-    elif id_.startswith('<@') and id_.endswith('>'):
-        discord_id = id_[2:-1]
-
-        # Handle nickname ! and role & mentions
-        if not discord_id:
-            raise ValueError('Invalid Discord user ID format: no ID in mention')
-        elif discord_id[0] == '&':
-            raise ValueError('Invalid Discord user ID format: mention must be user, not role')
-        elif discord_id[0] == '!':
-            discord_id = discord_id[1:]
-
-        # Discord IDs are stored as strings but must always be numeric values
-        if not discord_id.isnumeric():
-            raise ValueError('Invalid Discord user ID format: must be numeric')
-    elif id_.startswith('*'):
+    if id_.startswith('*'):
         try:
             db_id = int(id_[1:])
         except ValueError:
-            raise ValueError('Invalid KazTron user ID: everything after `*` must be numeric')
+            raise ValueError('Invalid KazTron user ID: must be "*" followed by a number')
+        db_user = await get_user_by_db_id(db_id, bot)
     else:
-        raise ValueError('Invalid user ID format')
-
-    # Retrieve the user depending on the passed ID type
-    if discord_id:
-        logger.debug('_query_user: passed Discord ID: {}'.format(discord_id))
-        # Try to find discord_id in database
         try:
-            db_user = session.query(User).filter_by(discord_id=discord_id).one_or_none()
-        except db.orm_exc.MultipleResultsFound:
-            logger.exception("Er, mate, I think we've got a problem here. "
-                             "The database is buggered.")
-            raise
+            discord_id = extract_user_id(id_)
+        except discord.InvalidArgument:
+            raise ValueError('Invalid Discord user ID format')
+        db_user = await get_user_by_discord_id(discord_id, bot)
 
-        if db_user:
-            logger.debug('_query_user: found user: {!r}'.format(db_user))
-        else:  # If does not exist - make a new user in database
-            logger.debug('_query_user: user not found, creating record')
-            try:
-                user = await bot.get_user_info(discord_id)
-            except discord.NotFound as e:
-                raise UserNotFound('Discord user not found') from e
-            db_user = User(discord_id=discord_id, name=user.name)
-            try:
-                session.add(db_user)
-                session.commit()
-            except:
-                session.rollback()
-                raise
-            else:
-                logger.debug('_query_user: created user: {!r}'.format(db_user))
+    for server in bot.servers:
+        member = server.get_member(db_user.discord_id)  # type: discord.Member
+        if member:
+            update_nicknames(db_user, member)
+            break
+    else:
+        logger.warning("Can't find Discord member to update nicknames for {!r}".format(db_user))
 
-        # either way, return the dbuser
+    return db_user
+
+
+async def get_user_by_discord_id(discord_id: str, bot: discord.Client) -> User:
+    """
+    Find a database user by their Discord ID, or create it if it does not exist.
+    :param discord_id: The discord ID, as a numeric string.
+    :param bot: discord.Client, used to retrieve Discord user information if needed
+    :return: The database User object
+    """
+    logger.debug('get_user_by_discord_id: passed Discord ID: {}'.format(discord_id))
+    # Try to find discord_id in database
+    try:
+        db_user = session.query(User).filter_by(discord_id=discord_id).one_or_none()
+    except db.orm_exc.MultipleResultsFound:
+        logger.exception("Er, mate, I think we've got a problem here. "
+                         "The database is buggered.")
+        raise
+
+    if db_user:
+        logger.debug('get_user_by_discord_id: found user: {!r}'.format(db_user))
+    else:  # If does not exist - make a new user in database
+        logger.debug('get_user_by_discord_id: user not found, creating record')
+        db_user = await create_user(discord_id, bot)
+    return db_user
+
+
+async def get_user_by_db_id(user_id: int, bot: discord.Client) -> User:
+    """
+    Find a database user by the database user ID.
+    :param user_id: The user ID in the databse.
+    :param bot: discord.Client, used to retrieve Discord user information if needed
+    :return: The database User object
+    """
+    logger.debug('get_user_by_db_id: passed database ID: {}'.format(user_id))
+    try:
+        db_user = session.query(User).filter_by(user_id=user_id).one()
+    except db.orm_exc.NoResultFound as e:
+        raise UserNotFound('Database user not found') from e
+    except db.orm_exc.MultipleResultsFound:
+        logger.exception("Er, mate, I think we've got a problem here. "
+                         "The database is buggered.")
+        raise
+    else:
+        logger.debug('get_user_by_db_id: found user: {!r}'.format(db_user))
         return db_user
 
-    else:  # database ID was passed
-        logger.debug('_query_user: passed database ID: {}'.format(db_id))
-        try:
-            db_user = session.query(User).filter_by(user_id=db_id).one()
-        except db.orm_exc.NoResultFound as e:
-            raise UserNotFound('Database user not found') from e
-        except db.orm_exc.MultipleResultsFound:
-            logger.exception("Er, mate, I think we've got a problem here. "
-                             "The database is buggered.")
-            raise
-        else:
-            logger.debug('_query_user: found user: {!r}'.format(db_user))
-        return db_user
+
+@on_error_rollback
+def update_nicknames(user: User, member: discord.Member):
+    """
+    Update a user's nicknames and usernames.
+    """
+    logger.debug("update_nicknames: Updating names: {!r}...".format(user))
+    if member.nick and member.nick != user.name and member.nick not in user.aliases:
+        # noinspection PyUnresolvedReferences
+        user.aliases.append(UserAlias(user=user, name=member.nick))
+    if member.name != user.name and member.name not in user.name:
+        # noinspection PyUnresolvedReferences
+        user.aliases.append(UserAlias(user=user, name=member.name))
+    session.commit()
+    logger.info("update_nicknames: Updated names: {!r}".format(user))
 
 
 def query_user_group(user: User) -> List[User]:
@@ -146,21 +193,22 @@ def query_user_group(user: User) -> List[User]:
         return [user]
 
 
-def query_user_records(user_group: Union[User, List[User], None], removed=False) -> List[Record]:
+def query_user_records(user_group: Union[User, Sequence[User], None], removed=False)\
+        -> List[Record]:
     """
     :param user_group: User or user group as an iterable of users.
     :param removed: Whether to search for non-removed or removed records.
     :return:
     """
     # Input validation
-    # type: Optional[List[User]]
     user_list = [user_group] if isinstance(user_group, User) else user_group
 
     # Query
     query = session.query(Record).filter_by(is_removed=removed)
     if user_list:
+        # noinspection PyUnresolvedReferences
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
-    results = query.order_by(db.desc(Record.timestamp)).all()
+    results = query.order_by(Record.timestamp).all()
     logger.info("query_user_records: "
                 "Found {:d} records for user group: {!r}".format(len(results), user_group))
     return results
@@ -179,13 +227,15 @@ def query_unexpired_records(*,
     rtypes = [types] if isinstance(types, RecordType) else types  # type: Optional[List[RecordType]]
 
     # Query
+    # noinspection PyComparisonWithNone,PyPep8
     query = session.query(Record).filter_by(is_removed=False) \
                    .filter(db.or_(datetime.utcnow() < Record.expires, Record.expires == None))
     if user_list:
+        # noinspection PyUnresolvedReferences
         query = query.filter(Record.user_id.in_(u.user_id for u in user_list))
     if rtypes:
         query = query.filter(Record.type.in_(rtypes))
-    results = query.order_by(db.desc(Record.timestamp)).all()
+    results = query.order_by(Record.timestamp).all()
     logger.info("query_unexpired_records: "
                 "Found {:d} records for users={!r} types={!r}".format(len(results), users, rtypes))
     return results
@@ -198,7 +248,8 @@ def search_users(search_term: str) -> List[User]:
     :param search_term: The substring to search for - should already be sanitised!
     :return:
     """
-    search_term_like = '%{}%'.format(search_term.replace('%', '\\%').replace('_', '\\_'))
+    search_term_like = format_like(search_term)
+    # noinspection PyUnresolvedReferences
     results = session.query(User).outerjoin(UserAlias) \
         .filter(db.or_(User.name.ilike(search_term_like, escape='\\'),
                 UserAlias.name.ilike(search_term_like, escape='\\'))) \
@@ -230,6 +281,7 @@ def add_user_alias(user: User, alias: str) -> UserAlias:
 
     logger.info("Updating user {0!r} - adding alias {1!r}".format(user, alias))
     db_alias = UserAlias(user=user, name=alias)
+    # noinspection PyUnresolvedReferences
     user.aliases.append(db_alias)
     session.commit()
     return db_alias
@@ -241,6 +293,7 @@ def remove_user_alias(user: User, alias: str):
     :raise db.exc.NoResultFound: Alias could not be found for user
     """
     try:
+        # noinspection PyTypeChecker
         alias = [a for a in user.aliases if a.name.lower() == alias.lower()][0]
     except IndexError as e:
         err_msg = "User {!r} - cannot remove alias - no such alias {!r}".format(user, alias)
@@ -302,8 +355,8 @@ def insert_note(*, user: User, author: User, type_: RecordType,
     logger.debug("note: user={!r} author={!r} type={.name} timestamp={} expires={} body={!r}"
         .format(
                 user, author, type_,
-                get_timestamp_str(timestamp),
-                get_timestamp_str(expires) if expires else None,
+                format_timestamp(timestamp),
+                format_timestamp(expires) if expires else None,
                 body)
     )
     rec = Record(user=user, author=author, type=type_,
@@ -336,3 +389,14 @@ def delete_removed_record(record_id: int):
     logger.info("Deleting record {!r}".format(record))
     session.delete(record)
     session.commit()
+
+
+@on_error_rollback
+def update_record(record_id: int, **kwargs) -> Record:
+    record = get_record(record_id)
+    logger.info("Updating record {!r}".format(record))
+    logger.debug("... with {!r}".format(kwargs))
+    for k, v in kwargs.items():
+        setattr(record, k, v)
+    session.commit()
+    return record

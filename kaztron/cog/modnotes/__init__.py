@@ -1,4 +1,4 @@
-from kaztron.cog.modnotes.cog import ModNotes
+from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes.controller import init_db
 
 

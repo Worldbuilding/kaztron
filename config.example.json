@@ -12,17 +12,41 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
     "channel_request": "channel ID for requests",
-    "log_level": "INFO",
-    "log_file": "kaztron.log"
+    "info_links": {
+      "link name 1": "http://potato.example/url/to/something",
+      "link name 2": "http://google.com"
+    },
+    "date_format": "%Y-%m-%d",
+    "datetime_format": "%Y-%m-%d %H:%M",
+    "datetime_seconds_format": "%Y-%m-%d %H:%M:%S",
+    "daemon": true,
+    "daemon_pidfile": "kaztron.pid",
+    "daemon_user": "For daemon mode, Linux/UNIX username to switch to (optional, leave blank to keep executing user)",
+    "daemon_group": "For daemon mode, Linux/UNIX group to switch to (optional, can leave blank)",
+    "daemon_log": "daemon.log"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "kaztron.log",
+    "max_size_kb": 0,
+    "max_backups": 0,
+    "gzip_backups": true,
+    "tags": {
+      "sqlalchemy.engine": "WARN",
+      "websockets.protocol": "INFO",
+      "discord": "INFO"
+    }
   },
   "spotlight": {
     "channel": "Channel ID",
     "audience_role": "Spotlight Audience role name",
     "host_role": "Spotlight Host role name",
     "spreadsheet_id": "Google Spreadsheet ID",
-    "spreadsheet_range": "Google Spreadsheet range name"
+    "spreadsheet_range": "Google Spreadsheet range name",
+    "start_date_format": "%d",
+    "end_date_format": "%d %B"
   },
   "welcome": {
     "channel_welcome": "channel ID for public welcome messages",
@@ -35,10 +59,43 @@
     "channel_dice": "channel ID where dice are allowed"
   },
   "role_man": {
-    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
-    "role_voice": "Name of the role to assign while in voice channels"
+    "user_roles": {
+      "role_name1": {
+        "join_name": "join command name",
+        "leave_name": "leave command name",
+        "join_msg": "Message to send user when the user successfully joins the role.",
+        "leave_msg": "Message to send when the user successfully leaves the role.",
+        "join_err": "Message when the user tries to join but is already member of the role.",
+        "leave_err": "Message when the user tries to leave but is not a role member.",
+        "join_doc": "Help string for the join command.",
+        "leave_doc": "Help string for the leave command.",
+        "delete": true,
+        "pm": true,
+        "group": ["command", "subcommand", "etc. - command to group the join/leave commands under, must be Group classes - Optional"],
+        "name of another argument here": "include other arguments to pass to the discord.ext.commands.command() decorator"
+      },
+      "role_name2": {
+        "join_name": "join command name",
+        "leave_name": "leave command name",
+        "join_msg": "Message to send user when the user successfully joins the role.",
+        "leave_msg": "Message to send when the user successfully leaves the role.",
+        "join_err": "Message when the user tries to join but is already member of the role.",
+        "leave_err": "Message when the user tries to leave but is not a role member.",
+        "join_doc": "Help string for the join command.",
+        "leave_doc": "Help string for the leave command.",
+        "delete": false,
+        "pm": false,
+        "group": ["command", "subcommand", "etc. - command to group the join/leave commands under, must be Group classes - Optional"],
+        "name of another argument here": "include other arguments to pass to the discord.ext.commands.command() decorator"
+      }
+    },
+    "mod_roles": {
+      "role_name1 (same structure as user_roles)": {}
+    }
   },
   "modtools": {
+    "tempban_role": "Role Name Here",
+    "channel_mod": "ID of channel for mod notifications (like timed unbans)",
     "distinguish_map": {
       "mod-role1": "distinguish-role1",
       "mod-role2": "distinguish-role2"
@@ -50,5 +107,29 @@
   },
   "modnotes": {
     "channel_log": "channel ID - for channel to log all new records to (read-only ideally?)"
+  },
+  "sprint": {
+    "channel": "channel ID",
+    "role_sprint": "role name - people currently sprinting",
+    "role_follow": "role name - people who want to get notified about new sprints",
+    "delay_default": 300,
+    "delay_max": 900,
+    "duration_default": 1500,
+    "duration_min": 300,
+    "duration_max": 3600,
+    "finalize_time": 300,
+    "report_time": "time at which reports are generated weekly, default 17:00"
+  },
+  "quotedb": {
+    "grab_search_max": 100
+  },
+  "userstats": {
+    "ignore_users": ["user ID 1", "user ID 2", "etc"],
+    "ignore_channels": ["channel ID 1", "channel ID 2", "etc"]
+  },
+  "voicelog": {
+    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
+    "channel_text": "text channel ID to output voice status messages to",
+    "role_voice": "Name of the role to assign while in voice channels"
   }
 }

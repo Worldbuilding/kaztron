@@ -1,6 +1,5 @@
 import logging
 import os
-import random
 
 import httplib2
 from googleapiclient import discovery
@@ -8,8 +7,11 @@ from oauth2client import client, tools
 from oauth2client.file import Storage
 
 # Do NOT remove - exported for external use
+# noinspection PyUnresolvedReferences
 from oauth2client.client import UnknownClientSecretsFlowError
+# noinspection PyUnresolvedReferences
 from oauth2client.clientsecrets import InvalidClientSecretsError
+# noinspection PyUnresolvedReferences
 from googleapiclient.errors import Error
 
 
@@ -21,7 +23,7 @@ except ImportError:
     argparse = None
 
 if argparse:
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+    flags, _ = argparse.ArgumentParser(parents=[tools.argparser]).parse_known_args()
 else:
     flags = None
 
@@ -32,6 +34,7 @@ SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 CLIENT_SECRET_FILE = 'client_secret.json'
 
 
+# noinspection PyUnresolvedReferences
 def _get_credentials(user_agent: str):
     """
     Gets valid user credentials from storage.
@@ -67,7 +70,8 @@ def get_sheet_rows(sheet_id: str, sheet_range: str, user_agent: str):
     http = credentials.authorize(httplib2.Http())
     discovery_url = 'https://sheets.googleapis.com/$discovery/rest?version=v4'
 
-    service = discovery.build('sheets', 'v4', http=http, discoveryServiceUrl=discovery_url)
+    service = discovery.build('sheets', 'v4', http=http, discoveryServiceUrl=discovery_url,
+        cache_discovery=False)
     result = service.spreadsheets() \
                     .values()  \
                     .get(spreadsheetId=sheet_id, range=sheet_range) \
@@ -79,9 +83,3 @@ def get_sheet_rows(sheet_id: str, sheet_range: str, user_agent: str):
     else:
         logger.warning('No data found in spreadsheet: {} @ {}'.format(sheet_range, sheet_id))
         return []
-
-
-def choose(num):
-    rows = main()
-    choice = rows[num]
-    return choice

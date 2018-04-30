@@ -4,18 +4,20 @@ from typing import Union
 import discord
 from discord.ext import commands
 
-from kaztron.config import get_kaztron_config, get_runtime_config
+from kaztron import KazCog
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
+from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits
+from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, get_command_str, get_help_str, get_timestamp_str, \
-    split_code_chunks_on, natural_truncate
+from kaztron.utils.strings import format_list, split_code_chunks_on, natural_truncate
+
+from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
 
 
-class WordFilter:
+class WordFilter(KazCog):
 
     display_filter_types = ['warn', 'del']
 
@@ -47,57 +49,42 @@ class WordFilter:
     }
 
     def __init__(self, bot):
-        self.bot = bot
-        self.config = get_kaztron_config()
-        try:
-            self.filter_cfg = get_runtime_config()
-        except OSError as e:
-            logger.error(str(e))
-            raise RuntimeError("Failed to load runtime config") from e
-        self.filter_cfg.set_defaults(
+        super().__init__(bot)
+        self.state.set_defaults(
             'filter',
             warn=[],
             delete=[],
             channel=self.config.get('filter', 'channel_warning')
         )
         self._load_filter_rules()
-        self.dest_output = None
-        self.dest_warning = None
-        self.dest_current = None
+        self.channel_warning = None
+        self.channel_current = None
 
     def _load_filter_rules(self):
         for filter_type, engine in self.engines.items():
             logger.debug("Reloading {} rules".format(filter_type))
-            engine.load_rules(self.filter_cfg.get("filter", filter_type, []))
+            engine.load_rules(self.state.get("filter", filter_type, []))
 
     async def on_ready(self):
         """
         Load information from the server.
         """
-        dest_output_id = self.config.get('discord', 'channel_output')
-        self.dest_output = self.bot.get_channel(dest_output_id)
-
         dest_warning_id = self.config.get('filter', 'channel_warning')
-        self.dest_warning = self.bot.get_channel(dest_warning_id)
+        self.channel_warning = self.validate_channel(dest_warning_id)
 
-        self.dest_current = self.bot.get_channel(self.filter_cfg.get('filter', 'channel'))
+        try:
+            self.channel_current = self.validate_channel(self.state.get('filter', 'channel'))
+        except ValueError:
+            self.channel_current = self.channel_warning
+            self.state.set('filter', 'channel', str(self.channel_warning.id))
 
-        # validation
-        if self.dest_output is None:
-            raise ValueError("Output channel '{}' not found".format(dest_output_id))
+        await super().on_ready()
 
-        if self.dest_warning is None:
-            raise ValueError("WordFilter warning channel '{}' not found".format(dest_warning_id))
-
-        if self.dest_current is None:
-            self.dest_current = self.dest_warning
-            self.filter_cfg.set('filter', 'channel', str(self.dest_warning.id))
-
+    @ready_only
     async def on_message(self, message):
         """
         Message handler. Check all non-mod messages for filtered words.
         """
-
         is_mod = check_role(self.config.get("discord", "mod_roles", []) +
                             self.config.get("discord", "admin_roles", []), message)
         is_pm = isinstance(message.channel, discord.PrivateChannel)
@@ -130,17 +117,17 @@ class WordFilter:
                 em.set_author(name=self.match_headings[filter_type])
                 em.add_field(name="User", value=message.author.mention, inline=True)
                 em.add_field(name="Channel", value=message.channel.mention, inline=True)
-                em.add_field(name="Timestamp", value=get_timestamp_str(message), inline=True)
+                em.add_field(name="Timestamp", value=format_timestamp(message), inline=True)
                 em.add_field(name="Match Text", value=match_text, inline=True)
                 em.add_field(name="Content",
                              value=natural_truncate(message_string, Limits.EMBED_FIELD_VALUE),
                              inline=False)
 
-                await self.bot.send_message(self.dest_current, embed=em)
+                await self.bot.send_message(self.channel_current, embed=em)
 
     @commands.group(name="filter", invoke_without_command=True, pass_context=True)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def word_filter(self, ctx):
         """
         [MOD ONLY] Manages the filter lists. This feature is used to notify moderators of keywords
@@ -156,7 +143,7 @@ class WordFilter:
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def filter_list(self, ctx, filter_type: str=None):
         """
         [MOD ONLY] Lists the current filters.
@@ -185,7 +172,7 @@ class WordFilter:
 
             logger.info("filter_list: listing '{}' list for {}"
                 .format(validated_type, ctx.message.author))
-            filter_list = self.filter_cfg.get("filter", validated_type)
+            filter_list = self.state.get("filter", validated_type)
             if filter_list:
                 list_str = format_list(filter_list)
             else:
@@ -199,7 +186,7 @@ class WordFilter:
 
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['a'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def add(self, ctx, filter_type: str, word: str):
         """
         [MOD ONLY] Add a new filter word/expression.
@@ -225,8 +212,8 @@ class WordFilter:
             return
         else:
             # not a copy - can modify directly
-            self.filter_cfg.get("filter", validated_type).append(word)
-            self.filter_cfg.write()
+            self.state.get("filter", validated_type).append(word)
+            self.state.write()
 
             logger.info("add: {}: Added {!r} to the {} list."
                 .format(ctx.message.author, word, validated_type))
@@ -236,7 +223,7 @@ class WordFilter:
 
     @word_filter.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def rem(self, ctx, filter_type: str, word: str):
         """
         [MOD ONLY] Remove a filter word/expression by word.
@@ -257,7 +244,7 @@ class WordFilter:
             # error messages and logging already managed
             return
         else:
-            filter_list = self.filter_cfg.get("filter", validated_type)
+            filter_list = self.state.get("filter", validated_type)
             try:
                 # not a copy - can modify directly
                 filter_list.remove(word)
@@ -268,7 +255,7 @@ class WordFilter:
                 return
 
             else:  # no exceptions
-                self.filter_cfg.write()
+                self.state.write()
 
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, word, validated_type))
@@ -279,7 +266,7 @@ class WordFilter:
 
     @word_filter.command(pass_context=True, ignore_extra=False)
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def rnum(self, ctx, filter_type: str, index: int):
         """
         [MOD ONLY] Remove a filter word/expression by list index.
@@ -301,7 +288,7 @@ class WordFilter:
             return
         else:
             cfg_index = index - 1
-            filter_list = self.filter_cfg.get("filter", validated_type)
+            filter_list = self.state.get("filter", validated_type)
             try:
                 # not a copy - can modify directly
                 del_value = filter_list[cfg_index]
@@ -314,7 +301,7 @@ class WordFilter:
                 return
 
             else:  # no exceptions
-                self.filter_cfg.write()
+                self.state.write()
 
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, del_value, validated_type))
@@ -325,7 +312,7 @@ class WordFilter:
 
     @word_filter.command(name='switch', pass_context=True, ignore_extra=False, aliases=['s', 'sw'])
     @mod_only()
-    @mod_channels()
+    @mod_channels(delete_on_fail=True)
     async def filter_switch(self, ctx):
         """
         [MOD ONLY] Change the bot output channel for wordfilter warnings.
@@ -335,22 +322,22 @@ class WordFilter:
         """
         logger.info("switch: {}".format(message_log_str(ctx.message)))
 
-        if self.dest_current is None and self.dest_warning is None:
+        if self.channel_current is None and self.channel_warning is None:
             logger.warning("switch invoked before bot ready state???")
             await self.bot.say("Sorry, I'm still booting up. Try again in a few seconds.")
             return
 
-        if self.dest_current is self.dest_warning:
-            self.dest_current = self.dest_output
+        if self.channel_current is self.channel_warning:
+            self.channel_current = self.channel_out
         else:
-            self.dest_current = self.dest_warning
-        self.filter_cfg.set('filter', 'channel', str(self.dest_current.id))
-        self.filter_cfg.write()
+            self.channel_current = self.channel_warning
+        self.state.set('filter', 'channel', str(self.channel_current.id))
+        self.state.write()
 
         logger.info("switch(): Changed filter warning channel to #{}"
-            .format(self.dest_current.name))
+            .format(self.channel_current.name))
         await self.bot.say("Changed the filter warning channel to {}"
-            .format(self.dest_current.mention))
+            .format(self.channel_current.mention))
 
     @add.error
     async def filter_add_error(self, exc, ctx: commands.Context):
