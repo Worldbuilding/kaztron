@@ -1028,7 +1028,7 @@ class WritingSprint(KazCog):
             await asyncio.sleep(wait_time)
 
             logger.info("Generating weekly report...")
-            await self._stats_inner(self.channel, None, last_report_dt)
+            await self._stats_global(self.channel, last_report_dt)
             await self._leader_inner(self.channel, last_report_dt)
             await self.bot.send_message(self.channel, self.DISP_STRINGS['report'])
 
