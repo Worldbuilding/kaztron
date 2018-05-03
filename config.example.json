@@ -34,7 +34,7 @@
     "max_backups": 0,
     "gzip_backups": true,
     "tags": {
-      "sqlalchemy.engine": "WARN",
+      "sqlalchemy.engine": "WARNING",
       "websockets.protocol": "INFO",
       "discord": "INFO"
     }
