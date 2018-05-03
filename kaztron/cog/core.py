@@ -135,7 +135,7 @@ class CoreCog(kaztron.KazCog):
 
         if isinstance(exc, DeleteMessage):
             try:
-                await self.bot.delete_message(exc.message)
+                await self.bot.delete_message(ctx.message)
                 logger.info("on_command_error: Deleted invoking message")
             except discord.errors.DiscordException:
                 logger.exception("Can't delete invoking message!")
@@ -191,7 +191,7 @@ class CoreCog(kaztron.KazCog):
             logger.warning(err_msg)
             await self.send_output('[WARNING] ' + err_msg)
             await self.bot.send_message(ctx.message.channel,
-                author_mention +"Only admins can use that command.")
+                author_mention + "Only admins can use that command.")
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
             logger.warning(
@@ -265,8 +265,15 @@ class CoreCog(kaztron.KazCog):
                     "Sorry, I don't know the command `{}{.invoked_with}`"
                         .format(get_command_prefix(ctx), ctx))
 
+        elif isinstance(exc, commands.UserInputError):
+            logger.warning("UserInputError: {}\n{}"
+                .format(cmd_string, tb_log_str(exc)))
+            await self.bot.send_message(ctx.message.channel,
+                '{} {}'.format(author_mention, exc.args[0]))
+
         else:
-            logger.exception("Unknown exception occurred")
+            logger.error("Unknown command exception occurred: {}\n\n{}"
+                .format(cmd_string, tb_log_str(exc)))
             await self.bot.send_message(ctx.message.channel, author_mention +
                 "An unexpected error occurred! Details have been logged. Let a mod know so we can "
                 "investigate.")

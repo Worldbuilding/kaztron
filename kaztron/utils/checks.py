@@ -88,7 +88,7 @@ def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delet
             if not delete_on_fail:
                 raise UnauthorizedChannelError("Command not allowed in channel.", ctx)
             else:
-                raise DeleteMessage(ctx.message,
+                raise DeleteMessage(
                     UnauthorizedChannelError("Command not allowed in channel.", ctx))
 
     return commands.check(predicate)

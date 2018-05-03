@@ -121,6 +121,7 @@ def channel_mention(channel_id: str) -> str:
 
 
 _re_user_id = re.compile('(?:<@|@)?!?([0-9]{15,23})>?')
+_re_role_id = re.compile('(?:<@&|@&|&)?([0-9]{15,23})>?')
 
 
 def extract_user_id(input_id: str) -> str:
@@ -150,10 +151,32 @@ def extract_user_id(input_id: str) -> str:
     :return: The extracted user ID (numerical string).
     :raise discord.InvalidArgument: id is not a recognised user ID format
     """
+    if 15 <= len(input_id) <= 23 and input_id.isnumeric():
+        return input_id
+
     try:
         return _re_user_id.fullmatch(input_id).group(1)
     except AttributeError:  # no match - fullmatch() returned None
         raise discord.InvalidArgument('Invalid user ID format {!r}'.format(input_id))
+
+
+def extract_role_id(input_id: str) -> str:
+    """
+    Similar to :func:`~.extract_user_id` for roles.
+
+    Role mentions are of the form <@&123456789012345678>.
+
+    :param input_id: The raw input ID.
+    :return: The extracted user ID (numerical string).
+    :raise discord.InvalidArgument: id is not a recognised user ID format
+    """
+    if 15 <= len(input_id) <= 23 and input_id.isnumeric():
+        return input_id
+
+    try:
+        return _re_role_id.fullmatch(input_id).group(1)
+    except AttributeError:
+        raise discord.InvalidArgument('Invalid role ID format {!r}'.format(input_id))
 
 
 def get_member(ctx: commands.Context, user: str) -> discord.Member:
