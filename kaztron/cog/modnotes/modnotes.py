@@ -640,6 +640,8 @@ class ModNotes(KazCog):
                 c.add_user_alias(db_user, alias_s)
             except db.core_exc.IntegrityError:  # probably UNIQUE constraint
                 msg_format = "Cannot update user {0}: alias '{1}' already exists"
+            except ValueError as e:
+                msg_format = "Cannot update user {0}: " + e.args[0]
             else:
                 msg_format = "Updated user {0} - added alias '{1}'"
 

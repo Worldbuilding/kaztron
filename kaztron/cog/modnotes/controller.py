@@ -172,15 +172,37 @@ def update_nicknames(user: User, member: discord.Member):
     """
     Update a user's nicknames and usernames.
     """
+    # to fix a previous bug that added duplicates...
+    fix_alias_duplicates(user)
+
+    # actual nickname update
     logger.debug("update_nicknames: Updating names: {!r}...".format(user))
-    if member.nick and member.nick != user.name and member.nick not in user.aliases:
+    alias_names = [a.name for a in user.aliases]
+    if member.nick and member.nick != user.name and member.nick not in alias_names:
         # noinspection PyUnresolvedReferences
         user.aliases.append(UserAlias(user=user, name=member.nick))
-    if member.name != user.name and member.name not in user.name:
+        logger.debug("update_nicknames: Added name {!r}".format(member.nick))
+    if member.name != user.name and member.name not in alias_names:
         # noinspection PyUnresolvedReferences
         user.aliases.append(UserAlias(user=user, name=member.name))
+        logger.debug("update_nicknames: Added name {!r}".format(member.name))
+
     session.commit()
-    logger.info("update_nicknames: Updated names: {!r}".format(user))
+
+
+@on_error_rollback
+def fix_alias_duplicates(user: User):
+    logger.info("fix_alias_duplicates: Fixing duplicates...")
+    remove_aliases = []
+    for i, alias in enumerate(user.aliases):
+        # if there's a duplicate after this one
+        if alias.name in (a.name for a in user.aliases[i+1:]):
+            remove_aliases.append(alias)
+
+    logger.debug("fix_alias_duplicates: Duplicates found: {}"
+        .format(', '.join(set([a.name for a in remove_aliases]))))
+    for a in remove_aliases:
+        session.delete(a)
 
 
 def query_user_group(user: User) -> List[User]:
@@ -278,6 +300,9 @@ def add_user_alias(user: User, alias: str) -> UserAlias:
     """
     if '\n' in alias or len(alias) > Limits.NAME:
         raise ValueError('Invalid alias')
+
+    if alias in [a.name for a in user.aliases]:
+        raise ValueError('Alias already exists')
 
     logger.info("Updating user {0!r} - adding alias {1!r}".format(user, alias))
     db_alias = UserAlias(user=user, name=alias)
