@@ -4,8 +4,8 @@ from typing import List
 
 import discord
 
-# noinspection PyUnresolvedReferences
 from kaztron.cog.projects.wizard import ProjectWizard
+# noinspection PyUnresolvedReferences
 from kaztron.driver import database as db
 from .model import *
 from kaztron.driver.database import make_error_handler_decorator, format_like, \
@@ -44,8 +44,18 @@ def get_or_make_user(member: discord.Member):
         return session.query(User).filter_by(discord_id=member.id).one()
     except db.orm_exc.NoResultFound:
         user = User(discord_id=member.id)
-        s.add(user)
+        session.add(user)
         return user
+
+
+def query_users(*, genre: Genre=None, type: ProjectType=None) \
+        -> List[User]:
+    q = session.query(User)
+    if genre:
+        q = q.filter_by(genre=genre)
+    if type:
+        q = q.filter_by(type=type)
+    return q.all()
 
 
 def get_genre(name: str) -> Genre:
@@ -70,12 +80,21 @@ def query_project_types() -> List[ProjectType]:
     return session.query(ProjectType).order_by(ProjectType.name).all()
 
 
+def query_projects(*, user: discord.Member=None, genre: Genre=None, type: ProjectType=None)\
+        -> List[Project]:
+    q = session.query(Project)
+    if user:
+        q = q.filter_by(user_id=user.id)
+    if genre:
+        q = q.filter_by(genre=genre)
+    if type:
+        q = q.filter_by(type=type)
+    return q.all()
+
+
 def add_project(wizard: ProjectWizard) -> Project:
     member = discord.Object(wizard.user_id)
-    p = Project(
-        user=get_or_make_user(member),
-        **wizard
-    )
+    p = Project(user=get_or_make_user(member), **wizard)
     session.add(p)
     return p
 
@@ -87,5 +106,5 @@ def update_project(wizard: ProjectWizard) -> Project:
             "Can't edit: you don't have an active (selected) project.")
     for k, v in wizard.items():
         if v is not None:
-            setattr(user, k, v)
+            setattr(user.active_project, k, v)
     return user.active_project

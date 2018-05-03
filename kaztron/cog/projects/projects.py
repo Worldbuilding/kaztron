@@ -1,18 +1,17 @@
 import logging
-from typing import List, Sequence
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.utils.converter import MemberConverter2
-from . import model as m, query as q, wizard as w
-from .wizard import ProjectWizard
-from kaztron.driver import database
+from . import model as m, query as q
+from .discord import *
+from .wizard import WizardManager
 from kaztron.kazcog import ready_only
-from kaztron.theme import solarized
-from kaztron.utils.checks import mod_channels, mod_only
-from kaztron.utils.discord import user_mention, Limits, get_command_str
+from kaztron.utils.checks import mod_only
+from kaztron.utils.discord import user_mention, role_mention, Limits, get_command_str,\
+    get_group_help
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import split_chunks_on, format_list
@@ -24,25 +23,23 @@ class ProjectsCog(KazCog):
     """
     Configuration section ``projects``:
 
-    * ``pm_wizard`` Boolean (true|false). If true, the new projects wizard is PM'd. If false, it
-      is conducted in-channel.
     * ``project_channel``: String (channel ID). Channel in which to output/archive projects.
-    """
-    EMBED_COLOUR = solarized.orange
 
+    Initial set-up:
+    * Use the `.project admin` commands to set up the genre and type list.
+    """
     channel_id = KazCog._config.get('projects', 'project_channel')
 
     # TODO: optional followable roles (configurable)
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.config.set_defaults('projects', new_wizards={}, edit_wizards={})
-        self.new_wizards = {}
-        self.edit_wizards = {}
+        self.state.set_defaults('projects', wizards=WizardManager(self.bot).to_dict())
+        self.wizard_manager = None
         self.channel = None  # type: discord.Channel
 
     async def on_ready(self):
-        channel_id = self.config.get('projects', 'proj_channel')
+        channel_id = self.config.get('projects', 'project_channel')
         self.channel = self.validate_channel(channel_id)
         await super().on_ready()
         try:
@@ -55,35 +52,13 @@ class ProjectsCog(KazCog):
         self._save_state()
 
     def _load_state(self):
-        for uid, wizard_dict in self.state.get('projects', 'new_wizards').items():
-            self.new_wizards[uid] = ProjectWizard.from_dict(wizard_dict)
-
-        for uid, wizard_dict in self.state.get('projects', 'edit_wizards').items():
-            self.edit_wizards[uid] = ProjectWizard.from_dict(wizard_dict)
-            self.edit_wizards[uid].opts = ProjectWizard.keys
+        self.wizard_manager = WizardManager.from_dict(
+            self.bot, self.state.get('projects', 'wizards')
+        )
 
     def _save_state(self):
-        for section, wizards_dict in (
-                ('new_wizards', self.new_wizards),
-                ('edit_wizards', self.edit_wizards)
-                ):
-            self.state.set('projects', section,
-                {u.id: wiz.to_dict() for u, wiz in wizards_dict.items()}
-            )
-
-    def get_project_embed(self, project: m.Project) -> discord.Embed:
-        em = discord.Embed(
-            title=project.title,
-            description='by {}\n\n{}'.format(user_mention(project.user.discord_id), project.pitch),
-            color=self.EMBED_COLOUR
-        )
-        em.add_field(name='Genre', value='{0.genre.name} - {0.subgenre}'.format(project))
-        em.add_field(name='Type', value=project.type.name)
-        if project.follow_role:
-            em.add_field(name='Follow Role', value=project.follow_role)
-        if project.url:
-            em.add_field(name='More Info', value=project.url)
-        return em
+        self.state.set('projects', 'wizards', self.wizard_manager.to_dict())
+        self.state.write()
 
     @commands.group(invoke_without_command=True, pass_context=True, ignore_extra=False,
         aliases=['projects'])
@@ -98,20 +73,28 @@ class ProjectsCog(KazCog):
             user = q.get_or_make_user(member)
 
         if len(user.projects) == 1:
-            await self.bot.say("**{} Project #1**".format(member.mention),
-                               embed=self.get_project_embed(user.projects[0]))
+            await self.bot.say("**{} Project**".format(member.mention),
+                               embed=get_project_embed(user.projects[0]))
 
         elif len(user.projects) > 1:
             if num is None:
                 list_str = format_list(['{0.title} ({0.genre.name}, {0.type.name})'.format(p)
                                         for p in user.projects])
-                await self.bot.say('**{} Projects**\n{}'.format(member.mention, list_str))
+                if user.active_project:
+                    await self.bot.say(
+                        '**{} Projects**\n{}\n\n**Active Project**'.format(member.mention, list_str),
+                        embed=get_project_embed(user.active_project)
+                    )
+                else:
+                    await self.bot.say('**{} Projects**\n{}'.format(member.mention, list_str))
+
             elif 1 <= num <= len(user.projects):
                 await self.bot.say("**{} Project #{}**".format(member.mention, num),
-                    embed=self.get_project_embed(user.projects[num-1]))
+                    embed=get_project_embed(user.projects[num-1]))
+
             else:
-                raise commands.BadArgument(
-                    "`num` is out of range (1-{:d})".format(len(user.projects)))
+                raise commands.BadArgument("`num` is out of range (1-{:d})"
+                    .format(len(user.projects)))
 
         else:
             await self.bot.say("{} doesn't have any projects yet!".format(member.mention))
@@ -120,8 +103,8 @@ class ProjectsCog(KazCog):
     async def select(self, ctx: commands.Context, num: int):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
 
-        if self.has_open_wizard(ctx.message.author):
-            await self._cancel_wizards(ctx.message.author)
+        await self.wizard_manager.cancel_wizards(ctx.message.author)
+        self._save_state()
 
         with q.transaction():
             user = q.get_or_make_user(ctx.message.author)
@@ -135,138 +118,271 @@ class ProjectsCog(KazCog):
         await self.bot.say("{} Your active project has been set to {}"
             .format(ctx.message.author.mention, user.active_project.title))
 
-    def has_open_wizard(self, member: discord.Member):
-        return member.id in self.new_wizards or member.id in self.edit_wizards
-
-    async def _cancel_wizards(self, member: discord.Member):
-        try:
-            del self.new_wizards[member.id]
-        except KeyError:
-            pass
-        else:
-            logger.info("Cancelled new project wizard for user {}".format(member))
-            await self.bot.send_message(member, "Creation of a new project has been cancelled.")
-
-        try:
-            del self.edit_wizards[member.id]
-        except KeyError:
-            pass
-        else:
-            logger.info("Cancelled project edit wizard for user {}".format(member))
-            await self.bot.send_message(member, "Editing your current project has been cancelled.")
-
-        self._save_state()
-
     @project.command(pass_context=True, ignore_extra=False)
     async def new(self, ctx: commands.Context):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
 
-        if self.has_open_wizard(ctx.message.author):
-            raise commands.CommandError("You already have a wizard open!")
+        if self.wizard_manager.has_open_wizard(ctx.message.author):
+            raise commands.UserInputError("You already have an ongoing wizard!")
 
-        # send start message
-        await self.bot.send_message(ctx.message.author, w.start_msg)
-
-        # set up wizard
-        wizard = ProjectWizard(ctx.message.author.id, ctx.message.timestamp)
-        self.new_wizards[ctx.message.author.id] = wizard
+        await self.bot.reply("I've sent you a PM! Answer my questions to create your project.")
+        await self.wizard_manager.create_new_wizard(ctx.message.author, ctx.message.timestamp)
         self._save_state()
-
-        # Send the first question
-        await self.bot.send_message(ctx.message.author, wizard.question)
 
     @project.command(pass_context=True, ignore_extra=False)
     async def wizard(self, ctx: commands.Context):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
 
-        if self.has_open_wizard(ctx.message.author):
-            raise commands.CommandError("You already have a wizard open!")
+        if self.wizard_manager.has_open_wizard(ctx.message.author):
+            raise commands.UserInputError("You already have an ongoing wizard!")
 
         # check active project
         with q.transaction():
             user = q.get_or_make_user(ctx.message.author)
-
         if user.active_project is None:
-            await self.bot.reply(
-                "Oops, you can't edit when you don't have an active (selected) project!")
-            return
+            raise commands.UserInputError("Oops, you can't edit when you don't have "
+                                          "an active (selected) project!")
 
-        # send start message
-        start_msg = w.start_edit_msg_fmt.format(user.active_project)
-        await self.bot.send_message(ctx.message.author, start_msg)
+        await self.bot.reply("I've sent you a PM! "
+                             "Answer my questions to modify your current project.")
+
+        await self.wizard_manager.create_edit_wizard(
+            ctx.message.author, ctx.message.timestamp, user.active_project
+        )
         self._save_state()
-
-        # set up wizard
-        wizard = ProjectWizard(ctx.message.author.id, ctx.message.timestamp)
-        self.edit_wizards[ctx.message.author.id] = wizard
-
-        # Send the first question
-        await self.bot.send_message(ctx.message.author, wizard.question)
 
     @project.command(pass_context=True, ignore_extra=False)
     async def cancel(self, ctx: commands.Context):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-        await self._cancel_wizards(ctx.message.author)
+        await self.wizard_manager.cancel_wizards(ctx.message.author)
 
     @ready_only
     async def on_message(self, message: discord.Message):
-        if message.channel.is_private:
-            await self._answer_new_wizard(message) or await self._answer_edit_wizard(message)
+        """ Process wizard responses in PM. """
+        if not message.channel.is_private:
+            return  # wizards only in PM
 
-    async def _answer_new_wizard(self, message: discord.Message) -> bool:
         try:
-            wizard = self.new_wizards[message.author.id]
+            self.wizard_manager.process_answer(message)
         except KeyError:
-            return False
+            return  # no active wizard, ignore
+        except ValueError as e:
+            await self.bot.send_message(message.channel, e.args[0])
+            return
 
         try:
-            logger.debug("{}: {}".format('new wizard', message_log_str(message)))
-            wizard.answer(message.content)
-            await self.bot.send_message(message.author, wizard.question)
-        except StopIteration:
-            del self.new_wizards[message.author.id]
-            with q.transaction():
-                project = q.add_project(wizard)
-                out_msg = await self.bot.send_message(
-                    self.channel, embed=self.get_project_embed(project)
-                )
-                project.whois_message_id = out_msg.id
-                project.user.active_project = project
-            await self.bot.send_message(message.author, w.end_msg)
+            await self.wizard_manager.send_question(message.author)
+        except IndexError:
+            pass
+
+        try:
+            name, wizard = await self.wizard_manager.close_wizard(message.author)
+        except KeyError:  # wizard not yet complete
+            pass
+        else:
+            if name == 'new':
+                with q.transaction():
+                    project = q.add_project(wizard)
+                    project.user.active_project = project
+            elif name == 'edit':
+                with q.transaction():
+                    project = q.update_project(wizard)
+            else:
+                project = None
+                logger.error("Unknown wizard type {!r}???".format(name))
+                await self.send_output("Unknown wizard type {!r}???".format(name))
+
+            if project:
+                with q.transaction():
+                    await update_project_message(self.bot, self.channel, project)
+
         self._save_state()
 
-        return True
+    @project.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
+    @mod_only()
+    async def admin(self, ctx: commands.Context):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        await self.bot.say("{}".format(get_group_help(ctx)))
 
-    async def _answer_edit_wizard(self, message: discord.Message) -> bool:
-        try:
-            wizard = self.edit_wizards[message.author.id]
-        except KeyError:
-            return False
+    @admin.group(name='genre', pass_context=True, ignore_extra=False, invoke_without_command=True)
+    @mod_only()
+    async def admin_genre(self, ctx: commands.Context):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        genres = q.query_genres()
+        genre_strings = []
+        for genre in genres:
+            role = discord.utils.get(self.server.roles, id=genre.role_id)  # type: discord.Role
+            genre_strings.append('{.name} (role: {})'.format(genre, role.name if role else 'None'))
+        genre_list = "**Genres**\n\n" + (format_list(genre_strings) if genre_strings else 'None')
+        for s in split_chunks_on(genre_list, Limits.MESSAGE):
+            await self.bot.say(s)
 
-        try:
-            logger.debug("{}: {}".format('edit wizard', message_log_str(message)))
-            wizard.answer(message.content)
-            await self.bot.send_message(message.author, wizard.question)
-        except StopIteration:
-            del self.edit_wizards[message.author.id]
-            with q.transaction():
-                project = q.update_project(wizard)
-            whois_msg = await self.bot.get_message(self.channel, project.whois_message_id)
-            new_embed = self.get_project_embed(project)
-            await self.bot.edit_message(whois_msg, embed=new_embed)
-            await self.bot.send_message(message.author, w.end_msg)
-        self._save_state()
+    @admin_genre.command(name='add', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_genre_add(self, ctx: commands.Context, name: str, role: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        with q.transaction() as session:
+            logger.info("Adding new genre: name={!r} role={!r}".format(name, role))
+            role_id = get_role(self.server, role).id if role else None
+            genre = m.Genre(name=name, role_id=role_id)
+            session.add(genre)
+        await self.bot.say("Genre added: {}".format(name))
+        await self.send_output("[Projects] Genre added: {}".format(genre.discord_str()))
 
-        return True
+    @admin_genre.command(name='edit', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_genre_edit(self, ctx: commands.Context,
+                               old_name: str, new_name: str, new_role: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        with q.transaction() as _:
 
-    # TODO: edit, delete - all of these will either fail if wizard is open (new, wizard) or cancel an open wizard implicitly (cancel, select, edit, delete)
+            try:
+                genre = q.get_genre(old_name)
+            except KeyError:
+                raise commands.BadArgument("No such genre: {}".format(old_name))
+
+            logger.info("Editing genre {!r} to: name={!r} role={!r}"
+                .format(old_name, new_name, new_role))
+            genre.name = new_name
+            genre.role_id = get_role(self.server, new_role).id if new_role else None
+
+            await update_user_roles(self.bot, self.server, q.query_users(genre=genre))
+
+        await self.bot.say("Genre '{}' edited to '{}'".format(old_name, new_name))
+        await self.send_output("[Projects] Genre '{}' edited: {}".format(old_name, genre.discord_str()))
+
+    @admin_genre.command(name='rem', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_genre_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        with q.transaction() as session:
+            # Replace the deleted genre in projects/users
+            try:
+                genre = q.get_genre(name)
+                if replace_name:
+                    replace_genre = q.get_genre(replace_name)
+                else:
+                    replace_genre = None
+            except KeyError as e:
+                raise commands.BadArgument(e.args[0])
+
+            users = q.query_users(genre=genre)
+            projects = q.query_projects(genre=genre)
+            if replace_genre:
+                for u in users:
+                    u.genre = replace_genre
+                for p in projects:
+                    p.genre = replace_genre
+
+                await update_user_roles(self.bot, self.server, users)
+
+            elif users or projects:  # no replace_genre but genre is in use
+                raise commands.UserInputError(
+                    "Can't delete this genre: there are still users or projects using it! "
+                    "Make sure no users/projects are using the genre or to provide a substitute.")
+
+            # finally, delete the genre
+            logger.info("Deleting genre {!r}".format(name))
+            session.delete(genre)
+        await self.bot.say("Genre deleted: {}".format(name))
+        await self.send_output("[Projects] Genre deleted: {}".format(genre.discord_str()))
+
+    @admin.group(name='type', pass_context=True, ignore_extra=False, invoke_without_command=True)
+    @mod_only()
+    async def admin_type(self, ctx: commands.Context):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        p_types = q.query_project_types()
+        types_strings = []
+        for t in p_types:
+            role = discord.utils.get(self.server.roles, id=t.role_id)  # type: discord.Role
+            types_strings.append('{.name} (role: {})'.format(t, role.name if role else 'None'))
+        types_list = "**Project Types**\n\n" + \
+                     (format_list(types_strings) if types_strings else 'None')
+        for s in split_chunks_on(types_list, Limits.MESSAGE):
+            await self.bot.say(s)
+
+    @admin_type.command(name='add', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_type_add(self, ctx: commands.Context, name: str, role: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        with q.transaction() as session:
+            logger.info("Adding new project type: name={!r} role={!r}".format(name, role))
+            pt = m.ProjectType(name=name, role_id=get_role(self.server, role).id if role else None)
+            session.add(pt)
+        await self.bot.say("Project type added: {}".format(name))
+        await self.send_output("[Projects] Project type added: {}".format(pt.discord_str()))
+
+    @admin_type.command(name='edit', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_type_edit(self, ctx: commands.Context,
+                              old_name: str, new_name: str, new_role: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        with q.transaction():
+            try:
+                p_type = q.get_project_type(old_name)
+            except KeyError:
+                raise commands.BadArgument("No such project type: {}".format(old_name))
+
+            logger.info("Editing project type {!r} to: name={!r} role={!r}"
+                .format(old_name, new_name, new_role))
+
+            p_type.name = new_name
+            p_type.role_id = get_role(self.server, new_role).id if new_role else None
+
+            await update_user_roles(self.bot, self.server, q.query_users(type=p_type))
+
+        await self.bot.say("Project type '{}' edited to '{}'".format(old_name, new_name))
+        await self.send_output("[Projects] Project type '{}' edited: {}"
+            .format(old_name, p_type.discord_str()))
+
+    @admin_type.command(name='rem', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_type_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        with q.transaction() as session:
+            # Replace the deleted genre in projects/users
+            try:
+                p_type = q.get_project_type(name)
+                if replace_name:
+                    replace_type = q.get_project_type(replace_name)
+                else:
+                    replace_type = None
+            except KeyError as e:
+                raise commands.BadArgument(e.args[0])
+
+            users = q.query_users(type=p_type)
+            projects = q.query_projects(type=p_type)
+            if replace_type:
+                for u in users:
+                    u.type = replace_type
+                for p in projects:
+                    p.type = replace_type
+
+                await update_user_roles(self.bot, self.server, users)
+
+            elif users or projects:  # no replace_type but genre is in use
+                raise commands.UserInputError(
+                    "Can't delete this genre: there are still users or projects using it! "
+                    "Make sure no users/projects are using the genre or to provide a substitute.")
+
+            # finally, delete the genre
+            logger.info("Deleting project type {!r}".format(name))
+            session.delete(p_type)
+        await self.bot.say("Project type deleted: {}".format(name))
+        await self.send_output("[Projects] Project type deleted: {}".format(p_type.discord_str()))
+
+    # TODO: set (for individual fields), delete - will cancel an open wizard implicitly
     # TODO: *, search {genre|type|title|body}
-    # TODO: stats/management stuff
-    # TODO: admin commands - max projects
+    # TODO: stats/progress stuff
+    # TODO: admin commands - set max projects, delete project
+    # TODO: configure user prefs (role/type/aboutme)
 
-    # todo: auto-output new project into a channel
+    # TODO: max projects on `new` command
+    # TODO: for user's first project or max_projects=1, automatically associate their user genre/type preferences to their primary project
+
     # TODO: time limit on wizard
-    # TODO: max commands as a config value
+    # TODO: automatically set user prefs if single project
+    # TODO: max projects default value as a config value (with role support?)
     # TODO: select - on invalid num, give list in error message?
 
-
+    # TODO: creating/setting follow roles
