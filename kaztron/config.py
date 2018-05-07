@@ -51,6 +51,7 @@ class KaztronConfig:
         self._data = {}
         self._defaults = copy.deepcopy(defaults) if defaults else {}
         self._read_only = read_only
+        self.is_dirty = False
         self.read()
 
     @property
@@ -70,6 +71,7 @@ class KaztronConfig:
         except OSError as e:
             if e.errno == errno.ENOENT:  # file not found, just create it
                 if not self._read_only:
+                    self.is_dirty = True  # force the write
                     self.write()
                 else:
                     raise
@@ -77,6 +79,7 @@ class KaztronConfig:
                 raise
         else:
             self._data.update(read_data)
+            self.is_dirty = False
 
     def write(self, log=True):
         """
@@ -86,10 +89,16 @@ class KaztronConfig:
         """
         if self._read_only:
             raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
-        if log:
-            logger.info("config({}) Writing file...".format(self.filename))
-        with atomic_write(self.filename) as cfg_file:
-            json.dump(self._data, cfg_file)
+
+        if self.is_dirty:
+            if log:
+                logger.info("config({}) Writing file...".format(self.filename))
+            with atomic_write(self.filename) as cfg_file:
+                json.dump(self._data, cfg_file)
+            self.is_dirty = False
+        else:
+            if log:
+                logger.info("config({}) Skipping write: no data changed.".format(self.filename))
 
     def get_section(self, section: str):
         """
@@ -183,6 +192,7 @@ class KaztronConfig:
             section_data = self._data[section] = {}
 
         section_data[key] = copy.deepcopy(value)
+        self.is_dirty = True
 
     def set_defaults(self, section: str, **kwargs):
         """
@@ -194,16 +204,12 @@ class KaztronConfig:
         :raises OSError: Error opening or writing file.
         :raise RuntimeError: configuration is set as read-only
         """
-        is_changed = False
         for key, value in kwargs.items():
             try:
                 self.get(section, key)
             except KeyError:
                 self.set(section, key, value)
-                is_changed = True
-
-        if is_changed:
-            self.write()
+        self.write()
 
 
 def log_level(value: str):

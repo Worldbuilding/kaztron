@@ -92,6 +92,17 @@ class CoreCog(kaztron.KazCog):
         except discord.HTTPException:
             logger.exception("Error sending startup information to output channel")
 
+    async def on_command(self, command: commands.Command, ctx: commands.Context):
+        # logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        pass
+
+    async def on_command_completion(self, command: commands.Command, ctx: commands.Context):
+        """ On command completion, save state files. """
+        for cog in self.bot.cogs.values():
+            if isinstance(cog, kaztron.KazCog):
+                # ok if same state object in multiple cogs - dirty flag prevents multiple writes
+                cog.state.write()
+
     async def on_error(self, event, *args, **kwargs):
         exc_info = sys.exc_info()
         if exc_info[0] is KeyboardInterrupt:
