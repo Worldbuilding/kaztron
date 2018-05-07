@@ -16,7 +16,7 @@ class User(Base):
         uselist=False, post_update=True)
     projects = db.relationship('Project', foreign_keys='Project.user_id',
         order_by='Project.project_id', back_populates='user')
-    max_projects = db.Column(db.Integer, nullable=False, default=1)
+    max_projects = db.Column(db.Integer, nullable=True)
 
     about = db.Column(db.String(MAX_FIELD), nullable=True)
     type_id = db.Column(db.Integer, db.ForeignKey('type.id'), nullable=True, index=True)
@@ -36,6 +36,30 @@ class User(Base):
     @property
     def mention(self):
         return user_mention(self.discord_id)
+
+    def find_project(self, search_title) -> 'Project':
+        """
+        Find a project whose title contains the argument (case-insensitive).
+        :raises KeyError: project not found
+        """
+        for project in self.projects:
+            if project.title_contains(search_title):
+                return project
+        else:
+            raise KeyError(search_title)
+
+    def max_projects_eff(self, default: int=None) -> int:
+        """
+        Check the maximum projects the user can have. If the user does not have a set maximum, the
+        default value is returned.
+        """
+        return self.max_projects if self.max_projects is not None else default
+
+    def can_add_projects(self, default_max: int=None) -> bool:
+        """ Check whether the user can add new projects. If the user does not have a set maximum,
+         the default value is used. """
+        eff_max = self.max_projects_eff(default_max)
+        return eff_max is None or len(self.projects) < eff_max
 
 
 class Project(Base):
@@ -72,6 +96,10 @@ class Project(Base):
 
     def __str__(self):
         raise NotImplementedError()
+
+    def title_contains(self, query) -> bool:
+        """ Check if the title contains the argument (case-insensitive). """
+        return query.lower() in self.title.lower()
 
 
 class Genre(Base):

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Tuple
 
 import discord
@@ -74,8 +74,8 @@ UserWizardMap = Dict[str, ProjectWizard]
 
 class WizardManager:
     @classmethod
-    def from_dict(cls, bot: commands.Bot, data: dict):
-        obj = cls(bot)
+    def from_dict(cls, bot: commands.Bot, server: discord.Server, data: dict, timeout=None):
+        obj = cls(bot, server, timeout)
         for uid, d in data.get('new', {}).items():
             try:
                 obj.wizards['new'][uid] = ProjectWizard.from_dict(d)
@@ -91,12 +91,20 @@ class WizardManager:
                 pass
         return obj
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, server: discord.Server, timeout: int=None):
+        """
+
+        :param bot:
+        :param server:
+        :param timeout: in seconds, time before a wizard is timed out
+        """
         self.bot = bot
+        self.server = server
         self.wizards = {
             'new': {},
             'edit': {},
         }
+        self.timeout = timedelta(seconds=timeout)
 
     def has_open_wizard(self, member: discord.Member):
         return any(member.id in w for w in self.wizards.values())
@@ -113,13 +121,15 @@ class WizardManager:
             raise KeyError("Member {} does not have an active wizard".format(member))
 
     async def send_question(self, member: discord.Member):
+        await self.purge()
         await self.bot.send_message(member, self.get_wizard_for(member)[1].question)
 
     async def create_new_wizard(self, member: discord.Member, timestamp: datetime):
+        await self.purge()
         if self.has_open_wizard(member):
             raise commands.CommandError("You already have an ongoing wizard!")
 
-        logger.info("Starting 'new' wizard for for {}".format(member))
+        logger.info("Starting 'new' wizard for {}".format(member))
         self.wizards['new'][member.id] = ProjectWizard(member.id, timestamp)
 
         try:
@@ -131,6 +141,7 @@ class WizardManager:
 
     async def create_edit_wizard(self,
                                  member: discord.Member, timestamp: datetime, proj: m.Project):
+        await self.purge()
         if self.has_open_wizard(member):
             raise commands.CommandError("You already have an ongoing wizard!")
 
@@ -146,7 +157,8 @@ class WizardManager:
             self.cancel_wizards(member)
             raise
 
-    def process_answer(self, message: discord.Message):
+    async def process_answer(self, message: discord.Message):
+        await self.purge()
         wiz_name, wizard = self.get_wizard_for(message.author)
 
         logger.info("Processing '{}' wizard answer for {}".format(wiz_name, message.author))
@@ -155,6 +167,7 @@ class WizardManager:
         wizard.answer(message.content)
 
     async def close_wizard(self, member: discord.Member) -> Tuple[str, ProjectWizard]:
+        await self.purge()
         wiz_name, wizard = self.get_wizard_for(member)
         if wizard.is_done:
             logger.info("Closing '{}' wizard for {}".format(wiz_name, member))
@@ -165,6 +178,7 @@ class WizardManager:
             raise KeyError("Wizard for user {} not completed yet".format(member))
 
     async def cancel_wizards(self, member: discord.Member):
+        await self.purge()
         for name, user_wizard_map in self.wizards.items():
             try:
                 del user_wizard_map[member.id]
@@ -178,6 +192,30 @@ class WizardManager:
                     await self.bot.send_message(member, "Editing your project has been cancelled.")
                 else:
                     await self.bot.send_message(member, "Wizard has been cancelled (generic msg).")
+
+    async def purge(self):
+        """ Purge any timed-out wizards. """
+        now = datetime.utcnow()
+        for name, user_wizard_map in self.wizards.items():
+            delete_keys = []
+            for uid, wizard in user_wizard_map.items():
+                if now - wizard.timestamp >= self.timeout:
+                    delete_keys.append(uid)
+            for uid in delete_keys:
+                member = self.server.get_member(uid)
+                logger.info("{} wizard for {!r} timed out"
+                    .format(name.capitalize(), member if member else uid))
+                del user_wizard_map[uid]
+                if name == 'new':
+                    await self.bot.send_message(member,
+                        "New project wizard has timed out. You will need to restart the wizard "
+                        "with `.project new`.")
+                elif name == 'edit':
+                    await self.bot.send_message(member,
+                        "Editing your project has timed out. You will need to restart the wizard "
+                        "with `.project wizard`.")
+                else:
+                    await self.bot.send_message(member, "Wizard has timed out (generic msg).")
 
     def to_dict(self) -> dict:
         ret = {}

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Union
 
 import discord
 
@@ -33,7 +33,7 @@ def init_db():
 transaction = make_transaction_manager(lambda *_, **__: session, logger)
 
 
-def get_or_make_user(member: discord.Member):
+def get_or_make_user(member: Union[discord.Member, discord.Object]):
     """
     Get the database user for a given member.
     :param member:
@@ -48,13 +48,13 @@ def get_or_make_user(member: discord.Member):
         return user
 
 
-def query_users(*, genre: Genre=None, type: ProjectType=None) \
+def query_users(*, genre: Genre=None, type_: ProjectType=None) \
         -> List[User]:
     q = session.query(User)
     if genre:
         q = q.filter_by(genre=genre)
-    if type:
-        q = q.filter_by(type=type)
+    if type_:
+        q = q.filter_by(type=type_)
     return q.all()
 
 
@@ -80,22 +80,40 @@ def query_project_types() -> List[ProjectType]:
     return session.query(ProjectType).order_by(ProjectType.name).all()
 
 
-def query_projects(*, user: discord.Member=None, genre: Genre=None, type: ProjectType=None)\
+# noinspection PyUnresolvedReferences
+def query_projects(*,
+                   user: discord.Member=None,
+                   genre: Genre=None,
+                   type_: ProjectType=None,
+                   title: str=None,
+                   body: str=None)\
         -> List[Project]:
     q = session.query(Project)
     if user:
         q = q.filter_by(user_id=user.id)
     if genre:
         q = q.filter_by(genre=genre)
-    if type:
-        q = q.filter_by(type=type)
+    if type_:
+        q = q.filter_by(type=type_)
+    if title:
+        title_like = format_like(title)
+        q = q.filter(Project.title.ilike(title_like))
+    if body:
+        body_like = format_like(body)
+        q = q.filter(db.or_(
+            Project.pitch.ilike(body_like),
+            Project.description.ilike(body_like),
+            Project.title.ilike(body_like)
+        ))
     return q.all()
 
 
+# noinspection PyTypeChecker
 def add_project(wizard: ProjectWizard) -> Project:
     member = discord.Object(wizard.user_id)
-    p = Project(user=get_or_make_user(member), **wizard)
-    session.add(p)
+    user = get_or_make_user(member)
+    p = Project(**wizard)
+    user.projects.append(p)
     return p
 
 
@@ -108,3 +126,11 @@ def update_project(wizard: ProjectWizard) -> Project:
         if v is not None:
             setattr(user.active_project, k, v)
     return user.active_project
+
+
+def update_user_from_projects(user: User):
+    """ If the user has only one project, sync their genre/type to that project. """
+    if len(user.projects) == 1:
+        user.genre = user.projects[0].genre
+        user.type = user.projects[0].type
+
