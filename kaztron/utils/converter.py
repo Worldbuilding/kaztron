@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 
 import kaztron.utils.datetime as utils_dt
-from kaztron.utils.discord import extract_user_id
+from kaztron.utils.discord import get_member
 
 
 class NaturalDateConverter(commands.Converter):
@@ -20,17 +20,12 @@ class NaturalDateConverter(commands.Converter):
         return date
 
 
-class MemberConverter2(commands.MemberConverter):
+class MemberConverter2(commands.Converter):
     """
     Member converter with slightly more tolerant ID inputs permitted.
     """
     def convert(self):
-        try:
-            s_user_id = extract_user_id(self.argument)
-        except discord.InvalidArgument:
-            s_user_id = self.argument
-        self.argument = s_user_id
-        return super().convert()
+        return get_member(self.ctx, self.argument)
 
 
 class NaturalInteger(commands.Converter):
