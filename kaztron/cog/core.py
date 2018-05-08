@@ -24,12 +24,15 @@ class CoreCog(kaztron.KazCog):
         self.bot.event(self.on_error)  # register this as a global event handler, not just local
         self.bot.add_check(self.check_bot_ready)
         self.ready_cogs = set()
+        self.error_cogs = set()
 
     def check_bot_ready(self, ctx: commands.Context):
         """ Check if bot is ready. Used as a global check. """
         if ctx.cog is not None:
             if ctx.cog in self.ready_cogs:
                 return True
+            elif ctx.cog in self.error_cogs:
+                raise BotCogError(type(ctx.cog).__name__)
             else:
                 raise BotNotReady(type(ctx.cog).__name__)
         elif self in self.ready_cogs or not isinstance(ctx.cog, kaztron.KazCog):
@@ -44,6 +47,16 @@ class CoreCog(kaztron.KazCog):
         """
         logger.info("Cog ready: {}".format(type(cog).__name__))
         self.ready_cogs.add(cog)
+        registered_cogs = {c for c in self.bot.cogs.values() if isinstance(c, kaztron.KazCog)}
+        if self.ready_cogs == registered_cogs:
+            logger.info("=== ALL COGS READY ===")
+
+    def set_cog_error(self, cog):
+        """
+        Called by the kaztron.KazCog base to signal that an error occurred during on_ready.
+        """
+        logger.error("Cog error: {}".format(type(cog).__name__))
+        self.error_cogs.add(cog)
 
     def set_cog_shutdown(self, cog):
         logger.info("Cog has been shutdown: {}".format(type(cog).__name__))
@@ -53,6 +66,7 @@ class CoreCog(kaztron.KazCog):
 
     async def on_ready(self):
         logger.debug("on_ready")
+        await super().on_ready()
 
         playing = self.config.get('discord', 'playing', default="")
         if playing:
@@ -78,7 +92,16 @@ class CoreCog(kaztron.KazCog):
         except discord.HTTPException:
             logger.exception("Error sending startup information to output channel")
 
-        await super().on_ready()
+    async def on_command(self, command: commands.Command, ctx: commands.Context):
+        # logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        pass
+
+    async def on_command_completion(self, command: commands.Command, ctx: commands.Context):
+        """ On command completion, save state files. """
+        for cog in self.bot.cogs.values():
+            if isinstance(cog, kaztron.KazCog):
+                # ok if same state object in multiple cogs - dirty flag prevents multiple writes
+                cog.state.write()
 
     async def on_error(self, event, *args, **kwargs):
         exc_info = sys.exc_info()
@@ -250,6 +273,18 @@ class CoreCog(kaztron.KazCog):
             await self.bot.send_message(
                 ctx.message.channel, author_mention +
                 "Sorry, I'm still loading the {} module! Try again in a few seconds."
+                .format(cog_name)
+            )
+
+        elif isinstance(exc, BotCogError):
+            try:
+                cog_name = exc.args[0]
+            except IndexError:
+                cog_name = 'unknown'
+            logger.warning("Attempted to use command on cog in error state: {}".format(cmd_string))
+            await self.bot.send_message(
+                ctx.message.channel, author_mention +
+                "Sorry, an error occurred loading the {} module! Please let a mod/admin know."
                 .format(cog_name)
             )
 

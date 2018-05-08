@@ -120,7 +120,7 @@ def channel_mention(channel_id: str) -> str:
     return '<#{}>'.format(channel_id)
 
 
-_re_user_id = re.compile('(?:<@|@)?!?([0-9]{15,23})>?')
+_re_user_id = re.compile(r'(?:(?:\\)?<@|@)?!?([0-9]{15,23})>?')
 _re_role_id = re.compile(r'(?:(?:\\)?<@&|@&|&)?([0-9]{15,23})>?')
 
 

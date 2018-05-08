@@ -41,6 +41,24 @@ class KazCog:
         self._ch_out = discord.Object(self._ch_out_id)  # type: discord.Channel
         self._ch_test = discord.Object(self._ch_test_id)  # type: discord.Channel
 
+        # Detect success/error in cog's on_ready w/o boilerplate from the child class
+        def on_ready_wrapper(f):
+            @functools.wraps(f)
+            async def wrapper(self):
+                try:
+                    await f()
+                except Exception:
+                    self.core.set_cog_error(self)
+                    await self.bot.send_message(
+                        discord.Object(id=self._ch_out_id),
+                        "[ERROR] Failed to load cog: {}".format(type(self).__name__)
+                    )
+                    raise
+                else:
+                    self.core.set_cog_ready(self)
+            return wrapper
+        self.on_ready = on_ready_wrapper(self.on_ready).__get__(self)
+
     @classmethod
     def static_init(cls):
         """
@@ -55,12 +73,10 @@ class KazCog:
 
     async def on_ready(self):
         """
-        If overridden, the super().on_ready() call should occur at the *end* of the method, as it
-        marks the cog as fully ready to receive commands.
+        Can be overridden. `super().on_ready()` should be called at the beginning of the method.
         """
         self._ch_out = self.validate_channel(self._ch_out_id)
         self._ch_test = self.validate_channel(self._ch_test_id)
-        self.core.set_cog_ready(self)
 
     # noinspection PyBroadException
     def unload(self):

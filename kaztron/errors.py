@@ -6,6 +6,10 @@ class BotNotReady(commands.CommandError):
     pass
 
 
+class BotCogError(commands.CommandError):
+    pass
+
+
 class UnauthorizedUserError(commands.CheckFailure):
     pass
 
