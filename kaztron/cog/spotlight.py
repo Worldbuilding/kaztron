@@ -40,7 +40,7 @@ class SpotlightApp:
 
     @staticmethod
     def is_filled(str_property: str) -> bool:
-        return str_property and str_property.lower() != 'n/a'
+        return str_property and str_property.strip().lower() != 'n/a'
 
     @property
     @error_handler(ValueError, datetime.utcfromtimestamp(0))
@@ -95,67 +95,82 @@ class SpotlightApp:
     @property
     @error_handler(IndexError, "")
     def keywords(self) -> str:
-        return self._data[5]
+        return self._data[5].strip()
 
     @property
     @error_handler(IndexError, "")
     def favorite(self) -> str:
-        return self._data[6]
+        return self._data[6].strip()
 
     @property
     @error_handler(IndexError, "")
     def talking_point(self) -> str:
-        return self._data[7]
+        return self._data[7].strip()
 
     @property
     @error_handler(IndexError, "")
     def mature(self) -> str:
-        return self._data[8]
+        return self._data[8].strip()
 
     @property
     @error_handler(IndexError, "")
     def inspirations(self) -> str:
-        return self._data[9]
+        return self._data[9].strip()
 
     @property
     @error_handler(IndexError, "")
     def prompt(self) -> str:
-        return self._data[10]
+        return self._data[10].strip()
 
     @property
     @error_handler(IndexError, "")
     def pitch(self) -> str:
-        return self._data[11]
+        return self._data[11].strip()
 
     @property
     @error_handler(IndexError, False)
     def is_nsfw(self) -> bool:
-        return self._data[12].lower() == 'yes'
+        return self._data[12].strip().lower() == 'yes'
 
     @property
     @error_handler(IndexError, "")
     def nsfw_info(self) -> str:
-        return self._data[13]
+        return self._data[13].strip()
 
     @property
     @error_handler(IndexError, "")
     def art_url(self) -> str:
-        return self._data[14]
+        return self._data[14].strip()
 
     @property
     @error_handler(IndexError, "")
     def additional_info_url(self) -> str:
-        return self._data[15]
+        return self._data[15].strip()
 
     @property
     @error_handler(IndexError, False)
     def is_ready(self) -> bool:
-        return self._data[16].lower() == 'yes'
+        return self._data[16].strip().lower() == 'yes'
 
     @property
     @error_handler(IndexError, "")
     def unnamed(self) -> str:
-        return self._data[17]
+        return self._data[17].strip()
+
+    @property
+    @error_handler(IndexError, "")
+    def genre(self) -> str:
+        return self._data[27].strip()
+
+    @property
+    @error_handler(IndexError, "")
+    def project_type(self) -> str:
+        return self._data[28].strip()
+
+    @property
+    @error_handler(IndexError, "")
+    def language(self) -> str:
+        return self._data[29].strip()
 
     @property
     def is_valid(self) -> bool:
@@ -176,21 +191,21 @@ class SpotlightApp:
 
 class Spotlight(KazCog):
     msg_join = \
-        "You are now a part of the World Spotlight audience. You can be pinged by the "\
-        "moderators or the host for spotlight-related news (like the start of a "\
-        "spotlight). You can use `.spotlight leave` to leave the audience."
+        "You are now a part of the {0} audience. You can be pinged by the "\
+        "moderators or the {1} for {0}-related news. " \
+        "You can use `.spotlight leave` to leave the audience."\
 
     msg_join_err = \
-        "Oops! You're already part of the World Spotlight audience. If you want to leave, " \
-        "please use `.spotlight leave`. (Note that this change happened for KazBot 1.3)."
+        "Oops! You're already part of the {} audience. If you want to leave, " \
+        "please use `.spotlight leave`."
 
     msg_leave = \
-        "You are no longer part of the World Spotlight audience. You will no longer be pinged "\
-        "for spotlight-related news. You can use `.spotlight join` to join the audience " \
+        "You are no longer part of the {0} audience. You will no longer be pinged "\
+        "for {0}-related news. You can use `.spotlight join` to join the audience " \
         "again."
 
     msg_leave_err = \
-        "Oops! You're not currently part of the World Spotlight audience. If you want to join, " \
+        "Oops! You're not currently part of the {} audience. If you want to join, " \
         "please use `.spotlight join`."
 
     APPLICATIONS_CACHE_EXPIRES_S = 60.0
@@ -210,6 +225,7 @@ class Spotlight(KazCog):
         super().__init__(bot)
         self.state.set_defaults('spotlight', current=-1, queue=[])
 
+        self.feature_name = self.config.get('spotlight', 'name')
         self.channel_spotlight = None
         self.role_audience_name = self.config.get('spotlight', 'audience_role')
         self.role_host_name = self.config.get('spotlight', 'host_role')
@@ -346,11 +362,12 @@ class Spotlight(KazCog):
         if app.is_filled(app.mature):
             em.add_field(name="Mature & Controversial Issues",
                          value=natural_truncate(app.mature, Limits.EMBED_FIELD_VALUE),
-                         inline=False)
+                         inline=True)
 
-        em.add_field(name="Keywords",
-                     value=natural_truncate(app.keywords, Limits.EMBED_FIELD_VALUE) or "None",
-                     inline=False)
+        if app.is_filled(app.keywords):
+            em.add_field(name="Keywords",
+                         value=natural_truncate(app.keywords, Limits.EMBED_FIELD_VALUE),
+                         inline=False)
 
         if app.is_filled(app.art_url):
             em.add_field(name="Project Art",
@@ -361,6 +378,21 @@ class Spotlight(KazCog):
             em.add_field(name="Additional Content",
                          value=natural_truncate(app.additional_info_url, Limits.EMBED_FIELD_VALUE),
                          inline=True)
+
+        if app.is_filled(app.genre):
+            em.add_field(name="Genre",
+                value=natural_truncate(app.genre, Limits.EMBED_FIELD_VALUE),
+                inline=True)
+
+        if app.is_filled(app.project_type):
+            em.add_field(name="Type",
+                value=natural_truncate(app.project_type, Limits.EMBED_FIELD_VALUE),
+                inline=True)
+
+        if app.is_filled(app.language):
+            em.add_field(name="Language",
+                value=natural_truncate(app.language, Limits.EMBED_FIELD_VALUE),
+                inline=True)
 
         await self.bot.send_message(destination, embed=em)
         await self.bot.say("Spotlight ID #{:d}: {!s}".format(index, app))
@@ -414,17 +446,19 @@ class Spotlight(KazCog):
                     role_name=self.role_audience_name,
                     join_name="join",
                     leave_name="leave",
-                    join_msg=self.msg_join,
-                    leave_msg=self.msg_leave,
-                    join_err=self.msg_join_err,
-                    leave_err=self.msg_leave_err,
-                    join_doc="Join the Spotlight Audience. This allows you to be pinged by "
-                             "moderators or the Spotlight Host for news about the spotlight (like "
-                             "the start of a new spotlight, or a newly released schedule).\n\n"
-                             "To leave the Spotlight Audience, use `.spotlight leave`.",
-                    leave_doc="Leave the Spotlight Audience. See `.help spotlight join` for more "
-                              "information.\n\n"
-                              "To join the Spotlight Audience, use `.spotlight join`.",
+                    join_msg=self.msg_join.format(self.feature_name, self.role_host_name),
+                    leave_msg=self.msg_leave.format(self.feature_name, self.role_host_name),
+                    join_err=self.msg_join_err.format(self.feature_name, self.role_host_name),
+                    leave_err=self.msg_leave_err.format(self.feature_name, self.role_host_name),
+                    join_doc=("Join the {0} Audience. This allows you to be pinged by "
+                              "moderators or the Host for news like "
+                              "the start of a new {0} or a newly released schedule.\n\n"
+                              "To leave the Audience, use `.spotlight leave`.")
+                             .format(self.feature_name, self.role_host_name),
+                    leave_doc=("Leave the {0} Audience. See `.help spotlight join` for more "
+                               "information.\n\n"
+                               "To join the {0} Audience, use `.spotlight join`.")
+                              .format(self.feature_name, self.role_host_name),
                     group=self.spotlight,
                     cog_instance=self,
                     ignore_extra=False
@@ -569,11 +603,11 @@ class Spotlight(KazCog):
             role = None
 
         await self.bot.send_message(self.channel_spotlight,
-            "**WORLD SPOTLIGHT** {2}\n\n"
-            "Our next host is {0}, presenting their project, *{1}*!\n\n"
-            "Welcome, {0}!".format(
-                current_app.user_disp,
-                current_app.project,
+            "**{0}** {2}\n\n"
+            "Our next host is {1.user_disp}, presenting their project, *{1.project}*!\n\n"
+            "Welcome, {1.user_disp}!".format(
+                self.feature_name.upper(),
+                current_app,
                 role.mention if role else ""
             )
         )
