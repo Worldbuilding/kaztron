@@ -34,14 +34,10 @@ class BadgeManager(KazCog):
         self.c = None  # type: BlotsBadgeController
 
     async def on_ready(self):
+        await super().on_ready()
         channel_id = self.config.get('blots', 'badge_channel')
         self.channel = self.validate_channel(channel_id)
-        await super().on_ready()
-        try:
-            self.c = BlotsBadgeController(self.server, self.config)
-        except Exception:
-            self.core.set_cog_shutdown(self)
-            raise
+        self.c = BlotsBadgeController(self.server, self.config)
 
     async def add_badge(self, message: discord.Message, suppress_errors=False) \
             -> Optional[model.Badge]:

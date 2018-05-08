@@ -327,6 +327,7 @@ class CoreCog(kaztron.KazCog):
                      value="v{}".format(kaztron.bot_info["version"]), inline=True)
         em.add_field(name="discord.py version",
             value="v{}".format(discord.__version__), inline=True)
+        em.add_field(name="Loaded Cogs", value='\n'.format(self.bot.cogs.keys()))
 
         links = kaztron.bot_info["links"].copy()
         links.update(self.config.get('core', 'info_links', {}))

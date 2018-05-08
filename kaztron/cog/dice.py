@@ -26,8 +26,8 @@ class DiceCog(KazCog):
         self.ch_dice = None
 
     async def on_ready(self):
-        self.ch_dice = self.validate_channel(self.config.get('dice', 'channel_dice'))
         await super().on_ready()
+        self.ch_dice = self.validate_channel(self.config.get('dice', 'channel_dice'))
 
 
     @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])

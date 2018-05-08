@@ -69,6 +69,8 @@ class WordFilter(KazCog):
         """
         Load information from the server.
         """
+        await super().on_ready()
+
         dest_warning_id = self.config.get('filter', 'channel_warning')
         self.channel_warning = self.validate_channel(dest_warning_id)
 
@@ -77,8 +79,6 @@ class WordFilter(KazCog):
         except ValueError:
             self.channel_current = self.channel_warning
             self.state.set('filter', 'channel', str(self.channel_warning.id))
-
-        await super().on_ready()
 
     @ready_only
     async def on_message(self, message):

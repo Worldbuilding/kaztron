@@ -114,11 +114,11 @@ class ReminderCog(KazCog):
         self.state.write()
 
     async def on_ready(self):
+        await super().on_ready()
         if not self.reminders:
             self._load_reminders()
             for reminder in self.reminders:
                 reminder.start_timer(self.bot.loop, self.on_reminder_expired)
-        await super().on_ready()
 
     @commands.group(pass_context=True, invoke_without_command=True, aliases=['remind'])
     async def reminder(self, ctx: commands.Context, *, args: str):

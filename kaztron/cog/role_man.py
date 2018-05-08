@@ -124,9 +124,9 @@ class RoleManager(KazCog):
         self.managed_roles = {}
 
     async def on_ready(self):
+        await super().on_ready()
         if not self.is_ready:  # first time this is called - not a reconnect
             self.setup_all_config_roles()
-        await super().on_ready()
 
     def add_managed_role(
             self,

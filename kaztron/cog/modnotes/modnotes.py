@@ -53,8 +53,8 @@ class ModNotes(KazCog):
         self.channel_log = discord.Object(self.config.get('modnotes', 'channel_log'))
 
     async def on_ready(self):
-        self.channel_log = self.validate_channel(self.channel_log.id)
         await super().on_ready()
+        self.channel_log = self.validate_channel(self.channel_log.id)
 
     @staticmethod
     def format_display_user(db_user: User):

@@ -401,6 +401,8 @@ class WritingSprint(KazCog):
         Load information from the server.
         """
         logger.debug("on_ready")
+        await super().on_ready()
+
         logger.debug("Validating sprint channel...")
         self.channel = self.validate_channel(self.channel_id)
 
@@ -460,8 +462,6 @@ class WritingSprint(KazCog):
                 self.state_task = self.bot.loop.create_task(self.on_sprint_end())
         elif state is SprintState.COLLECT_RESULTS:
             self.state_task = self.bot.loop.create_task(self.on_sprint_results())
-
-        await super().on_ready()
 
         if self.report_task:
             self.report_task.cancel()

@@ -106,9 +106,9 @@ class UserStats(KazCog):
         return utils.datetime.truncate(datetime.utcnow(), 'hour')
 
     async def on_ready(self):
+        await super().on_ready()
         await self.update_accumulator()
         await self.init_voice_channels()
-        await super().on_ready()
 
     async def init_voice_channels(self):
         logger.debug("Collecting all members currently in voice channels")

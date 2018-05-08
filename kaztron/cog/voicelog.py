@@ -29,6 +29,8 @@ class VoiceLog(KazCog):
         self.role_voice_name = self.config.get('voicelog', 'role_voice', "")
 
     async def on_ready(self):
+        await super().on_ready()
+
         self.channel_voicelog = self.validate_channel(self.channel_voicelog.id)
 
         if self.role_voice_name and self.voice_channel_ids:
@@ -53,8 +55,6 @@ class VoiceLog(KazCog):
             err_msg = "In-voice role management is disabled (not configured)."
             logger.warning(err_msg)
             await self.send_output("**Warning:** " + err_msg)
-
-        await super().on_ready()
 
     async def update_all_voice_role(self):
         if not self.is_role_managed:

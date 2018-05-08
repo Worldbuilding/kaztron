@@ -42,15 +42,11 @@ class CheckInManager(KazCog):
 
     async def on_ready(self):
         await super().on_ready()
-        try:
-            milestone_map = {}
-            for pt, ms_map in self.config.get('blots', 'milestone_map').items():
-                milestone_map[model.ProjectType[pt]] = {get_named_role(self.server, r): v
-                                                        for r, v in ms_map.items()}
-            self.c = CheckInController(self.server, self.config, milestone_map)
-        except Exception:
-            self.core.set_cog_shutdown(self)
-            raise
+        milestone_map = {}
+        for pt, ms_map in self.config.get('blots', 'milestone_map').items():
+            milestone_map[model.ProjectType[pt]] = {get_named_role(self.server, r): v
+                                                    for r, v in ms_map.items()}
+        self.c = CheckInController(self.server, self.config, milestone_map)
 
     async def send_check_in_list(self,
                                dest: discord.Channel,

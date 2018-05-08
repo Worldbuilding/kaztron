@@ -32,6 +32,7 @@ class ModToolsCog(KazCog):
         self.tempban_task = None  # type: asyncio.Task
 
     async def on_ready(self):
+        await super().on_ready()
         logger.debug("Getting modnotes cog")
         self.cog_modnotes = self.bot.get_cog("ModNotes")
         if self.cog_modnotes is None:
@@ -47,7 +48,6 @@ class ModToolsCog(KazCog):
         if self.tempban_task:
             self.tempban_task.cancel()
         self.tempban_task = self.bot.loop.create_task(self.update_tempban_tick())
-        await super().on_ready()
 
     @ready_only
     async def on_member_joined(self, member: discord.Member):

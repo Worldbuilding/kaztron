@@ -402,6 +402,8 @@ class Spotlight(KazCog):
 
     async def on_ready(self):
         """ Load information from the server. """
+        await super().on_ready()
+
         id_spotlight = self.config.get('spotlight', 'channel')
         self.channel_spotlight = self.validate_channel(id_spotlight)
 
@@ -440,8 +442,6 @@ class Spotlight(KazCog):
 
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
-
-        await super().on_ready()
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):
