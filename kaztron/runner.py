@@ -7,6 +7,7 @@ import time
 from types import MethodType
 
 from discord.ext import commands
+from discord.ext.commands import HelpFormatter
 
 import kaztron
 from kaztron import KazCog
@@ -65,7 +66,9 @@ def run(loop: asyncio.AbstractEventLoop):
     Run the bot once.
     """
     config = get_kaztron_config()
-    client = commands.Bot(command_prefix='.',
+    client = commands.Bot(
+        command_prefix='.',
+        formatter=HelpFormatter(show_check_failure=True),
         description='This an automated bot for the /r/worldbuilding discord server',
         pm_help=True)
     patch_smart_quotes_hack(client)
