@@ -122,6 +122,7 @@
   },
   "quotedb": {
     "grab_search_max": 100,
+    "datetime_format": "one of: seconds, datetime, date",
     "show_channel": false
   },
   "userstats": {
