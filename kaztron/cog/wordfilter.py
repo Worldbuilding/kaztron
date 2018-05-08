@@ -8,7 +8,8 @@ from kaztron import KazCog
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str
+from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str, \
+    get_group_help
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, split_code_chunks_on, natural_truncate
 
@@ -136,10 +137,7 @@ class WordFilter(KazCog):
         All commands permit single-letter mnemonics for convenience, e.g. `.filter l` is
         equivalent to `.filter list`.
         """
-        command_list = list(self.word_filter.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
     @mod_only()

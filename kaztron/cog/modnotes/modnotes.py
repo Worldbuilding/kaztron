@@ -13,7 +13,8 @@ from kaztron.driver import database as db
 from kaztron.driver.pagination import Pagination
 from kaztron.utils.datetime import parse as dt_parse
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
-from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, get_usage_str
+from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, \
+    get_usage_str, get_group_help
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, parse_keyword_args
 
@@ -672,11 +673,7 @@ class ModNotes(KazCog):
         if one of them is looked up. The users remain separate and can be removed from the group
         later.
         """
-
-        command_list = list(self.group.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @group.command(name='add', pass_context=True, ignore_extra=False, aliases=['a'])
     @mod_only()

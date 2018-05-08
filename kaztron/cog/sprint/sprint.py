@@ -16,7 +16,7 @@ from kaztron.utils.converter import NaturalDateConverter
 from kaztron.utils.datetime import utctimestamp, format_date, format_timedelta, parse as dt_parse
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all, get_help_str, \
-    get_member
+    get_member, get_group_help
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list
 
@@ -491,15 +491,7 @@ class WritingSprint(KazCog):
 
         Get writing!
         """
-        logger.info("sprint: {}".format(message_log_str(ctx.message)))
-        command_list = list(self.sprint.commands.keys())
-        if not extra:
-            err_prefix = "Sorry, I don't know that command. "
-        else:
-            err_prefix = ""
-        await self.bot.say((err_prefix + "Valid subcommands are {0!s}. "
-                            'For help with sprints, type `{1}` or `{1} <subcommand>`.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @sprint.command(pass_context=True, ignore_extra=False, aliases=['?'])
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
