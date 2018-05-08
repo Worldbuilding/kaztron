@@ -19,7 +19,7 @@ from kaztron.utils.datetime import utctimestamp, parse as dt_parse, parse_datera
     get_month_offset, truncate
 from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, Limits, remove_role_from_all, \
-    extract_user_id, user_mention, get_member, get_help_str
+    extract_user_id, user_mention, get_member, get_help_str, get_group_help
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
 from kaztron.utils.strings import format_list, natural_truncate, split_chunks_on
 
@@ -448,10 +448,7 @@ class Spotlight(KazCog):
         """
         Manages the World Spotlight event. Users: see `.help spotlight join`.
         """
-        command_list = list(self.spotlight.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['l'])
     @mod_only()
@@ -611,10 +608,7 @@ class Spotlight(KazCog):
         [MOD ONLY] The `.spotlight queue` sub-command contains sub-sub-commands that let moderators
         manage a queue of upcoming spotlights.
         """
-        command_list = list(self.spotlight.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     def _get_queue_list(self, showcase=False):
         app_strings = []
