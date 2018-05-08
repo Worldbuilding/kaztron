@@ -30,6 +30,7 @@ class QuoteCog(KazCog):
     def __init__(self, bot):
         super().__init__(bot)
         self.grab_max = self.config.get("quotedb", "grab_search_max", 100)
+        self.show_channel = self.config.get('quotedb', 'show_channel', True)
         self.server = None  # type: discord.Server
 
     async def on_ready(self):
@@ -89,10 +90,10 @@ class QuoteCog(KazCog):
         em.set_footer(text=footer_text)
         await self.bot.send_message(dest, embed=em)
 
-    @staticmethod
-    def format_quote(quote: Quote, show_saved=True):
-        s = "[{}] <#{}> <{}> {}".format(
-            format_datetime(quote.timestamp, seconds=True),
+    def format_quote(self, quote: Quote, show_saved=True):
+        s_fmt = "[{0}] <#{1}> <{2}> {3}" if self.show_channel else "[{0}] <{2}> {3}"
+        s = s_fmt.format(
+            format_datetime(quote.timestamp, seconds=False),
             quote.channel_id,
             quote.author.mention,
             quote.message
@@ -248,7 +249,7 @@ class QuoteCog(KazCog):
                 # type: discord.Message
             # if requested author, and this message isn't the invoking one (in case of self-grab)
             if message.author == user and message.id != ctx.message.id:
-                if not search or search in message.content:
+                if not search or search.lower() in message.content.lower():
                     grabbed_message = message
                     break
         else:  # Nothing found
