@@ -96,9 +96,6 @@ class KaztronConfig:
             with atomic_write(self.filename) as cfg_file:
                 json.dump(self._data, cfg_file)
             self.is_dirty = False
-        else:
-            if log:
-                logger.info("config({}) Skipping write: no data changed.".format(self.filename))
 
     def get_section(self, section: str):
         """
