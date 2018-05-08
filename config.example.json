@@ -121,7 +121,9 @@
     "report_time": "time at which reports are generated weekly, default 17:00"
   },
   "quotedb": {
-    "grab_search_max": 100
+    "grab_search_max": 100,
+    "datetime_format": "one of: seconds, datetime, date",
+    "show_channel": false
   },
   "userstats": {
     "ignore_users": ["user ID 1", "user ID 2", "etc"],

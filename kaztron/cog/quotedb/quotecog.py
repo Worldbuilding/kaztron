@@ -11,7 +11,7 @@ from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import Limits
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.datetime import format_datetime
+from kaztron.utils.datetime import format_datetime, format_date
 
 from kaztron.cog.quotedb.model import Quote
 from kaztron.cog.quotedb import controller as c, model
@@ -30,6 +30,11 @@ class QuoteCog(KazCog):
     def __init__(self, bot):
         super().__init__(bot)
         self.grab_max = self.config.get("quotedb", "grab_search_max", 100)
+        self.show_channel = self.config.get('quotedb', 'show_channel', True)
+        self.date_format = self.config.get('quotedb', 'datetime_format', 'datetime')
+        if self.date_format not in ('seconds', 'datetime', 'date'):
+            raise ValueError("quotedb:date_format value invalid (seconds, datetime, date): {}"
+                .format(self.date_format))
         self.server = None  # type: discord.Server
 
     async def on_ready(self):
@@ -89,10 +94,20 @@ class QuoteCog(KazCog):
         em.set_footer(text=footer_text)
         await self.bot.send_message(dest, embed=em)
 
-    @staticmethod
-    def format_quote(quote: Quote, show_saved=True):
-        s = "[{}] <#{}> <{}> {}".format(
-            format_datetime(quote.timestamp, seconds=True),
+    def format_quote(self, quote: Quote, show_saved=True):
+        s_fmt = "[{0}] <#{1}> <{2}> {3}" if self.show_channel else "[{0}] <{2}> {3}"
+
+        if self.date_format == 'seconds':
+            timestamp_str = format_datetime(quote.timestamp, seconds=True)
+        elif self.date_format == 'datetime':
+            timestamp_str = format_datetime(quote.timestamp, seconds=False)
+        elif self.date_format == 'date':
+            timestamp_str = format_date(quote.timestamp)
+        else:
+            raise RuntimeError("Invalid date_format??")
+
+        s = s_fmt.format(
+            timestamp_str,
             quote.channel_id,
             quote.author.mention,
             quote.message
@@ -248,7 +263,7 @@ class QuoteCog(KazCog):
                 # type: discord.Message
             # if requested author, and this message isn't the invoking one (in case of self-grab)
             if message.author == user and message.id != ctx.message.id:
-                if not search or search in message.content:
+                if not search or search.lower() in message.content.lower():
                     grabbed_message = message
                     break
         else:  # Nothing found
