@@ -208,7 +208,6 @@ class ProjectsCog(KazCog):
     @commands.group(invoke_without_command=True, pass_context=True, ignore_extra=False,
         aliases=['projects'])
     async def project(self, ctx: commands.Context, member: MemberConverter2=None, name: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         member = member  # type: discord.Member
 
         if not member:
@@ -257,7 +256,6 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def search(self, ctx: commands.Context, *, search: str):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         kwargs, body_search = parse_keyword_args(['genre', 'type', 'title'], search)
 
         try:
@@ -291,8 +289,6 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def select(self, ctx: commands.Context, name: str):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-
         await self.wizard_manager.cancel_wizards(ctx.message.author)
         self._save_state()
 
@@ -349,7 +345,6 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def follow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         member = member  # type: discord.Member  # for type checking
         project, role = self.get_follow_role(member, title)
         await self.bot.add_roles(ctx.message.author, [role])
@@ -357,7 +352,6 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def unfollow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         member = member  # type: discord.Member  # for type checking
         project, role = self.get_follow_role(member, title)
         await self.bot.remove_roles(ctx.message.author, [role])
@@ -365,8 +359,6 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def new(self, ctx: commands.Context):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-
         if self.wizard_manager.has_open_wizard(ctx.message.author):
             raise commands.UserInputError("You already have an ongoing wizard!")
 
@@ -382,8 +374,6 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def wizard(self, ctx: commands.Context):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-
         if self.wizard_manager.has_open_wizard(ctx.message.author):
             raise commands.UserInputError("You already have an ongoing wizard!")
 
@@ -404,8 +394,6 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def aboutme(self, ctx: commands.Context):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-
         if self.wizard_manager.has_open_wizard(ctx.message.author):
             raise commands.UserInputError("You already have an ongoing wizard!")
 
@@ -415,14 +403,11 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def cancel(self, ctx: commands.Context):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         await self.wizard_manager.cancel_wizards(ctx.message.author)
         self._save_state()
 
     @project.command(pass_context=True, ignore_extra=False)
     async def delete(self, ctx: commands.Context, name: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-
         if not self.confirm_del.has_request(ctx.message.author):
             await self.delete_request(ctx, name)
         else:
@@ -555,13 +540,11 @@ class ProjectsCog(KazCog):
     @project.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     async def admin(self, ctx: commands.Context):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         await self.bot.say("{}".format(get_group_help(ctx)))
 
     @admin.group(name='genre', pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     async def admin_genre(self, ctx: commands.Context):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         genres = q.query_genres()
         genre_strings = []
         for genre in genres:
@@ -574,7 +557,6 @@ class ProjectsCog(KazCog):
     @admin_genre.command(name='add', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_genre_add(self, ctx: commands.Context, name: str, role: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         with q.transaction() as session:
             logger.info("Adding new genre: name={!r} role={!r}".format(name, role))
             role_id = get_role(self.server, role).id if role else None
@@ -587,7 +569,6 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_genre_edit(self, ctx: commands.Context,
                                old_name: str, new_name: str, new_role: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         with q.transaction() as _:
             try:
                 genre = q.get_genre(old_name)
@@ -608,7 +589,6 @@ class ProjectsCog(KazCog):
     @admin_genre.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_genre_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         with q.transaction():
             try:
                 users, _ = q.safe_delete_genre(name, replace_name)
@@ -625,7 +605,6 @@ class ProjectsCog(KazCog):
     @admin.group(name='type', pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     async def admin_type(self, ctx: commands.Context):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         p_types = q.query_project_types()
         types_strings = []
         for t in p_types:
@@ -639,7 +618,6 @@ class ProjectsCog(KazCog):
     @admin_type.command(name='add', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_type_add(self, ctx: commands.Context, name: str, role: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         with q.transaction() as session:
             logger.info("Adding new project type: name={!r} role={!r}".format(name, role))
             pt = m.ProjectType(name=name, role_id=get_role(self.server, role).id if role else None)
@@ -651,7 +629,6 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_type_edit(self, ctx: commands.Context,
                               old_name: str, new_name: str, new_role: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         with q.transaction():
             try:
                 p_type = q.get_project_type(old_name)
@@ -673,7 +650,6 @@ class ProjectsCog(KazCog):
     @admin_type.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_type_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         with q.transaction():
             try:
                 users, _ = q.safe_delete_project_type(name, replace_name)
@@ -690,7 +666,6 @@ class ProjectsCog(KazCog):
     @admin.command(name='delete', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_delete(self, ctx: commands.Context, member: MemberConverter2, title: str=None):
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         member = member  # type: discord.Member  # for type checking
 
         if not self.confirm_del.has_request(ctx.message.author):
@@ -720,7 +695,6 @@ class ProjectsCog(KazCog):
         Examples
             .projects admin limit @MultiCoreProcessor#1234 8
         """
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         member = member  # type: discord.Member  # for type checking
         if limit < 0:
             limit = None
@@ -743,7 +717,6 @@ class ProjectsCog(KazCog):
         """
         (mention quotation marks in these docs)
         """
-        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         member = member  # type: discord.Member  # for type checking
         with q.transaction():
             user = q.get_or_make_user(member)
