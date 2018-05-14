@@ -65,8 +65,6 @@ class ModToolsCog(KazCog):
 
         Arguments: None
         """
-        logger.debug("up: {}".format(message_log_str(ctx.message)))
-
         for status_role_name, distinguish_role_name in self.distinguish_map.items():
             status_role = discord.utils.get(ctx.message.server.roles, name=status_role_name)
             if status_role and status_role in ctx.message.author.roles:
@@ -92,8 +90,6 @@ class ModToolsCog(KazCog):
 
         Arguments: None
         """
-        logger.debug("down: {}".format(message_log_str(ctx.message)))
-
         for status_role_name, distinguish_role_name in self.distinguish_map.items():
             status_role = discord.utils.get(ctx.message.server.roles, name=status_role_name)
             if status_role and status_role in ctx.message.author.roles:
@@ -195,8 +191,6 @@ class ModToolsCog(KazCog):
         .tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight blithering idiot only.
             Issues a 3-day ban.
         """
-        logger.debug("tempban: {}".format(message_log_str(ctx.message)))
-
         if not self.cog_modnotes:
             raise RuntimeError("Can't find ModNotes cog")
 
@@ -233,7 +227,6 @@ class ModToolsCog(KazCog):
         Arguments:
         * user: An ID number, name, name with discriminator, etc. of a user to find.
         """
-        logger.info("whois: {}".format(message_log_str(ctx.message)))
         await self._whois_match(ctx, user) or await self._whois_search(ctx, user)
 
     async def _whois_match(self, ctx, user: str):

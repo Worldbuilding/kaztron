@@ -92,7 +92,6 @@ class CheckInManager(KazCog):
             .checkin 304882 Finished chapter 82 and developed some of the social and economic
                 fallout of the Potato Battle of 1912.
         """
-        logger.debug("check_in: {}".format(message_log_str(ctx.message)))
         word_count = word_count  # type: int  # for IDE type checking
         if word_count < 0:
             raise commands.BadArgument("word_count must be greater than 0.")
@@ -133,8 +132,6 @@ class CheckInManager(KazCog):
             .checkin type - Check your current project type.
             .checkin type script - Set your project type to script.
         """
-        logger.debug("checkin type: {}".format(message_log_str(ctx.message)))
-
         if project_type:  # set
             try:
                 project_type_e = model.ProjectType[project_type]
@@ -163,7 +160,6 @@ class CheckInManager(KazCog):
             .checkin list - List all your check-ins (last page if multiple pages)..
             .checkin list 4 - List the 4th page of check-ins
         """
-        logger.info("checkin list: {}".format(message_log_str(ctx.message)))
         try:
             db_records = self.c.query_check_ins(member=ctx.message.author)
             paginator = Pagination(db_records, self.ITEMS_PER_PAGE, align_end=True)
@@ -188,7 +184,6 @@ class CheckInManager(KazCog):
             .checkin query @JaneDoe - List all check-ins by JaneDoe (last page if multiple pages)..
             .checkin query @JaneDoe 4 - List the 4th page of check-ins by JaneDoe.
         """
-        logger.info("checkin query: {}".format(message_log_str(ctx.message)))
         member = user  # type: discord.Member  # just for type checking
         try:
             db_records = self.c.query_check_ins(member=member)
@@ -215,8 +210,6 @@ class CheckInManager(KazCog):
             .checkin report - Get a report for last week.
             .checkin report 2018-04-18 - Get a report for the week including 18 April 2018.
         """
-        logger.info("checkin report: {}".format(message_log_str(ctx.message)))
-
         if not datespec:
             datespec = datetime.utcnow() - timedelta(days=7)
 
@@ -277,7 +270,6 @@ class CheckInManager(KazCog):
             .checkin exempt @JaneDoe - Check if JaneDoe is exempt from check-ins.
             .checkin exempt @JaneDoe yes - Set JaneDoe as exempt from check-ins.
         """
-        logger.info("checkin exempt: {}".format(message_log_str(ctx.message)))
         if member is None:
             exempt_users = self.c.get_exempt_users()
             if exempt_users:
@@ -315,8 +307,6 @@ class CheckInManager(KazCog):
         """
         [MOD ONLY] Give a report of each user's milestone compared to their last check-in.
         """
-        logger.info("milestone report: {}".format(message_log_str(ctx.message)))
-
         report = self.c.get_milestone_report()
         report_text = ["**Milestone Updates Required**\n"]
         for role, ms_info_list in report.items():

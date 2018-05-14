@@ -499,7 +499,6 @@ class WritingSprint(KazCog):
         """
         Get the current status of the sprint.
         """
-        logger.info("status: {}".format(message_log_str(ctx.message)))
         em_data = copy.deepcopy(self.DISP_EMBEDS['status'])
         state = self.get_state()
 
@@ -564,7 +563,6 @@ class WritingSprint(KazCog):
             .w start 15 - Create a 15-minute sprint, starting in 5 minutes.
             .w start 25 1 - Create a 25-minute sprint, starting in 1 minute.
         """
-        logger.debug("start: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is not SprintState.IDLE:
             raise SprintRunningError()
@@ -629,7 +627,6 @@ class WritingSprint(KazCog):
         This can only be done by the creator of the sprint or moderators, and only if a sprint is
         ongoing or is about to start.
         """
-        logger.info("stop: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
@@ -685,7 +682,6 @@ class WritingSprint(KazCog):
         Example:
             .w join 12044 - Join the sprint with an initial wordcount of 12,044 words.
         """
-        logger.info("join: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
@@ -723,7 +719,6 @@ class WritingSprint(KazCog):
         You should normally only need to use this if you realise you can't stay for the entire
         sprint, or otherwise can't participate in the sprint.
         """
-        logger.info("leave: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
@@ -775,7 +770,6 @@ class WritingSprint(KazCog):
         Example:
             .w c 12888 - Report that your wordcount is 12888.
         """
-        logger.info("wordcount: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
@@ -799,7 +793,6 @@ class WritingSprint(KazCog):
         Finalize your wordcount. Use this when you're sure you're done and your wordcount is
         correct.
         """
-        logger.info("final: {}".format(message_log_str(ctx.message)))
         state = self.get_state()
         if state is SprintState.IDLE or state is SprintState.PREPARE:
             raise SprintNotRunningError()
@@ -849,7 +842,6 @@ class WritingSprint(KazCog):
             .w leader - All-time leaderboard.
             .w leader 2018-03-14 - Leaderboard for the week that contains 14 March 2018.
         """
-        logger.info("leader: {}".format(message_log_str(ctx.message)))
         date = date  # type: datetime
         await self._leader_inner(ctx.message.channel, date)
 
@@ -900,7 +892,6 @@ class WritingSprint(KazCog):
             .w stats @JaneDoe - Stats for JaneDoe for all time.
             .w stats all 2018-03-14 - Global stats for the week including 14 March.
         """
-        logger.info("stats: {}".format(message_log_str(ctx.message)))
         date = date  # type: datetime
         member = get_member(ctx, user) if user != 'all' else None
 
@@ -963,7 +954,6 @@ class WritingSprint(KazCog):
             .w stats_reset @JaneDoe - Reset Jane Doe's stats (mods only).
             .w statsreset global - Reset global stats only (user stats are preserved).
         """
-        logger.info("statreset: {}".format(message_log_str(ctx.message)))
         if user == 'global' or user == 'all':
             member = user
         elif user:

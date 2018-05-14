@@ -146,9 +146,6 @@ class ReminderCog(KazCog):
         .remind on 24 december at 4:50pm: Grandma's christmas call
         .remind tomorrow at 8am: Start Spotlight
         """
-
-        logger.info("reminder: {}".format(message_log_str(ctx.message)))
-
         # check existing count
         n = reduce(lambda c, r: c+1 if r.user_id == ctx.message.author.id else c, self.reminders, 0)
         if n >= self.MAX_PER_USER:
@@ -233,8 +230,6 @@ class ReminderCog(KazCog):
     @reminder.command(ignore_extra=False, pass_context=True)
     async def list(self, ctx: commands.Context):
         """ Lists all future reminders you've requested. """
-        logger.info("reminder list: {}".format(message_log_str(ctx.message)))
-
         items = []
         filtered = filter(lambda r: r.user_id == ctx.message.author.id, self.reminders)
         sorted_reminders = sorted(filtered, key=lambda r: r.remind_time)
@@ -257,7 +252,6 @@ class ReminderCog(KazCog):
     @reminder.command(pass_context=True, ignore_extra=False)
     async def clear(self, ctx: commands.Context):
         """ Remove all future reminders you've requested. """
-        logger.info("reminder clear: {}".format(message_log_str(ctx.message)))
         reminders_to_keep = []
         for reminder in self.reminders:
             if reminder.user_id == ctx.message.author.id:

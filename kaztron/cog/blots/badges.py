@@ -189,7 +189,6 @@ class BadgeManager(KazCog):
             .checkin badge @JaneDoe - List all of JaneDoe's badges (last page if multiple pages)..
             .checkin badge @JaneDoe 4 - List the 4th page of JaneDoe's badges
         """
-        logger.info("badges: {}".format(message_log_str(ctx.message)))
         user = user  # type: discord.Member  # for IDE type checking
         try:
             db_records = self.c.query_badges(member=user)
@@ -227,8 +226,6 @@ class BadgeManager(KazCog):
         Arguments:
         * min_badges: Optional. Minimum number of badges to report.
         """
-        logger.info("badges report: {}".format(message_log_str(ctx.message)))
-
         if min_badges < 1:
             raise commands.BadArgument("`min` must be at least 1.")
 
@@ -249,7 +246,6 @@ class BadgeManager(KazCog):
         Arguments:
         * messages: Optional (default 100). Number of messages to read in history.
         """
-        logger.info("badges load: {}".format(message_log_str(ctx.message)))
         if messages <= 0:
             raise commands.BadArgument("`messages` must be positive")
 

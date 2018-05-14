@@ -131,7 +131,6 @@ class QuoteCog(KazCog):
             .quote @JaneDoe - Find a random quote by JaneDoe.
             .quote @JaneDoe 4 - Find the 4th quote by JaneDoe.
         """
-        logger.info("quote: {}".format(message_log_str(ctx.message)))
         db_user = c.query_user(self.server, user)
         db_records = c.query_author_quotes(db_user)
         len_recs = len(db_records)
@@ -166,8 +165,6 @@ class QuoteCog(KazCog):
             .quote find @JaneDoe flamingo - Find a quote containing "flamingo" by JaneDoe.
             .quote find Jane flamingo - Find a quote matching user "Jane" and containing "flamingo".
         """
-        logger.info("quote find: {}".format(message_log_str(ctx.message)))
-
         try:
             db_user = c.query_user(self.server, user)
         except ValueError:  # not a valid user ID format
@@ -194,7 +191,6 @@ class QuoteCog(KazCog):
             .quote list @JaneDoe - List all quotes by JaneDoe (page 1 if multiple pages)..
             .quote list @JaneDoe 4 - List the 4th page of quotes by JaneDoe.
         """
-        logger.info("quote list: {}".format(message_log_str(ctx.message)))
         db_user = c.query_user(self.server, user)
         db_records = c.query_author_quotes(db_user)
         paginator = Pagination(db_records, self.QUOTES_PER_PAGE, align_end=True)
@@ -216,7 +212,6 @@ class QuoteCog(KazCog):
         Examples:
             .quote add @JaneDoe Ready for the mosh pit, shaka brah.
         """
-        logger.info("quote add: {}".format(message_log_str(ctx.message)))
         if len(message) > Quote.MAX_MESSAGE_LEN:
             raise ValueError("That quote is too long! Maximum length {:d} characters."
                 .format(Quote.MAX_MESSAGE_LEN))
@@ -253,7 +248,6 @@ class QuoteCog(KazCog):
             .quote grab @JaneDoe mosh pit
                 Finds the most recent message from @JaneDoe containing "mosh pit".
         """
-        logger.info("quote grab: {}".format(message_log_str(ctx.message)))
         async for message in self.bot.logs_from(ctx.message.channel, self.grab_max): \
                 # type: discord.Message
             # if requested author, and this message isn't the invoking one (in case of self-grab)
@@ -312,7 +306,6 @@ class QuoteCog(KazCog):
         Examples:
             .quote del 4 - Delete the 4th quote attributed to you.
         """
-        logger.info("quote rem: {}".format(message_log_str(ctx.message)))
         db_user = c.query_user(self.server, ctx.message.author.id)
         db_records = c.query_author_quotes(db_user)
         len_recs = len(db_records)
@@ -340,7 +333,6 @@ class QuoteCog(KazCog):
         This command only undoes `.quote add` or `.quote grab` actions. It does NOT undo
         `.quote rem` actions.
         """
-        logger.info("quote undo: {}".format(message_log_str(ctx.message)))
         db_user = c.query_user(self.server, ctx.message.author.id)
         db_records = c.query_saved_quotes(db_user)
 
@@ -365,7 +357,6 @@ class QuoteCog(KazCog):
             .quote rem @JaneDoe 4 - Delete the 4th quote by JaneDoe.
             .quote rem @JaneDoe all - Remove all quotes by JaneDoe.
         """
-        logger.info("quote del: {}".format(message_log_str(ctx.message)))
         db_user = c.query_user(self.server, user)
         db_records = c.query_author_quotes(db_user)
         len_recs = len(db_records)

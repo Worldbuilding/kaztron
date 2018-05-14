@@ -490,7 +490,6 @@ class Spotlight(KazCog):
         """
         [MOD ONLY] List all the spotlight applications in summary form.
         """
-        logger.debug("list: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         logger.info("Listing all spotlight applications for {0.author!s} in {0.channel!s}"
             .format(ctx.message))
@@ -515,7 +514,6 @@ class Spotlight(KazCog):
     @mod_only()
     async def current(self, ctx):
         """ [MOD ONLY] Show the currently selected application. """
-        logger.debug("current: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         try:
             app = await self._get_current()
@@ -531,7 +529,6 @@ class Spotlight(KazCog):
         [MOD ONLY] Select a spotlight application at random, and set it as the currently selected
         application. Only applications that are marked 'ready for Spotlight' will be selected.
         """
-        logger.debug("roll: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         if not self.applications:
@@ -558,7 +555,6 @@ class Spotlight(KazCog):
         * list_index: Required. The numerical index of a spotlight application, as shown with
          .spotlight list.
         """
-        logger.debug("set: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         if not self.applications:
@@ -589,7 +585,6 @@ class Spotlight(KazCog):
         """
 
         # Retrieve and showcase the app
-        logger.debug("showcase: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         try:
             current_app = await self._get_current()
@@ -680,7 +675,6 @@ class Spotlight(KazCog):
         """
         [MOD ONLY] Lists the current queue of upcoming spotlights.
         """
-        logger.debug("queue list: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         logger.info("Listing queue for {0.author!s} in {0.channel!s}".format(ctx.message))
 
@@ -704,7 +698,6 @@ class Spotlight(KazCog):
             .spotlight q s 2018-03
             .spotlight q s March 2018
         """
-        logger.debug("queue showcase: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         logger.info("Listing showcase queue for {0.author!s} in {0.channel!s}".format(ctx.message))
         month = month  # type: datetime
@@ -758,7 +751,6 @@ class Spotlight(KazCog):
         * `.spotlight queue add 2018-01-25 to 2018-01-26`
         * `.spotlight queue add april 3 to april 5`
         """
-        logger.debug("queue add: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         try:
@@ -796,7 +788,6 @@ class Spotlight(KazCog):
     @queue.command(name='insert', pass_context=True, hidden=True, aliases=['i'])
     @mod_only()
     async def queue_insert(self, ctx):
-        logger.debug("queue insert: {}".format(message_log_str(ctx.message)))
         await self.bot.say("**Error**: This command is no longer supported (>= 2.1).")
 
     @queue.command(name='next', ignore_extra=False, pass_context=True, aliases=['n'])
@@ -807,7 +798,6 @@ class Spotlight(KazCog):
         remove it from the queue. This is useful when a new spotlight is ready to start, as you can
         then immediately use `.spotlight showcase` to announce it publicly.
         """
-        logger.debug("queue next: {}".format(message_log_str(ctx.message)))
         try:
             queue_item = self.queue_data.popleft()
         except IndexError:
@@ -863,7 +853,6 @@ class Spotlight(KazCog):
         Examples:
             `.spotlight queue edit 3 april 3 to april 6`
         """
-        logger.debug("queue edit: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         # Retrieve the queue item
@@ -931,7 +920,6 @@ class Spotlight(KazCog):
             `.spotlight queue rem` - Remove the last spotlight in the queue.
             `.spotlight queue rem 3` - Remove the third spotlight in the queue.
         """
-        logger.debug("queue rem: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         if queue_index is not None:

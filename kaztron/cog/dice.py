@@ -40,8 +40,6 @@ class DiceCog(KazCog):
 
         Example: `.rolls 3d6` rolls three six-sided dice.
         """
-        logger.info("roll: {}".format(message_log_str(ctx.message)))
-
         try:
             num_rolls, num_sides = map(int, dice.split('d'))
         except ValueError:
@@ -75,7 +73,6 @@ class DiceCog(KazCog):
 
         Arguments: None
         """
-        logger.info("roll: {}".format(message_log_str(ctx.message)))
         dice = (-1, -1, 0, 0, 1, 1)
         str_map = {-1: '-', 0: '0', 1: '+'}
         roll_results = [random.choice(dice) for _ in range(4)]
@@ -95,7 +92,6 @@ class DiceCog(KazCog):
         Examples:
         `.choose a, b, c`
         """
-        logger.info("choose: {}".format(message_log_str(ctx.message)))
         choices = list(map(str.strip, choices.split(",")))
         if "" in choices:
             logger.warning("choose(): argument empty")
