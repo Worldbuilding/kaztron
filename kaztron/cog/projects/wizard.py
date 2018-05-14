@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
 import discord
 from discord.ext import commands
@@ -22,7 +22,7 @@ start_msg = "**New Project Wizard**\n\n" \
             "type `.project cancel`."
 start_edit_msg_fmt = "**Edit Project Wizard**\n\n" \
                      "You are editing your current project, {0.title}. If you don't want to " \
-                     "change a previous value, type `None` for that question. To cancel this " \
+                     "change a previous value, type `skip` for that question. To cancel this " \
                      "wizard, type `.project cancel`."
 end_msg = "Your project is set up! Other members can now look it up and find out what" \
               "you're up to!\n\nIf you'd like to re-run this wizard to make changes to your " \
@@ -43,6 +43,25 @@ questions = {
     'pitch': "Give an elevator pitch (about 50 words) for your project!"
 }
 
+aboutme_keys = ['bio', 'genre', 'type', 'url']
+aboutme_start_msg = "**Author Info Wizard\n\n" \
+                    "Set up your public author/user profile! Anyone can look this information up. "\
+                    "If you don't want to change the old value, type `skip`. " \
+                    "To cancel this wizard, type `.project cancel`."
+
+aboutme_end_msg = "Your profile is set up! If you'd like to re-run this wizard to make " \
+                  "changes to your profile, use `.project aboutme`."
+
+aboutme_questions = {
+    'bio': "Write a short bio about yourself (~50 words) by "
+           "continuing this sentence: \"The author is ...\"\n\n(You can also type `blank`.)",
+    'genre': lambda: "What genre do you prefer? Available genres: {}."
+                     .format(', '.join(o.name for o in q.query_genres())),
+    'type': lambda: ("What kind of work do you primarily do? Available types: {}."
+                     ).format(', '.join(o.name for o in q.query_project_types())),
+    'url': "Do you have a website or webpage for more info about you? Enter the URL, or `blank`."
+}
+
 
 def pitch_validator(s: str):
     wc = count_words(s)
@@ -52,13 +71,33 @@ def pitch_validator(s: str):
     return s
 
 
+def bio_validator(s: str):
+    if s.lower() == 'blank':
+        return ''
+
+    wc = count_words(s)
+    if wc > m.User.MAX_ABOUT_WORDS:
+        raise ValueError("Bio too long ({:d} words, max {:d})"
+            .format(wc, m.User.MAX_ABOUT_WORDS))
+    return s
+
+
+def url_validator(s: str):
+    if s.lower() == 'blank':
+        return ''
+    else:
+        return len_validator(m.Project.MAX_TITLE)
+
+
 validators = {
     'title': len_validator(m.Project.MAX_TITLE),
     'genre': lambda x: q.get_genre(x),
     'subgenre': len_validator(m.Project.MAX_SHORT),
     'type': lambda x: q.get_project_type(x),
     'pitch': pitch_validator,
-    'description': len_validator(m.Project.MAX_FIELD)
+    'description': len_validator(m.Project.MAX_FIELD),
+    'url': url_validator,
+    'bio': bio_validator,
 }
 
 serializers = {
@@ -68,6 +107,7 @@ serializers = {
 
 
 ProjectWizard = make_wizard(keys, questions, validators, serializers, keys_optional)
+AuthorWizard = make_wizard(aboutme_keys, aboutme_questions, validators, serializers, aboutme_keys)
 
 UserWizardMap = Dict[str, ProjectWizard]
 
@@ -103,13 +143,15 @@ class WizardManager:
         self.wizards = {
             'new': {},
             'edit': {},
+            'author': {},
         }
         self.timeout = timedelta(seconds=timeout)
 
     def has_open_wizard(self, member: discord.Member):
         return any(member.id in w for w in self.wizards.values())
 
-    def get_wizard_for(self, member: discord.Member) -> Tuple[str, ProjectWizard]:
+    def get_wizard_for(self, member: discord.Member)\
+            -> Tuple[str, Union[ProjectWizard, AuthorWizard]]:
         for name, uw_map in self.wizards.items():
             try:
                 if uw_map[member.id] is None:
@@ -157,6 +199,22 @@ class WizardManager:
             self.cancel_wizards(member)
             raise
 
+    async def create_author_wizard(self, member: discord.Member, timestamp: datetime):
+        await self.purge()
+        if self.has_open_wizard(member):
+            raise commands.CommandError("You already have an ongoing wizard!")
+
+        logger.info("Starting 'author' wizard for {}".format(member))
+        w = AuthorWizard(member.id, timestamp)
+        self.wizards['author'][member.id] = w
+
+        try:
+            await self.bot.send_message(member, aboutme_start_msg)
+            await self.send_question(member)
+        except Exception:
+            self.cancel_wizards(member)
+            raise
+
     async def process_answer(self, message: discord.Message):
         await self.purge()
         wiz_name, wizard = self.get_wizard_for(message.author)
@@ -172,7 +230,9 @@ class WizardManager:
         if wizard.is_done:
             logger.info("Closing '{}' wizard for {}".format(wiz_name, member))
             del self.wizards[wiz_name][member.id]
-            await self.bot.send_message(member, end_msg)
+            await self.bot.send_message(
+                member, end_msg if wiz_name != 'author' else aboutme_end_msg
+            )
             return wiz_name, wizard
         else:
             raise KeyError("Wizard for user {} not completed yet".format(member))

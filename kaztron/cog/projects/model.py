@@ -6,7 +6,7 @@ Base = db.declarative_base()
 
 class User(Base):
     __tablename__ = 'users'
-    MAX_FIELD = 1000
+    MAX_ABOUT_WORDS = 70
     MAX_TITLE = 256
 
     user_id = db.Column(db.Integer, db.Sequence('user_id_seq'), primary_key=True, nullable=False)
@@ -18,13 +18,12 @@ class User(Base):
         order_by='Project.project_id', back_populates='user')
     max_projects = db.Column(db.Integer, nullable=True)
 
-    about = db.Column(db.String(MAX_FIELD), nullable=True)
+    about = db.Column(db.String(MAX_ABOUT_WORDS), nullable=True)
     type_id = db.Column(db.Integer, db.ForeignKey('type.id'), nullable=True, index=True)
     type = db.relationship('ProjectType', lazy='joined')
     genre_id = db.Column(db.Integer, db.ForeignKey('genre.id'), nullable=True, index=True)
     genre = db.relationship('Genre', lazy='joined')
 
-    url_title = db.Column(db.String(MAX_TITLE), nullable=True)
     url = db.Column(db.String(MAX_TITLE), nullable=True)
 
     def __repr__(self):
@@ -83,9 +82,8 @@ class Project(Base):
     genre = db.relationship('Genre', lazy='joined')
     subgenre = db.Column(db.String(MAX_SHORT), nullable=True)
 
-    url_title = db.Column(db.String(MAX_TITLE), nullable=True)
     url = db.Column(db.String(MAX_TITLE), nullable=True)
-    follow_role = db.Column(db.String(MAX_SHORT), unique=True, nullable=True, index=True)
+    follow_role_id = db.Column(db.String(24), unique=True, nullable=True, index=True)
 
     pitch = db.Column(db.String(MAX_FIELD), nullable=False)
     description = db.Column(db.String(MAX_FIELD), nullable=True)

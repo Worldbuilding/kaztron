@@ -16,7 +16,7 @@ __all__ = ['get_role', 'update_user_roles', 'update_project_message', 'get_proje
 EMBED_COLOUR = solarized.orange
 
 
-def get_project_embed(project: m.Project) -> discord.Embed:
+def get_project_embed(project: m.Project, with_user_info=False) -> discord.Embed:
     em = discord.Embed(
         title=project.title,
         description='by {}\n\n{}'.format(user_mention(project.user.discord_id), project.pitch),
@@ -24,10 +24,27 @@ def get_project_embed(project: m.Project) -> discord.Embed:
     )
     em.add_field(name='Genre', value='{0.genre.name} - {0.subgenre}'.format(project))
     em.add_field(name='Type', value=project.type.name)
-    if project.follow_role:
-        em.add_field(name='Follow Role', value=project.follow_role)
+    if project.follow_role_id:
+        em.add_field(name='Follow role', value=project.follow_role_id)
     if project.url:
-        em.add_field(name='More Info', value=project.url)
+        em.add_field(name='More info', value="[More info]({})".format(project.url))
+
+    # user info
+    if with_user_info:
+        user = project.user
+        if user.about:
+            msg = "{} is {}".format(user_mention(user.discord_id), user.about)
+        else:
+            msg = "{} *(no bio)*"
+
+        em.add_field(name="About the author", value=msg, inline=False)
+
+        if user.genre:
+            em.add_field(name="Genre", value=user.genre.name)
+        if user.type:
+            em.add_field(name="Type", value=user.type.name)
+        if user.url:
+            em.add_field(name='More info', value="[More info]({})".format(user.url))
     return em
 
 

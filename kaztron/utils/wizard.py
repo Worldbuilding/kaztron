@@ -56,7 +56,7 @@ def make_wizard(
         :param user_id: Discord ID of the member this wizard is running for.
         :param timestamp: The time this wizard was started at.
         """
-        NONE_VALUES = ('none', 'n/a', 'null')
+        NONE_VALUES = ('none', 'n/a', 'null', 'skip')
         question_keys = []  # type: List[str]
         opts = []  # type: List[str]
         questions = {}  # type: Dict[str, Union[str, Callable[[], str]]]

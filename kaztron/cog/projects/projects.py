@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from typing import Tuple
 
 import discord
 from discord.ext import commands
@@ -7,12 +8,12 @@ from discord.ext import commands
 from kaztron import KazCog
 from kaztron.utils.confirm import ConfirmManager
 from kaztron.utils.converter import MemberConverter2
-from . import model as m, query as q
+from . import model as m, query as q, wizard as w
 from .discord import *
 from .wizard import WizardManager
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only
-from kaztron.utils.discord import user_mention, role_mention, Limits, get_command_str,\
+from kaztron.utils.discord import user_mention, Limits, get_command_str,\
     get_group_help
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
@@ -26,8 +27,9 @@ class ProjectsCog(KazCog):
     Configuration section ``projects``:
 
     * ``project_channel``: String (channel ID). Channel in which to output/archive projects.
-    * ``max_projects``: Maximum number of projects. This can be overridden on a per-user
-      basis.
+    * ``max_projects``: Maximum number of projects. This can be overridden on a per-user basis.
+    * ``max_projects_map``: Dict that associates role names to max projects. Takes priority over
+      the ``max_projects`` configuration value, but is superseded by individual project numbers.
     * ``timeout_confirm``: Timeout (in seconds) for confirming certain commands like delete.
     * ``timeout_wizard``: Timeout (in seconds) for wizards.
 
@@ -42,6 +44,125 @@ class ProjectsCog(KazCog):
         self.wizard_manager = None  # type: WizardManager
         self.channel = None  # type: discord.Channel
         self.confirm_del = None  # type: ConfirmManager
+
+        self.project_setters = {}
+        self.setup_project_setter_commands()
+
+    def setup_project_setter_commands(self):
+        data = {
+            'title': {
+                'msg_help': "Set the active project's title.",
+                'msg_success': "Project title changed to \"{project.title}\"",
+                'msg_err': "Title too long"
+            },
+            'genre': {
+                'msg_help': "Set the active project's genre.",
+                'msg_success': "Genre changed to {project.genre.name} "
+                               "for project '{project.title}'",
+                'msg_err': "Unknown genre: {value}",
+                'msg_none': "Available genres: {}"
+                            .format(', '.join(o.name for o in q.query_genres()))
+            },
+            'subgenre':  {
+                'msg_help': "Set the active project's subgenre.",
+                'msg_success': "Subgenre changed to {project.subgenre} "
+                               "for project '{project.title}'",
+                'msg_err': "Subgenre too long"
+            },
+            'type': {
+                'msg_help': "Set the active project's type.",
+                'msg_success': "Project type changed to {project.type.name} "
+                               "for project '{project.title}'",
+                'msg_err': "Unknown project type: {value}",
+                'msg_none': "Available project types: {}"
+                            .format(', '.join(o.name for o in q.query_genres()))
+            },
+            'pitch': {
+                'msg_help': "Set the active project's elevator pitch.",
+                'msg_success': "Elevator pitch updated for '{project.title}'",
+                'msg_err': "Elevator pitch too long (max {:d} words)"
+                            .format(m.Project.MAX_PITCH_WORDS)
+            },
+            'url': {
+                'msg_help': "Set the active project's website URL.",
+                'msg_success': "URL updated to {project.url} for '{project.title}'",
+                'msg_err': "URL too long (max {:d} characters)"
+                            .format(m.Project.MAX_SHORT)
+            },
+            'description': {
+                'msg_help': "Set the active project's long description.",
+                'msg_success': "Description updated for '{project.title}'",
+                'msg_err': "Description too long (max {:d} characters)"
+                            .format(m.Project.MAX_FIELD)
+            }
+        }
+        for attr_name, msgs in data.items():
+            setter = self.make_project_setter(attr_name, *msgs)
+            command_params = {
+                'name': attr_name,
+                'pass_context': True,
+                'ignore_extra': False
+            }
+            cmd = self.project.command(**command_params)(setter)
+            cmd.instance = self
+            self.project_setters[attr_name] = cmd
+
+    @staticmethod
+    def make_project_setter(attr_name: str, msg_help: str,
+                            msg_success: str, msg_err: str, msg_none: str=None):
+        """
+        :param attr_name: Name of the attribute to set on the Project model object.
+        :param msg_help: Help message.
+        :param msg_success: Format of message to send on success. Variables "project" and
+            "value" are available.
+        :param msg_err: Format of message to send on invalid value passed. Variables "project"
+            and "value" are available.
+        :param msg_none: Format of message to send on no value passed. Variable "project"
+            is available. Optional; if not passed, None values are not allowed.
+        :return:
+        """
+        async def setter(self: ProjectsCog, ctx: commands.Context, value: str=None):
+            logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+            with q.transaction():
+                project = self.check_active_project(ctx.message.author)
+                if value:
+                    try:
+                        setattr(project, attr_name, w.validators[attr_name](value))
+                    except ValueError:
+                        raise commands.BadArgument(msg_err.format(project=project, value=value))
+                    msg = msg_success.format(project=project, value=value)
+
+                    await update_project_message(self.bot, self.channel, project)
+                    q.update_user_from_projects(project.user)
+                    await update_user_roles(self.bot, self.server, [project.user])
+                else:
+                    if msg_none:
+                        msg = msg_none.format(project=project)
+                    else:
+                        raise commands.MissingRequiredArgument("value")
+
+                await self.bot.say(msg)
+
+        setter.__doc__ = msg_help
+        return setter
+
+    def get_default_max_for(self, member: discord.Member):
+        """
+        Return the default maximum projects number from configuration for a given user (based on
+        their roles). This does NOT check whether that user has a specific maximum set for them;
+        for that, use :meth:`.model.User.max_projects_eff`, e.g.:
+
+        ..code:: python
+            with q.transaction():
+                user = q.get_or_make_user(member)
+                max_projects = user.max_projects_eff(self.get_default_max_for(member))
+        """
+        max_projects_map = self.config.get('projects', 'max_projects_map')  # type: dict
+        for role in member.roles:
+            if role.name in max_projects_map:
+                return max_projects_map[role.name]
+        else:
+            return self.config.get('projects', 'max_projects')
 
     async def on_ready(self):
         channel_id = self.config.get('projects', 'project_channel')
@@ -74,6 +195,15 @@ class ProjectsCog(KazCog):
         self.state.set('projects', 'wizards', self.wizard_manager.to_dict())
         self.state.set('projects', 'confirm_del', self.confirm_del.to_dict())
         self.state.write()
+
+    @staticmethod
+    def check_active_project(member: discord.Member) -> m.Project:
+        """ Should always be called in a transaction context. """
+        user = q.get_or_make_user(member)
+        if not user.active_project:
+            raise commands.UserInputError("You need an active project to use that command! "
+                                          "See `.help projects select`.")
+        return user.active_project
 
     @commands.group(invoke_without_command=True, pass_context=True, ignore_extra=False,
         aliases=['projects'])
@@ -181,6 +311,58 @@ class ProjectsCog(KazCog):
         await self.bot.say("{} Your active project has been set to {}"
             .format(ctx.message.author.mention, user.active_project.title))
 
+    def get_follow_role(self, member: discord.Member, title: str) -> Tuple[m.Project, discord.Role]:
+        with q.transaction():
+            user = q.get_or_make_user(member)
+
+        if not user.projects:
+            raise commands.UserInputError("User {} does not have any projects."
+                .format(member.nick if member.nick else member.name))
+
+        if not title:
+            if not user.active_project:
+                raise commands.UserInputError(
+                    ("User {} does not have an active project. "
+                     "Please specify a project title to follow.")
+                    .format(member.nick if member.nick else member.name))
+            project = user.active_project
+        else:
+            try:
+                project = user.find_project(title)
+            except KeyError:
+                raise commands.UserInputError(
+                    "User {} does not have a project matching '{}'".format(member.mention, title)
+                )
+
+        if not project.follow_role_id:
+            raise commands.UserInputError("Project {.title} does not have a follow role."
+                .format(project))
+
+        try:
+            role = get_role(self.server, project.follow_role_id)
+        except commands.BadArgument:
+            raise commands.UserInputError(
+                "The follow role can't be found! Please inform a mod/admin."
+            )
+
+        return project, role
+
+    @project.command(pass_context=True, ignore_extra=False)
+    async def follow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        member = member  # type: discord.Member  # for type checking
+        project, role = self.get_follow_role(member, title)
+        await self.bot.add_roles(ctx.message.author, [role])
+        await self.bot.reply("You are now following the project {.title}".format(project))
+
+    @project.command(pass_context=True, ignore_extra=False)
+    async def unfollow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        member = member  # type: discord.Member  # for type checking
+        project, role = self.get_follow_role(member, title)
+        await self.bot.remove_roles(ctx.message.author, [role])
+        await self.bot.reply("You are no longer following the project {.title}".format(project))
+
     @project.command(pass_context=True, ignore_extra=False)
     async def new(self, ctx: commands.Context):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
@@ -192,7 +374,7 @@ class ProjectsCog(KazCog):
             user = q.get_or_make_user(ctx.message.author)
             if not user.can_add_projects(self.config.get('projects', 'max_projects')):
                 raise commands.UserInputError("You can't have more than {:d} projects!"
-                    .format(user.max_projects_eff(self.config.get('projects', 'max_projects'))))
+                    .format(user.max_projects_eff(self.get_default_max_for(ctx.message.author))))
 
         await self.bot.reply("I've sent you a PM! Answer my questions to create your project.")
         await self.wizard_manager.create_new_wizard(ctx.message.author, ctx.message.timestamp)
@@ -221,6 +403,17 @@ class ProjectsCog(KazCog):
         self._save_state()
 
     @project.command(pass_context=True, ignore_extra=False)
+    async def aboutme(self, ctx: commands.Context):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+
+        if self.wizard_manager.has_open_wizard(ctx.message.author):
+            raise commands.UserInputError("You already have an ongoing wizard!")
+
+        await self.bot.reply("I've sent you a PM! Answer my questions to set up your user profile.")
+        await self.wizard_manager.create_author_wizard(ctx.message.author, ctx.message.timestamp)
+        self._save_state()
+
+    @project.command(pass_context=True, ignore_extra=False)
     async def cancel(self, ctx: commands.Context):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         await self.wizard_manager.cancel_wizards(ctx.message.author)
@@ -239,11 +432,22 @@ class ProjectsCog(KazCog):
                 await self.delete_request(ctx, name)
         self._save_state()
 
-    async def delete_request(self, ctx: commands.Context, name: str):
+    async def delete_request(self, ctx: commands.Context,
+                             name: str, target_user: discord.Member=None):
+        """
+        Set a deletion request from a user. A confirmation is required to complete the request.
+        :param ctx: Context
+        :param name: Title, or part of the title, of the project to delete.
+        :param target_user: Optional, for use only with admin delete commands. The user whose
+            project to delete.
+        :return:
+        """
         logging.info("Received delete request.")
 
+        member = target_user if target_user is not None else ctx.message.author
+
         with q.transaction():
-            user = q.get_or_make_user(ctx.message.author)
+            user = q.get_or_make_user(member)
 
         # Find project reference
         if name:
@@ -252,7 +456,8 @@ class ProjectsCog(KazCog):
                 logging.debug("Found {!r} for search {}".format(project, name))
             except KeyError:
                 raise commands.UserInputError(
-                    "You don't have any projects containing \"{}\" in its title.".format(name)
+                    "{} have any projects containing \"{}\" in its title."
+                    .format(target_user.nick + " doesn't" if target_user else "You don't", name)
                 )
         elif user.active_project:
             project = user.active_project
@@ -272,10 +477,10 @@ class ProjectsCog(KazCog):
         logging.info("Stored deletion request, pending confirmation.")
 
         await self.bot.reply(
-            ("You are about to delete your project, \"{}\". You will lose all metadata, "
+            ("You are about to delete {} project, \"{}\". You will lose all metadata, "
              "wordcount history, goals, etc. for this project. **This cannot be undone.**\n\n"
              "Are you sure? Type `.project delete confirm` or `.project delete cancel`.")
-            .format(project.title)
+            .format(member.mention + "'s" if target_user else "your", project.title)
         )
 
     async def delete_confirm(self, ctx: commands.Context, name: str):
@@ -284,9 +489,14 @@ class ProjectsCog(KazCog):
             with q.transaction() as session:
                 project = session.query(m.Project).filter_by(project_id=project_id).one()
                 title = project.title
+                user_id = project.user.discord_id
                 logger.info("Received confirmation. Deleting {!r}.".format(project))
                 session.delete(project)
-            await self.bot.reply("Project \"{}\" deleted.".format(title))
+
+                # output msg
+                admin_deletion = (user_id != ctx.message.author.id)
+                await self.bot.reply("{} project \"{}\" has been deleted."
+                    .format(user_mention(user_id) if admin_deletion else "Your", title))
         elif name == 'cancel':
             pid = self.confirm_del.confirm(ctx)  # just clear and do nothing
             logger.info("Cancelling deletion request for project id {:d}".format(pid))
@@ -318,6 +528,7 @@ class ProjectsCog(KazCog):
         except KeyError:  # wizard not yet complete
             pass
         else:
+            project = None
             if name == 'new':
                 with q.transaction():
                     project = q.add_project(wizard)
@@ -325,6 +536,9 @@ class ProjectsCog(KazCog):
             elif name == 'edit':
                 with q.transaction():
                     project = q.update_project(wizard)
+            elif name == 'author':
+                with q.transaction():
+                    q.update_user(wizard)
             else:
                 project = None
                 logger.error("Unknown wizard type {!r}???".format(name))
@@ -333,7 +547,6 @@ class ProjectsCog(KazCog):
             if project:
                 with q.transaction():
                     await update_project_message(self.bot, self.channel, project)
-
                     q.update_user_from_projects(project.user)
                     await update_user_roles(self.bot, self.server, [project.user])
 
@@ -367,8 +580,8 @@ class ProjectsCog(KazCog):
             role_id = get_role(self.server, role).id if role else None
             genre = m.Genre(name=name, role_id=role_id)
             session.add(genre)
-        await self.bot.say("Genre added: {}".format(name))
-        await self.send_output("[Projects] Genre added: {}".format(genre.discord_str()))
+            await self.bot.say("Genre added: {}".format(name))
+            await self.send_output("[Projects] Genre added: {}".format(genre.discord_str()))
 
     @admin_genre.command(name='edit', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -376,7 +589,6 @@ class ProjectsCog(KazCog):
                                old_name: str, new_name: str, new_role: str=None):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
         with q.transaction() as _:
-
             try:
                 genre = q.get_genre(old_name)
             except KeyError:
@@ -389,48 +601,26 @@ class ProjectsCog(KazCog):
 
             await update_user_roles(self.bot, self.server, q.query_users(genre=genre))
 
-        await self.bot.say("Genre '{}' edited to '{}'".format(old_name, new_name))
-        await self.send_output("[Projects] Genre '{}' edited: {}"
-            .format(old_name, genre.discord_str()))
+            await self.bot.say("Genre '{}' edited to '{}'".format(old_name, new_name))
+            await self.send_output("[Projects] Genre '{}' edited: {}"
+                .format(old_name, genre.discord_str()))
 
     @admin_genre.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_genre_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-        with q.transaction() as session:
-            # Replace the deleted genre in projects/users
+        with q.transaction():
             try:
-                genre = q.get_genre(name)
-                if replace_name:
-                    replace_genre = q.get_genre(replace_name)
-                else:
-                    replace_genre = None
+                users, _ = q.safe_delete_genre(name, replace_name)
             except KeyError as e:
                 raise commands.BadArgument(e.args[0])
-
-            users = q.query_users(genre=genre)
-            projects = q.query_projects(genre=genre)
-            if replace_genre:
-                logger.info("Replacing genre {!r} with genre {!r}".format(genre, replace_genre))
-                logger.debug("...for users: {}".format(', '.join(repr(u) for u in users)))
-                logger.debug("...for projects: {}".format(', '.join(repr(p) for p in projects)))
-                for u in users:
-                    u.genre = replace_genre
-                for p in projects:
-                    p.genre = replace_genre
-
-                await update_user_roles(self.bot, self.server, users)
-
-            elif users or projects:  # no replace_genre but genre is in use
+            except q.RowReferencedError:
                 raise commands.UserInputError(
                     "Can't delete this genre: there are still users or projects using it! "
-                    "Make sure no users/projects are using the genre or to provide a substitute.")
-
-            # finally, delete the genre
-            logger.info("Deleting genre {!r}".format(name))
-            session.delete(genre)
-        await self.bot.say("Genre deleted: {}".format(name))
-        await self.send_output("[Projects] Genre deleted: {}".format(genre.discord_str()))
+                    "Make sure no users/projects are using the genre, or provide a replacement.")
+            await update_user_roles(self.bot, self.server, users)
+            await self.bot.say("Genre deleted: {}".format(name))
+            await self.send_output("[Projects] Genre deleted: {}".format(name))
 
     @admin.group(name='type', pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
@@ -454,8 +644,8 @@ class ProjectsCog(KazCog):
             logger.info("Adding new project type: name={!r} role={!r}".format(name, role))
             pt = m.ProjectType(name=name, role_id=get_role(self.server, role).id if role else None)
             session.add(pt)
-        await self.bot.say("Project type added: {}".format(name))
-        await self.send_output("[Projects] Project type added: {}".format(pt.discord_str()))
+            await self.bot.say("Project type added: {}".format(name))
+            await self.send_output("[Projects] Project type added: {}".format(pt.discord_str()))
 
     @admin_type.command(name='edit', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -476,54 +666,106 @@ class ProjectsCog(KazCog):
 
             await update_user_roles(self.bot, self.server, q.query_users(type_=p_type))
 
-        await self.bot.say("Project type '{}' edited to '{}'".format(old_name, new_name))
-        await self.send_output("[Projects] Project type '{}' edited: {}"
-            .format(old_name, p_type.discord_str()))
+            await self.bot.say("Project type '{}' edited to '{}'".format(old_name, new_name))
+            await self.send_output("[Projects] Project type '{}' edited: {}"
+                .format(old_name, p_type.discord_str()))
 
     @admin_type.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_type_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
         logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-        with q.transaction() as session:
-            # Replace the deleted genre in projects/users
+        with q.transaction():
             try:
-                p_type = q.get_project_type(name)
-                if replace_name:
-                    replace_type = q.get_project_type(replace_name)
-                else:
-                    replace_type = None
+                users, _ = q.safe_delete_project_type(name, replace_name)
             except KeyError as e:
                 raise commands.BadArgument(e.args[0])
-
-            users = q.query_users(type_=p_type)
-            projects = q.query_projects(type_=p_type)
-            if replace_type:
-                logger.info("Replacing type {!r} with type {!r}".format(p_type, replace_type))
-                logger.debug("...for users: {}".format(', '.join(repr(u) for u in users)))
-                logger.debug("...for projects: {}".format(', '.join(repr(p) for p in projects)))
-                for u in users:
-                    u.type = replace_type
-                for p in projects:
-                    p.type = replace_type
-
-                await update_user_roles(self.bot, self.server, users)
-
-            elif users or projects:  # no replace_type but genre is in use
+            except q.RowReferencedError:
                 raise commands.UserInputError(
-                    "Can't delete this genre: there are still users or projects using it! "
-                    "Make sure no users/projects are using the genre or to provide a substitute.")
+                    "Can't delete this project type: there are still users or projects using it! "
+                    "Make sure no users/projects are using the genre, or provide a replacement.")
+            await update_user_roles(self.bot, self.server, users)
+            await self.bot.say("Project type deleted: {}".format(name))
+            await self.send_output("[Projects] Project type deleted: {}".format(name))
 
-            # finally, delete the genre
-            logger.info("Deleting project type {!r}".format(name))
-            session.delete(p_type)
-        await self.bot.say("Project type deleted: {}".format(name))
-        await self.send_output("[Projects] Project type deleted: {}".format(p_type.discord_str()))
+    @admin.command(name='delete', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_delete(self, ctx: commands.Context, member: MemberConverter2, title: str=None):
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        member = member  # type: discord.Member  # for type checking
 
-    # TODO: set (for individual fields), delete - will cancel an open wizard implicitly. Should automatically set user prefs if single project.
-    # TODO: *, search {genre|type|title|body}
-    # TODO: stats/progress stuff
-    # TODO: admin commands - set max projects (+ 'default' keyword), delete project
-    # TODO: configure user prefs (role/type/aboutme)
+        if not self.confirm_del.has_request(ctx.message.author):
+            await self.delete_request(ctx, title, target_user=member)
+        else:
+            try:
+                await self.delete_confirm(ctx, title)
+            except ValueError:
+                await self.delete_request(ctx, title)
+        self._save_state()
 
-    # TODO: max projects with role support? maybe something for BLOTS to handle
+    @admin.command(name='limit', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_limit(self, ctx: commands.Context, member: MemberConverter2, limit: int):
+        """
+        Set a maximum number of projects that a user can have.
+
+        If the user exceeds this number of projects, their old projects will not be deleted.
+        However, they will be denied creating new projects until they delete enough projects to be
+        below this limit.
+
+        Arguments
+        * member: The member to change, as an @mention or user ID.
+        * limit: The new maximum number of projects. Use -1 to set this to the default value
+          (as specified in the configuration file).
+
+        Examples
+            .projects admin limit @MultiCoreProcessor#1234 8
+        """
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        member = member  # type: discord.Member  # for type checking
+        if limit < 0:
+            limit = None
+
+        with q.transaction():
+            logger.info("Setting {} limit to {:d}".format(member, limit))
+            user = q.get_or_make_user(member)
+            user.max_projects = limit
+
+            await self.bot.reply("Set {}'s project limit to {:d}{}".format(
+                member.mention,
+                limit if limit else self.config.get('projects', 'max_projects'),
+                " (default)" if limit is None else ""
+            ))
+
+    @admin.command(name='followable', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_followable(self, ctx: commands.Context,
+                          member: MemberConverter2, title: str, role: discord.Role=None):
+        """
+        (mention quotation marks in these docs)
+        """
+        logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
+        member = member  # type: discord.Member  # for type checking
+        with q.transaction():
+            user = q.get_or_make_user(member)
+            try:
+                project = user.find_project(title)
+            except KeyError:
+                raise commands.UserInputError(
+                    "User {} does not have a project matching '{}'".format(member.mention, title)
+                )
+
+            logger.info("Setting project follow role {} for project {!r}"
+                .format(role.name if role else "<None>", project))
+            project.follow_role = role.id if role else None
+
+            if project.follow_role_id:
+                await self.bot.reply("Set {}'s project follow role to {}"
+                    .format(member.mention, role.name))
+            else:
+                await self.bot.reply("Removed {}'s project follow role".format(member.mention))
+
+    # TO TEST:
+    # TODO: all the set commands for project fields
+    # TODO: admin delete, admin limit
     # TODO: creating/setting follow roles, join/leave
+    # TODO: role-determined max projects
