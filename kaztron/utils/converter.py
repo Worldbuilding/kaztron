@@ -79,7 +79,7 @@ class NaturalInteger(commands.Converter):
         as floating-point.
     """
     def convert(self):
-        n_str = self.argument
+        n_str = self.argument.rstrip(',.')
         try:
             return int(n_str)
         except ValueError:
@@ -96,9 +96,9 @@ class NaturalInteger(commands.Converter):
         if any(len(c) != 3 for c in commas_split[1:])\
                 or any(len(c) != 3 for c in periods_split[1:])\
                 or any(len(c) != 3 for c in n_str.split(' ')[1:]):
-            raise commands.BadArgument("Cannot convert {!r} to an integer.")
+            raise commands.BadArgument("Cannot convert {!r} to an integer.".format(n_str))
 
         try:
             return int(n_str.replace(',', '').replace('.', '').replace(' ', ''))
         except ValueError:
-            raise commands.BadArgument("Cannot convert {!r} to an integer.")
+            raise commands.BadArgument("Cannot convert {!r} to an integer.".format(n_str))

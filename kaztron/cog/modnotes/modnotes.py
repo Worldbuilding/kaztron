@@ -13,7 +13,8 @@ from kaztron.driver import database as db
 from kaztron.driver.pagination import Pagination
 from kaztron.utils.datetime import parse as dt_parse
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
-from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, get_usage_str
+from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, \
+    get_usage_str, get_group_help
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, parse_keyword_args
 
@@ -53,8 +54,8 @@ class ModNotes(KazCog):
         self.channel_log = discord.Object(self.config.get('modnotes', 'channel_log'))
 
     async def on_ready(self):
-        self.channel_log = self.validate_channel(self.channel_log.id)
         await super().on_ready()
+        self.channel_log = self.validate_channel(self.channel_log.id)
 
     @staticmethod
     def format_display_user(db_user: User):
@@ -194,7 +195,6 @@ class ModNotes(KazCog):
             .notes @User#1234
             .notes 330178495568436157 3
         """
-        logger.info("notes: {}".format(message_log_str(ctx.message)))
         db_user = await c.query_user(self.bot, user)
         db_group = c.query_user_group(db_user)
         db_records = c.query_user_records(db_group)
@@ -219,7 +219,6 @@ class ModNotes(KazCog):
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
           Default: last page.
         """
-        logger.info("notes watches: {}".format(message_log_str(ctx.message)))
         watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
         db_records = c.query_unexpired_records(types=watch_types)
 
@@ -243,7 +242,6 @@ class ModNotes(KazCog):
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
           Default: last page.
         """
-        logger.info("notes temps: {}".format(message_log_str(ctx.message)))
         db_records = c.query_unexpired_records(types=RecordType.temp)
 
         records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
@@ -304,8 +302,6 @@ class ModNotes(KazCog):
 
         # !!! WARNING !!!
         # WARNING: BE CAREFUL OF THE DOCSTRING ABOVE! Must be <1992 chars (w/o indent) for .help
-
-        logger.info("notes add: {}".format(message_log_str(ctx.message)))
 
         # load/preprocess positional arguments and defaults
         db_user = await c.query_user(self.bot, user)
@@ -387,8 +383,6 @@ class ModNotes(KazCog):
         .notes expires 138 2018-01-24
             Change the expiration time of note #138 to 24 January 2018.
         """
-        logger.info("notes expires: {}".format(message_log_str(ctx.message)))
-
         expires = dt_parse(timespec, future=True)
         if expires is None:  # dateparser failed to parse
             raise commands.BadArgument("Invalid timespec: '{}'".format(timespec))
@@ -422,7 +416,6 @@ class ModNotes(KazCog):
         .notes rem 122
             Remove note number 122.
         """
-        logger.info("notes rem: {}".format(message_log_str(ctx.message)))
         try:
             record = c.mark_removed_record(note_id)
         except db.orm_exc.NoResultFound:
@@ -444,7 +437,6 @@ class ModNotes(KazCog):
         * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
           Default: last page.
         """
-        logger.info("notes removed: {}".format(message_log_str(ctx.message)))
         if user != 'all':
             db_user = await c.query_user(self.bot, user)
             db_group = c.query_user_group(db_user)
@@ -473,7 +465,6 @@ class ModNotes(KazCog):
         Arguments:
         * <note_id>: Required. The ID of the note to remove. Use `.notes removed` to list.
         """
-        logger.info("notes restore: {}".format(message_log_str(ctx.message)))
         try:
             record = c.mark_removed_record(note_id, removed=False)
         except db.orm_exc.NoResultFound:
@@ -492,7 +483,6 @@ class ModNotes(KazCog):
         Arguments:
         * <note_id>: Required. The ID of the note to remove. Use `.notes removed` to list.
         """
-        logger.info("notes purge: {}".format(message_log_str(ctx.message)))
         try:
             record = c.get_record(note_id, removed=True)
             await self.show_record(ctx.message.channel, record=record, title='Purging...')
@@ -523,7 +513,6 @@ class ModNotes(KazCog):
             If there is a user called "IndiumPhosphide", they would be matched.
         """
         search_term_s = search_term[:Limits.NAME]
-        logger.info("notes finduser: {}".format(message_log_str(ctx.message)))
 
         # Get results
         results = c.search_users(search_term_s)
@@ -604,7 +593,6 @@ class ModNotes(KazCog):
         .notes search Indium
             If there is a user called "IndiumPhosphide", they would be matched.
         """
-        logger.info("notes name: {}".format(message_log_str(ctx.message)))
         new_name_s = new_name.split('\n', maxsplit=1)[0][:Limits.NAME]
         db_user = await c.query_user(self.bot, user)
         c.set_user_name(db_user, new_name_s)
@@ -631,7 +619,6 @@ class ModNotes(KazCog):
         Example:
         .notes alias add @FireAlchemist#1234 The Flame Alchemist
         """
-        logger.info("notes alias: {}".format(message_log_str(ctx.message)))
         alias_s = alias.split('\n', maxsplit=1)[0][:Limits.NAME]
         addrem = addrem[0].lower()
         if addrem == 'a':
@@ -672,11 +659,7 @@ class ModNotes(KazCog):
         if one of them is looked up. The users remain separate and can be removed from the group
         later.
         """
-
-        command_list = list(self.group.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @group.command(name='add', pass_context=True, ignore_extra=False, aliases=['a'])
     @mod_only()
@@ -696,7 +679,6 @@ class ModNotes(KazCog):
         Example:
         .notes group add @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
         """
-        logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user1 = await c.query_user(self.bot, user1)
         db_user2 = await c.query_user(self.bot, user2)
 
@@ -725,7 +707,6 @@ class ModNotes(KazCog):
         Example:
         .notes group rem @FireAlchemist#1234
         """
-        logger.info("notes group: {}".format(message_log_str(ctx.message)))
         db_user = await c.query_user(self.bot, user)
 
         if db_user.group_id is not None:

@@ -326,14 +326,12 @@ class CoreCog(kaztron.KazCog):
 
         Arguments: None.
         """
-        logger.debug("info(): {!s}".format(message_log_str(ctx.message)))
         em = discord.Embed(color=0x80AAFF, title=self.name)
-        em.add_field(name="Logged in as",
-                     value="{!s}".format(self.bot.user.mention))
         em.add_field(name="KazTron version",
                      value="v{}".format(kaztron.bot_info["version"]), inline=True)
         em.add_field(name="discord.py version",
             value="v{}".format(discord.__version__), inline=True)
+        em.add_field(name="Loaded Cogs", value='\n'.join(self.bot.cogs.keys()))
 
         links = kaztron.bot_info["links"].copy()
         links.update(self.config.get('core', 'info_links', {}))
@@ -359,8 +357,6 @@ class CoreCog(kaztron.KazCog):
 
         Abuse may be treated in the same way as other forms of spam on the Discord server.
         """
-        logger.debug("request(): {}".format(message_log_str(ctx.message)))
-
         em = discord.Embed(color=0x80AAFF)
         em.set_author(name="User Issue Submission")
         em.add_field(name="User", value=ctx.message.author.mention, inline=True)

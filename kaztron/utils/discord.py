@@ -304,7 +304,9 @@ def get_usage_str(ctx: commands.Context) -> str:
 
 
 def get_group_help(ctx: commands.Context):
-    command_list = list(ctx.command.commands.keys())
-    return ('Invalid sub-command. Valid sub-commands are {0!s}. '
+    subcommands = sorted(list(set(ctx.command.commands.values())), key=lambda c: c.name)
+    subcommand_strs = ['|'.join([c.name] + list(c.aliases)) for c in subcommands]
+    subcommand_list = ', '.join(subcommand_strs)
+    return ('Invalid sub-command. Valid subcommands are `{0!s}`. '
             'Use `{1}` or `{1} <subcommand>` for instructions.') \
-        .format(command_list, get_help_str(ctx))
+        .format(subcommand_list, get_help_str(ctx))

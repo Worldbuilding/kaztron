@@ -8,7 +8,8 @@ from kaztron import KazCog
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str
+from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str, \
+    get_group_help
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, split_code_chunks_on, natural_truncate
 
@@ -69,6 +70,8 @@ class WordFilter(KazCog):
         """
         Load information from the server.
         """
+        await super().on_ready()
+
         dest_warning_id = self.config.get('filter', 'channel_warning')
         self.channel_warning = self.validate_channel(dest_warning_id)
 
@@ -77,8 +80,6 @@ class WordFilter(KazCog):
         except ValueError:
             self.channel_current = self.channel_warning
             self.state.set('filter', 'channel', str(self.channel_warning.id))
-
-        await super().on_ready()
 
     @ready_only
     async def on_message(self, message):
@@ -136,10 +137,7 @@ class WordFilter(KazCog):
         All commands permit single-letter mnemonics for convenience, e.g. `.filter l` is
         equivalent to `.filter list`.
         """
-        command_list = list(self.word_filter.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
     @mod_only()
@@ -160,7 +158,6 @@ class WordFilter(KazCog):
 
         .filter l w - Shows warn filter list.
         """
-        logger.info("filter_list: {}".format(message_log_str(ctx.message)))
         if filter_type is None:  # not passed - list both
             await ctx.invoke(self.filter_list, 'del')
             await ctx.invoke(self.filter_list, 'warn')
@@ -205,7 +202,6 @@ class WordFilter(KazCog):
         `.filter a w %talk` - Shorthand. Add "%talk" to the warning list - this will match any words
                 that start with "talk".
         """
-        logger.info("add: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed
@@ -238,7 +234,6 @@ class WordFilter(KazCog):
         `.filter rem warn %word%` - Remove "%word%" from the auto-warning list.
         `.filter rem del "%pink flamingo%"` - Remove "%pink flamingo%" from the auto-delete list.
         """
-        logger.info("add: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed
@@ -281,7 +276,6 @@ class WordFilter(KazCog):
         `.filter rnum del 5` - Removes the 5th rule in the auto-delete filter.
         `.filter r w 3` - Shorthand. Removes the 3rd rule in the warning-only filter.
         """
-        logger.info("rnum: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed
@@ -320,8 +314,6 @@ class WordFilter(KazCog):
         Switches between the configured filter warning channel and the general bot output channel
         (#mods and #bot_output at time of writing).
         """
-        logger.info("switch: {}".format(message_log_str(ctx.message)))
-
         if self.channel_current is None and self.channel_warning is None:
             logger.warning("switch invoked before bot ready state???")
             await self.bot.say("Sorry, I'm still booting up. Try again in a few seconds.")

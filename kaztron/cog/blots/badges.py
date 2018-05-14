@@ -34,14 +34,10 @@ class BadgeManager(KazCog):
         self.c = None  # type: BlotsBadgeController
 
     async def on_ready(self):
+        await super().on_ready()
         channel_id = self.config.get('blots', 'badge_channel')
         self.channel = self.validate_channel(channel_id)
-        await super().on_ready()
-        try:
-            self.c = BlotsBadgeController(self.server, self.config)
-        except Exception:
-            self.core.set_cog_shutdown(self)
-            raise
+        self.c = BlotsBadgeController(self.server, self.config)
 
     async def add_badge(self, message: discord.Message, suppress_errors=False) \
             -> Optional[model.Badge]:
@@ -193,7 +189,6 @@ class BadgeManager(KazCog):
             .checkin badge @JaneDoe - List all of JaneDoe's badges (last page if multiple pages)..
             .checkin badge @JaneDoe 4 - List the 4th page of JaneDoe's badges
         """
-        logger.info("badges: {}".format(message_log_str(ctx.message)))
         user = user  # type: discord.Member  # for IDE type checking
         try:
             db_records = self.c.query_badges(member=user)
@@ -231,8 +226,6 @@ class BadgeManager(KazCog):
         Arguments:
         * min_badges: Optional. Minimum number of badges to report.
         """
-        logger.info("badges report: {}".format(message_log_str(ctx.message)))
-
         if min_badges < 1:
             raise commands.BadArgument("`min` must be at least 1.")
 
@@ -253,7 +246,6 @@ class BadgeManager(KazCog):
         Arguments:
         * messages: Optional (default 100). Number of messages to read in history.
         """
-        logger.info("badges load: {}".format(message_log_str(ctx.message)))
         if messages <= 0:
             raise commands.BadArgument("`messages` must be positive")
 

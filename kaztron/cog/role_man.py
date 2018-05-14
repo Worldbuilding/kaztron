@@ -72,7 +72,6 @@ class ManagedRole:
             # no output channel message - lack of delete isn't critical
 
     async def do_join(self, ctx: commands.Context):
-        logger.debug("join({}): {}".format(self.name, message_log_str(ctx.message)[:256]))
         role = get_named_role(ctx.message.server, self.name)
 
         if role not in ctx.message.author.roles:
@@ -84,7 +83,6 @@ class ManagedRole:
         await self.delete_message(ctx)
 
     async def do_leave(self, ctx: commands.Context):
-        logger.debug("leave({}): {}".format(self.name, message_log_str(ctx.message)[:256]))
         role = get_named_role(ctx.message.server, self.name)
 
         if role in ctx.message.author.roles:
@@ -124,9 +122,9 @@ class RoleManager(KazCog):
         self.managed_roles = {}
 
     async def on_ready(self):
+        await super().on_ready()
         if not self.is_ready:  # first time this is called - not a reconnect
             self.setup_all_config_roles()
-        await super().on_ready()
 
     def add_managed_role(
             self,
