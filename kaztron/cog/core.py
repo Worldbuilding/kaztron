@@ -321,13 +321,11 @@ class CoreCog(kaztron.KazCog):
         """
         logger.debug("info(): {!s}".format(message_log_str(ctx.message)))
         em = discord.Embed(color=0x80AAFF, title=self.name)
-        em.add_field(name="Logged in as",
-                     value="{!s}".format(self.bot.user.mention))
         em.add_field(name="KazTron version",
                      value="v{}".format(kaztron.bot_info["version"]), inline=True)
         em.add_field(name="discord.py version",
             value="v{}".format(discord.__version__), inline=True)
-        em.add_field(name="Loaded Cogs", value='\n'.format(self.bot.cogs.keys()))
+        em.add_field(name="Loaded Cogs", value='\n'.join(self.bot.cogs.keys()))
 
         links = kaztron.bot_info["links"].copy()
         links.update(self.config.get('core', 'info_links', {}))
