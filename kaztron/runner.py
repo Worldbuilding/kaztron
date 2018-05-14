@@ -61,6 +61,34 @@ def patch_smart_quotes_hack(client: commands.Bot):
     client.process_commands = MethodType(new_process_commands, client)
 
 
+def patch_command_logging_hack():
+    """
+    Patch to consistently log command invocations prior to running.
+
+    We chose to use this instead of the "on_command" event because said event would be added to the
+    event loop and consistently executed after the command itself has started or even completed,
+    making the command log line rather less useful.
+    """
+    try:  # if already patched, return
+        # noinspection PyProtectedMember
+        _ = commands.Command._kt_command_logging_hack
+        return
+    except AttributeError:
+        pass  # not already patched, carry on
+
+    from kaztron.utils.logging import message_log_str
+
+    cmd_logger = logging.getLogger("kaztron.commands")
+    commands.Command._kt_old_invoke = commands.Command.invoke
+
+    async def new_invoke(self, ctx):
+        cmd_logger.info("{!s}: {}".format(self, message_log_str(ctx.message)))
+        await self._kt_old_invoke(ctx)
+
+    commands.Command.invoke = new_invoke
+    commands.Command._kt_command_logging_hack = True
+
+
 def run(loop: asyncio.AbstractEventLoop):
     """
     Run the bot once.
@@ -72,6 +100,7 @@ def run(loop: asyncio.AbstractEventLoop):
         description='This an automated bot for the /r/worldbuilding discord server',
         pm_help=True)
     patch_smart_quotes_hack(client)
+    patch_command_logging_hack()
 
     # Load extensions
     startup_extensions = config.get("core", "extensions")
