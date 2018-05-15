@@ -1,14 +1,16 @@
+import asyncio
 import copy
 import enum
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import discord
 from collections import deque
 from functools import total_ordering
-from typing import Dict, Callable, List, Tuple
+from typing import Dict, List, Tuple
 
 from kaztron.driver.stats import MeanVarianceAccumulator
+from kaztron.utils.asyncio import loop2timestamp, timestamp2loop, loop2datetime
 from kaztron.utils.datetime import utctimestamp
 
 logger = logging.getLogger(__name__)
@@ -157,8 +159,8 @@ class SprintUserStats:
 
 
 class SprintData:
-    def __init__(self, time_callback: Callable[[], float]):
-        self.time_callback = time_callback
+    def __init__(self, loop: asyncio.AbstractEventLoop):
+        self.loop = loop
         self.founder = None  # type: discord.Member
         self.members = []  # type: List[discord.Member]
 
@@ -180,25 +182,15 @@ class SprintData:
             'start': copy.deepcopy(self.start),
             'end': copy.deepcopy(self.end),
             'finalized': list(self.finalized),
-            'start_time': utctimestamp(self._datetime(self.start_time)) if self.start_time else 0,
-            'end_time': utctimestamp(self._datetime(self.end_time)) if self.end_time else 0,
-            'warn_times': [self._datetime(t).timestamp() for t in self.warn_times],
-            'finalize_time': (
-                utctimestamp(self._datetime(self.finalize_time)) if self.finalize_time else 0
-            ),
+            'start_time': loop2timestamp(self.start_time, self.loop) if self.start_time else 0,
+            'end_time': loop2timestamp(self.end_time, self.loop) if self.end_time else 0,
+            'warn_times': [loop2timestamp(t, self.loop) for t in self.warn_times],
+            'finalize_time': loop2timestamp(self.finalize_time) if self.finalize_time else 0,
         }
 
-    def _loop_time(self, timestamp: float) -> float:
-        now_loop = self.time_callback()
-        now_timestamp = utctimestamp(datetime.utcnow())
-        return now_loop + (timestamp - now_timestamp)
-
-    def _datetime(self, loop_time: float) -> datetime:
-        return datetime.utcnow() + timedelta(seconds=loop_time - self.time_callback())
-
     @classmethod
-    def from_dict(cls, time_callback: Callable[[], float], server: discord.Server, data: Dict):
-        self = SprintData(time_callback)
+    def from_dict(cls, loop: asyncio.AbstractEventLoop, server: discord.Server, data: Dict):
+        self = SprintData(loop)
         self.founder = server.get_member(data['founder'])
         member_uids = []
         for u_id in data['members']:
@@ -211,28 +203,28 @@ class SprintData:
         self.start = {u_id: value for u_id, value in data['start'].items() if u_id in member_uids}
         self.end = {u_id: value for u_id, value in data['end'].items() if u_id in member_uids}
         self.finalized = set(data['finalized'])
-        self.start_time = self._loop_time(data['start_time'])
-        self.end_time = self._loop_time(data['end_time'])
-        self.warn_times = deque(self._loop_time(t) for t in data['warn_times'])
-        self.finalize_time = self._loop_time(data['finalize_time'])
+        self.start_time = timestamp2loop(data['start_time'], self.loop)
+        self.end_time = timestamp2loop(data['end_time'], self.loop)
+        self.warn_times = deque(timestamp2loop(t, self.loop) for t in data['warn_times'])
+        self.finalize_time = timestamp2loop(data['finalize_time'], self.loop)
         return self
 
     @property
     def start_dt(self):
-        return self._datetime(self.start_time)
+        return loop2datetime(self.start_time, self.loop)
 
     @property
     def end_dt(self):
-        return self._datetime(self.end_time)
+        return loop2datetime(self.end_time, self.loop)
 
     @property
     def warn_dts(self):
         for loop_time in self.warn_times:
-            yield self._datetime(loop_time)
+            yield loop2datetime(loop_time, self.loop)
 
     @property
     def starts_in(self):
-        return self.start_time - self.time_callback()
+        return self.start_time - self.loop.time()
 
     @property
     def duration(self):
@@ -240,11 +232,11 @@ class SprintData:
 
     @property
     def remaining(self):
-        return min(self.duration, self.end_time - self.time_callback())
+        return min(self.duration, self.end_time - self.loop.time())
 
     @property
     def remaining_finalize(self):
-        return self.finalize_time - self.time_callback()
+        return self.finalize_time - self.loop.time()
 
     def get_wordcount(self, user: discord.Member):
         try:

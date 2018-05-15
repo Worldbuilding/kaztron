@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import time
+from datetime import time, timedelta
 from typing import Optional
 
 import discord
@@ -240,7 +240,7 @@ class WritingSprint(KazCog):
         self.state.set_defaults(
             'sprint',
             state=SprintState.IDLE.value,
-            sprint_data=SprintData(self._get_time).to_dict(),
+            sprint_data=SprintData(self.bot.loop).to_dict(),
             stats=SprintUserStats().to_dict(),
             weekly_stats={}
         )
@@ -265,7 +265,7 @@ class WritingSprint(KazCog):
         self.duration_max = self.config.get('sprint', 'duration_max')
         self.finalize = self.config.get('sprint', 'finalize_time')
 
-        self.sprint_data = SprintData(self._get_time)
+        self.sprint_data = SprintData(self.bot.loop)
         self.state_task = None
 
         self.report_time = dt_parse(self.config.get('sprint', 'report_time', '17:00')).time()
@@ -288,7 +288,7 @@ class WritingSprint(KazCog):
         # state is always directly read from the config (see get_state), so no need to set it here
         if self.get_state() is not SprintState.IDLE:
             try:
-                self.sprint_data = SprintData.from_dict(self._get_time, self.channel.server,
+                self.sprint_data = SprintData.from_dict(self.bot.loop, self.channel.server,
                     self.state.get('sprint', 'sprint_data'))
             except KeyError:
                 logger.warning("Old sprint data incorrectly formatted, ignoring")
@@ -381,7 +381,7 @@ class WritingSprint(KazCog):
 
         old_participants = self._format_wordcount_list(self.sprint_data.start)
         self.set_state(SprintState.IDLE)
-        self.sprint_data = SprintData(self._get_time)
+        self.sprint_data = SprintData(self.bot.loop)
         self._save_sprint()
 
         self._update_roles()
@@ -472,9 +472,10 @@ class WritingSprint(KazCog):
         self.report_task.cancel()
         self.report_task = None
 
-    @commands.group(invoke_without_command=True, pass_context=True, aliases=['w'])
+    @commands.group(invoke_without_command=True, pass_context=True, ignore_extra=True,
+        aliases=['w'])
     @in_channels_cfg('sprint', 'channel')
-    async def sprint(self, ctx: commands.Context, *, extra: str=None):
+    async def sprint(self, ctx: commands.Context):
         """
         Welcome to writing sprints, where everything's made up and the words don't matter!
 
@@ -593,7 +594,7 @@ class WritingSprint(KazCog):
             .format(duration, delay))
 
         self.set_state(SprintState.PREPARE)
-        sprint = SprintData(self._get_time)
+        sprint = SprintData(self.bot.loop)
         sprint.founder = ctx.message.author
         sprint.start_time = self._get_time() + delay_s
         sprint.end_time = sprint.start_time + duration_s
@@ -1146,7 +1147,7 @@ class WritingSprint(KazCog):
         finally:
             logger.debug("Resetting sprint state...")
             self.set_state(SprintState.IDLE)
-            self.sprint_data = SprintData(self._get_time)
+            self.sprint_data = SprintData(self.bot.loop)
             self._save_sprint()  # also calls self.state.write() - OK for stats too
 
     @start.error
