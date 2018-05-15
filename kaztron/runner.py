@@ -11,8 +11,7 @@ from discord.ext.commands import HelpFormatter
 
 import kaztron
 from kaztron import KazCog
-from kaztron.config import get_kaztron_config, KaztronConfig
-from kaztron.logging import get_logging_info
+from kaztron.config import get_kaztron_config, KaztronConfig, get_runtime_config
 
 logger = logging.getLogger("kaztron.bootstrap")
 
@@ -94,6 +93,9 @@ def run(loop: asyncio.AbstractEventLoop):
     Run the bot once.
     """
     config = get_kaztron_config()
+    state = get_runtime_config()
+    kaztron.KazCog.static_init(config, state)
+
     client = commands.Bot(
         command_prefix='.',
         formatter=HelpFormatter(show_check_failure=True),

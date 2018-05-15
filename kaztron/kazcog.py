@@ -35,7 +35,6 @@ class KazCog:
     _ch_test_id = None
 
     def __init__(self, bot: commands.Bot):
-        KazCog.static_init()
         self._bot = bot
         setattr(self, '_{0.__class__.__name__}__unload'.format(self), self.unload)
         self._ch_out = discord.Object(self._ch_out_id)  # type: discord.Channel
@@ -60,16 +59,12 @@ class KazCog:
         self.on_ready = on_ready_wrapper(self.on_ready).__get__(self)
 
     @classmethod
-    def static_init(cls):
-        """
-        Executes one-time class setup. Called on KazCog __init__ to verify that setup.
-        """
-        if cls._config is None:
-            cls._config = get_kaztron_config()
-            cls._ch_out_id = cls._config.get("discord", "channel_output")
-            cls._ch_test_id = cls._config.get("discord", "channel_test")
-        if cls._state is None:
-            cls._state = get_runtime_config()
+    def static_init(cls, config: KaztronConfig, state: KaztronConfig):
+        """ Executes one-time class setup. """
+        cls._config = config
+        cls._ch_out_id = cls._config.get("discord", "channel_output")
+        cls._ch_test_id = cls._config.get("discord", "channel_test")
+        cls._state = state
 
     async def on_ready(self):
         """
