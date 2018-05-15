@@ -7,7 +7,7 @@ import discord
 import kaztron
 from kaztron.errors import *
 from kaztron.utils.checks import mod_only
-from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str
+from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str, exc_msg_str
 from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str
 from kaztron.utils.datetime import format_timestamp
 
@@ -200,36 +200,35 @@ class CoreCog(kaztron.KazCog):
             # No need to inform user of this - prevents spam, "disabled" commands could just not
             # exist
 
-        elif isinstance(exc, ModOnlyError):
-            err_msg = "Unauthorised user for this command (not a moderator): {!r}".format(
-                cmd_string)
+        elif isinstance(exc, (ModOnlyError, AdminOnlyError)):
+            err_msg = "Unauthorised user for this command ({}): {!r}".format(
+                type(exc).__name__, cmd_string
+            )
             logger.warning(err_msg)
             await self.send_output('[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel,
-                author_mention + "Only mods can use that command.")
 
-        elif isinstance(exc, AdminOnlyError):
-            err_msg = "Unauthorised user for this command (not an admin): {!r}".format(
-                cmd_string)
-            logger.warning(err_msg)
-            await self.send_output('[WARNING] ' + err_msg)
-            await self.bot.send_message(ctx.message.channel,
-                author_mention + "Only admins can use that command.")
+            err_str = exc_msg_str(exc,
+                "Only moderators may use that command." if isinstance(exc, ModOnlyError)
+                else "Only administrators may use that command.")
+            await self.bot.send_message(ctx.message.channel, author_mention + err_str)
 
         elif isinstance(exc, (UnauthorizedUserError, commands.CheckFailure)):
             logger.warning(
                 "Check failed on command: {!r}\n\n{}".format(cmd_string, tb_log_str(exc)))
+            await self.send_output('[WARNING] ' +
+                "Check failed on command: {!r}\n\n{}".format(cmd_string, exc_log_str(exc)))
+            err_str = exc_msg_str(exc,
+                "*(Dev note: Implement error handler with more precise reason)*")
             await self.bot.send_message(ctx.message.channel, author_mention +
-                "You're not allowed to use that command. "
-                " *(Dev note: Implement error handler with more precise reason)*")
+                "You're not allowed to use that command: " + err_str)
 
         elif isinstance(exc, UnauthorizedChannelError):
-            err_msg = "Unauthorised channel for this command: {!r}".format(
-                cmd_string)
+            err_msg = "Unauthorised channel for this command: {!r}".format(cmd_string)
             logger.warning(err_msg)
             await self.send_output('[WARNING] ' + err_msg)
+            err_str = exc_msg_str(exc, "Command not allowed in this channel.")
             await self.bot.send_message(ctx.message.channel,
-                author_mention + "You can't use that command here.")
+                author_mention + "You can't use that command here: " + err_str)
 
         elif isinstance(exc, commands.NoPrivateMessage):
             msg = "Attempt to use non-PM command in PM: {}".format(cmd_string)
