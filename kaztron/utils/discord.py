@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 import discord
 from discord.ext import commands
@@ -89,6 +90,16 @@ async def remove_role_from_all(client: discord.Client, server: discord.Server, r
     for u in server.members:
         if role in u.roles:
             await client.remove_roles(u, role)
+
+
+def get_members_with_role(server: discord.Server, role: discord.Role) -> List[discord.Member]:
+    """
+    Find a list of users with a particular role.
+    :param server: Server to search users on
+    :param role: Role to find
+    :return: List of users matching role
+    """
+    return [u for u in server.members if role in u.roles]
 
 
 def user_mention(user_id: str) -> str:

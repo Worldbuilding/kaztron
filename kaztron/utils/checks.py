@@ -1,14 +1,53 @@
-from typing import List
+from typing import List, Union, Iterable
 
 from discord.ext import commands
 
 from kaztron.config import get_kaztron_config
-from kaztron.errors import UnauthorizedChannelError, ModOnlyError, AdminOnlyError, DeleteMessage
-from kaztron.utils.discord import check_mod, check_admin
+from kaztron.errors import UnauthorizedUserError, UnauthorizedChannelError, DeleteMessage, \
+    ModOnlyError, AdminOnlyError
+from kaztron.utils.discord import check_mod, check_admin, check_role
 
 import logging
 
 logger = logging.getLogger('kaztron.checks')
+
+
+def has_role(role_names: Union[str, Iterable[str]]):
+    """
+    Command check decorator for a list of role names.
+    """
+    return _check_role(role_names, False)
+
+
+def mod_or_has_role(role_names: Union[str, Iterable[str]]):
+    """
+    Command check decorator. Only allows mods or users with specific roles to execute this command.
+    Mods are  defined by the roles in the "discord" -> "mod_roles" and "discord" -> "admin_roles"
+    configs).
+    """
+    return _check_role(role_names, True)
+
+
+def _check_role(role_names: Union[str, Iterable[str]], with_mods):
+    if isinstance(role_names, str):
+        role_names = [role_names]
+
+    def check_role_wrapper(ctx: commands.Context):
+        if check_role(role_names, ctx.message) or (with_mods and check_mod(ctx)):
+            return True
+        else:
+            msgs = {  # (single_role, with_mods)
+                (True, True): "You must be a moderator or have the {r} role.",
+                (True, False): "You must have the {r} role to use that command.",
+                (False, True): "You must be a moderator or have one of these roles to use that "
+                               "command: {rl}",
+                (False, False): "You must have one of these roles to use that command: {rl}"
+            }
+            msg_fmt = msgs[(len(role_names) == 1, with_mods)]
+            raise UnauthorizedUserError(msg_fmt.format(
+                r=role_names[0] if role_names else "", rl=", ".join(role_names)
+            ))
+    return commands.check(check_role_wrapper)
 
 
 def mod_only():
@@ -20,7 +59,7 @@ def mod_only():
         if check_mod(ctx):
             return True
         else:
-            raise ModOnlyError("Only moderators may use this command.")
+            raise ModOnlyError("Only moderators may use that command.")
     return commands.check(check_mod_wrapper)
 
 
@@ -33,11 +72,11 @@ def admin_only():
         if check_admin(ctx):
             return True
         else:
-            raise AdminOnlyError("Only administrators may use this command.", ctx)
+            raise AdminOnlyError("Only administrators may use that command.", ctx)
     return commands.check(check_admin_wrapper)
 
 
-def in_channels(channel_id_list: List[str], allow_pm=False):
+def in_channels(channel_id_list: List[str], allow_pm=False, delete_on_fail=False):
     """
     Command check decorator. Only allow this command to be run in specific channels (passed as a
     list of channel ID strings).
@@ -50,7 +89,11 @@ def in_channels(channel_id_list: List[str], allow_pm=False):
             )
             return True
         else:
-            raise UnauthorizedChannelError("Command not allowed in channel.", ctx)
+            if not delete_on_fail:
+                raise UnauthorizedChannelError("Command not allowed in channel.", ctx)
+            else:
+                raise DeleteMessage(
+                    UnauthorizedChannelError("Command not allowed in channel.", ctx))
 
     return commands.check(predicate)
 
@@ -74,24 +117,12 @@ def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delet
     :raise UnauthorizedChannelDelete:
     """
     config = get_kaztron_config()
+    config_channels = config.get(config_section, config_name)
 
-    def predicate(ctx: commands.Context):
-        pm_exemption = allow_pm and ctx.message.channel.is_private
-        config_channels = config.get(config_section, config_name)
-        ctx_channel = ctx.message.channel.id
-        if ctx_channel == config_channels or ctx_channel in config_channels or pm_exemption:
-            logger.info(
-                "Validated command in allowed channel {!s}".format(ctx.message.channel)
-            )
-            return True
-        else:
-            if not delete_on_fail:
-                raise UnauthorizedChannelError("Command not allowed in channel.", ctx)
-            else:
-                raise DeleteMessage(ctx.message,
-                    UnauthorizedChannelError("Command not allowed in channel.", ctx))
+    if isinstance(config_channels, str):
+        config_channels = [config_channels]
 
-    return commands.check(predicate)
+    return in_channels(config_channels, allow_pm, delete_on_fail)
 
 
 def mod_channels(delete_on_fail=False):

@@ -1,8 +1,9 @@
+import asyncio
 import random
 import re
 import time
 import logging
-from typing import List, Union
+from typing import List, Union, Optional
 from collections import deque
 
 import discord
@@ -13,13 +14,16 @@ from datetime import datetime, date, timedelta
 from kaztron import KazCog, theme
 from kaztron.cog.role_man import RoleManager
 from kaztron.driver import gsheets
-from kaztron.utils.checks import mod_only
+from kaztron.errors import UnauthorizedUserError
+from kaztron.utils.asyncio import loop2timestamp, timestamp2loop
+from kaztron.utils.checks import mod_only, mod_or_has_role, in_channels_cfg
 from kaztron.utils.converter import NaturalDateConverter
 from kaztron.utils.datetime import utctimestamp, parse as dt_parse, parse_daterange, \
-    get_month_offset, truncate
-from kaztron.utils.decorators import error_handler
+    get_month_offset, truncate, format_timedelta
+from kaztron.utils.decorators import error_handler, task_handled_errors
 from kaztron.utils.discord import get_named_role, Limits, remove_role_from_all, \
-    extract_user_id, user_mention, get_member, get_help_str, get_group_help
+    extract_user_id, user_mention, get_member, get_group_help, get_members_with_role, \
+    check_mod, check_role
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
 from kaztron.utils.strings import format_list, natural_truncate, split_chunks_on
 
@@ -221,26 +225,48 @@ class Spotlight(KazCog):
 
     UNKNOWN_APP_STR = "Unknown - Index out of bounds"
 
+    #
+    # Config
+    #
+
+    # discord stuff
+    feature_name = KazCog._config.get('spotlight', 'name')
+    role_audience_name = KazCog._config.get('spotlight', 'audience_role')
+    role_host_name = KazCog._config.get('spotlight', 'host_role')
+    role_mods_name = KazCog._config.get('spotlight', 'mod_role')
+    ch_id_spotlight = KazCog._config.get('spotlight', 'channel')
+
     def __init__(self, bot):
         super().__init__(bot)
-        self.state.set_defaults('spotlight', current=-1, queue=[])
+        self.state.set_defaults('spotlight', current=-1, queue=[], start_time=None, reminders=[])
 
-        self.feature_name = self.config.get('spotlight', 'name')
+        # discord stuff
         self.channel_spotlight = None
-        self.role_audience_name = self.config.get('spotlight', 'audience_role')
-        self.role_host_name = self.config.get('spotlight', 'host_role')
 
+        # settings
+        self.duration = self.config.get('spotlight', 'duration')
+        self.reminder_offsets = self.config.get('spotlight', 'reminders')
+        self.time_formats = (self.config.get('spotlight', 'start_date_format'),
+                             self.config.get('spotlight', 'end_date_format'))
+
+        # google sheet stuff
         self.user_agent = self.config.get("core", "name")
         self.gsheet_id = self.config.get("spotlight", "spreadsheet_id")
         self.gsheet_range = self.config.get("spotlight", "spreadsheet_range")
         self.applications = []
         self.applications_last_refresh = 0
 
+        # queues
         self.current_app_index = int(self.state.get('spotlight', 'current', -1))
         self.queue_data = deque(self.state.get('spotlight', 'queue', []))
 
-        self.time_formats = (self.config.get('spotlight', 'start_date_format'),
-                             self.config.get('spotlight', 'end_date_format'))
+        # reminders
+        st_unix = self.state.get('spotlight', 'start_time')
+        self.start_time = timestamp2loop(st_unix, self.bot.loop) if st_unix is not None else None
+
+        self.reminders = deque(timestamp2loop(t, self.bot.loop)
+                               for t in self.state.get('spotlight', 'reminders', []))
+        self.reminder_task = None
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
@@ -256,6 +282,10 @@ class Spotlight(KazCog):
         """ Write all data to the dynamic configuration file. """
         self.state.set('spotlight', 'current', self.current_app_index)
         self.state.set('spotlight', 'queue', list(self.queue_data))
+        self.state.set('spotlight', 'start_time',
+            loop2timestamp(self.start_time, self.bot.loop) if self.start_time is not None else None)
+        self.state.set('spotlight', 'reminders',
+            [loop2timestamp(t, self.bot.loop) for t in self.reminders])
         self.state.write()
 
     def _upgrade_queue_v21(self):
@@ -436,8 +466,7 @@ class Spotlight(KazCog):
         """ Load information from the server. """
         await super().on_ready()
 
-        id_spotlight = self.config.get('spotlight', 'channel')
-        self.channel_spotlight = self.validate_channel(id_spotlight)
+        self.channel_spotlight = self.validate_channel(self.ch_id_spotlight)
 
         roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
         if roleman:
@@ -471,11 +500,27 @@ class Spotlight(KazCog):
             logger.error(err_msg)
             await self.send_output(err_msg)
 
+        for role_name in (self.role_host_name, self.role_audience_name):
+            get_named_role(self.server, role_name)  # raise error early if any don't exist
+
+        # role_mods_name is optional
+        try:
+            get_named_role(self.server, self.role_mods_name)
+        except ValueError:
+            msg = "Configuration spotlight.mod_role is not valid: role '{}' not found"\
+                .format(self.role_mods_name)
+            logger.warning(msg)
+            await self.send_output("[Warning] " + msg)
+
         # convert queue from v2.0 queue
         self._upgrade_queue_v21()
 
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
+
+        # start reminders task
+        if self.start_time is not None and self.reminder_task is None:
+            self.reminder_task = self.bot.loop.create_task(self.process_reminders())
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):
@@ -1014,6 +1059,159 @@ class Spotlight(KazCog):
                 await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
         else:
             await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+
+    def get_host(self) -> Optional[discord.Member]:
+        host_role = get_named_role(self.server, self.role_host_name)
+        try:
+            return get_members_with_role(self.server, host_role)[0]
+        except IndexError:
+            logger.warning("reminder: Cannot find user with host role!")
+            return None
+
+    @spotlight.command(ignore_extra=False, pass_context=True)
+    @in_channels_cfg('spotlight', 'channel')
+    @mod_or_has_role(role_host_name)
+    async def start(self, ctx: commands.Context):
+        """
+        Start the spotlight.
+
+        The bot will announce the start of your spotlight. It will also remind you about remaining
+        time periodically, and announce the end of the spotlight duration.
+
+        You must be either a moderator or the current Spotlight Host to use this command.
+        """
+        if self.start_time is not None:
+            raise commands.UserInputError("The spotlight has already started! "
+                                          "Use `.spotlight stop` to end it early.")
+
+        host = self.get_host()
+        host_mention = host.mention if host else "<Error: Cannot find host>"
+        audience_mention = get_named_role(self.server, self.role_audience_name).mention
+        mod_mention = get_named_role(self.server, self.role_mods_name).mention \
+            if self.role_mods_name else ""
+        duration_s = format_timedelta(timedelta(seconds=self.duration), timespec="minutes")
+
+        msg = ("**{1}'s {0} is now starting!** It will last {3}. " 
+               "The host can use `.spotlight stop` to end it early. {2}").format(
+            self.feature_name, host_mention, audience_mention, duration_s
+        )
+        await self.bot.send_message(self.channel_spotlight, msg)
+        await self.send_output("{3} **{1}'s {0} has started.**"
+            .format(self.feature_name, host_mention, audience_mention, mod_mention))
+
+        self._start_spotlight()
+
+        try:
+            await self.bot.delete_message(ctx.message)
+        except discord.Forbidden:
+            logger.warning("Cannot delete invoking message: Forbidden")
+
+    @spotlight.command(ignore_extra=False, pass_context=True)
+    @in_channels_cfg('spotlight', 'channel')
+    @mod_or_has_role(role_host_name)
+    async def stop(self, ctx: commands.Context):
+        """
+        Stop an ongoing spotlight started with `.spotlight start`.
+
+        You must be either a moderator or the current Spotlight Host to use this command.
+        """
+        if self.start_time is None:
+            raise commands.UserInputError("The spotlight has not yet started! "
+                                          "Use `.spotlight start` to start it.")
+
+        await self._send_end_announcement(stop=True)
+        self._stop_spotlight()
+
+        try:
+            await self.bot.delete_message(ctx.message)
+        except discord.Forbidden:
+            logger.warning("Cannot delete invoking message: Forbidden")
+
+    @spotlight.command(ignore_extra=False, pass_context=True)
+    @in_channels_cfg('spotlight', 'channel')
+    async def time(self, ctx: commands.Context):
+        """
+        Check the remaining time in the spotlight.
+        """
+        elapsed = timedelta(seconds=self.bot.loop.time() - self.start_time)
+        remaining = timedelta(seconds=self.duration) - elapsed
+        elapsed_s = format_timedelta(elapsed, timespec="minutes")
+        rem_s = format_timedelta(remaining, timespec="minutes")
+
+        msg = "**{0} Reminder**: {2} have passed! {3} remain. {1}" \
+            .format(self.feature_name, ctx.message.author.mention, elapsed_s, rem_s)
+        await self.bot.send_message(ctx.message.channel, msg)
+
+    def _start_spotlight(self):
+        self.start_time = self.bot.loop.time()
+        self.reminders = deque(self.start_time + offset for offset in self.reminder_offsets)
+
+        if self.reminder_task is not None:
+            self.reminder_task.cancel()
+        self.reminder_task = self.bot.loop.create_task(self.process_reminders())
+        self._write_db()
+
+    def _stop_spotlight(self):
+        self.start_time = None
+        self.reminders = deque()
+        if self.reminder_task and self.reminder_task is not asyncio.Task.current_task():
+            self.reminder_task.cancel()
+            self.reminder_task = None
+        self._write_db()
+
+    async def _send_reminder(self):
+        host = self.get_host()
+        host_mention = host.mention if host else "<Error: Cannot find host>"
+        elapsed = timedelta(seconds=self.reminders.popleft() - self.start_time)
+        remaining = timedelta(seconds=self.duration) - elapsed
+        elapsed_s = format_timedelta(elapsed, timespec="minutes")
+        rem_s = format_timedelta(remaining, timespec="minutes")
+
+        logger.info("Sending reminder: {:.3f} elapsed".format(elapsed.total_seconds()))
+        msg = "**{0} Reminder**: {2} have passed! {3} remain. {1}" \
+            .format(self.feature_name, host_mention, elapsed_s, rem_s)
+        await self.bot.send_message(self.channel_spotlight, msg)
+
+        self._write_db()
+
+    async def _send_end_announcement(self, stop=False):
+        host = self.get_host()
+        host_mention = host.mention if host else "<Error: Cannot find host>"
+        audience_mention = get_named_role(self.server, self.role_audience_name).mention
+        mod_mention = get_named_role(self.server, self.role_mods_name).mention \
+            if self.role_mods_name else ""
+
+        if not stop:
+            msg = ("**{1}'s {0} is now ending!** "
+                   "Please finish any last questions and wrap up the {0}. {2}") \
+                .format(self.feature_name, host_mention, audience_mention)
+            log_msg = "{3} **{1}'s {0} has ended.**" \
+                .format(self.feature_name, host_mention, audience_mention, mod_mention)
+        else:
+            msg = "**{1}'s {0} has been stopped!** {2}" \
+                .format(self.feature_name, host_mention, audience_mention)
+            log_msg = "{3} **{1}'s {0} has ended (stop command).**" \
+                .format(self.feature_name, host_mention, audience_mention, mod_mention)
+
+        await self.bot.send_message(self.channel_spotlight, msg)
+        await self.send_output(log_msg)
+
+    @task_handled_errors
+    async def process_reminders(self):
+        while self.reminders:
+            wait_time = self.reminders[0] - self.bot.loop.time()
+            logger.debug("Waiting for next spotlight reminder ({:.1f}s)...".format(wait_time))
+            await asyncio.sleep(wait_time)
+
+            await self._send_reminder()
+
+        # process the end of the spotlight
+        wait_time = (self.start_time + self.duration) - self.bot.loop.time()
+        logger.debug("Waiting for spotlight end ({:.1f}s)...".format(wait_time))
+        await asyncio.sleep(wait_time)
+
+        await self._send_end_announcement()
+        self._stop_spotlight()
 
 
 def setup(bot):

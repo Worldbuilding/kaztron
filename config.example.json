@@ -44,10 +44,13 @@
     "channel": "Channel ID",
     "audience_role": "Spotlight Audience role name",
     "host_role": "Spotlight Host role name",
+    "mod_role": "Role name to inform moderators of spotlight start/end (or blank)",
     "spreadsheet_id": "Google Spreadsheet ID",
     "spreadsheet_range": "Google Spreadsheet range name",
     "start_date_format": "%d",
-    "end_date_format": "%d %B"
+    "end_date_format": "%d %B",
+    "duration": 172800,
+    "reminders": [21600, 43200, 64800, 86400, 108000, 129600, 151200, 169200]
   },
   "welcome": {
     "channel_welcome": "channel ID for public welcome messages",
