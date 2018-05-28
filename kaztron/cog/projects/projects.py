@@ -44,10 +44,14 @@ class ProjectsCog(KazCog):
         self.state.set_defaults('projects', wizards={})
         self.wizard_manager = None  # type: WizardManager
         self.channel = None  # type: discord.Channel
-        self.confirm_del = None  # type: ConfirmManager
 
         self.project_setters = {}
         self.setup_project_setter_commands()
+
+        self.emoji = {
+            'ok': '\U0001f197',
+            'cancel': '\u274c'
+        }
 
     def setup_project_setter_commands(self):
         data = {
@@ -174,6 +178,7 @@ class ProjectsCog(KazCog):
         await super().on_ready()
         channel_id = self.config.get('projects', 'project_channel')
         self.channel = self.validate_channel(channel_id)
+
         self._load_state()
 
     def unload_kazcog(self):
@@ -184,18 +189,9 @@ class ProjectsCog(KazCog):
             self.bot, self.server, self.state.get('projects', 'wizards'),
             timeout=self.config.get('projects', 'timeout_wizard')
         )
-        try:
-            self.confirm_del = ConfirmManager.from_dict(self.state.get('projects', 'confirm_del'))
-            self.confirm_del.timeout = timedelta(  # update this from config
-                seconds=self.config.get('projects', 'timeout_confirm'))
-        except KeyError:
-            timeout_confirm = self.config.get('projects', 'timeout_confirm')
-            self.confirm_del = ConfirmManager(timeout=timeout_confirm)
 
     def _save_state(self):
-        self.confirm_del.purge_all()
         self.state.set('projects', 'wizards', self.wizard_manager.to_dict())
-        self.state.set('projects', 'confirm_del', self.confirm_del.to_dict())
         self.state.write()
 
     @staticmethod
@@ -410,27 +406,19 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def delete(self, ctx: commands.Context, name: str=None):
-        if not self.confirm_del.has_request(ctx.message.author):
-            await self.delete_request(ctx, name)
-        else:
-            try:
-                await self.delete_confirm(ctx, name)
-            except ValueError:
-                await self.delete_request(ctx, name)
-        self._save_state()
+        await self._confirmed_delete(ctx, name)
 
-    async def delete_request(self, ctx: commands.Context,
-                             name: str, target_user: discord.Member=None):
+    async def _confirmed_delete(self, ctx: commands.Context,
+                                name: str, target_user: discord.Member=None):
         """
-        Set a deletion request from a user. A confirmation is required to complete the request.
+        Set a deletion request from a user. A reaction confirm is required by the user.
+
         :param ctx: Context
         :param name: Title, or part of the title, of the project to delete.
         :param target_user: Optional, for use only with admin delete commands. The user whose
             project to delete.
         :return:
         """
-        logging.info("Received delete request.")
-
         member = target_user if target_user is not None else ctx.message.author
 
         with q.transaction():
@@ -440,7 +428,7 @@ class ProjectsCog(KazCog):
         if name:
             try:
                 project = user.find_project(name)
-                logging.debug("Found {!r} for search {}".format(project, name))
+                logging.debug("delete: Found {!r} for search {}".format(project, name))
             except KeyError:
                 raise commands.UserInputError(
                     "{} have any projects containing \"{}\" in its title."
@@ -448,47 +436,53 @@ class ProjectsCog(KazCog):
                 )
         elif user.active_project:
             project = user.active_project
-            logging.debug("Using active project {!r}".format(user.active_project))
+            logging.debug("delete: Using active project {!r}".format(user.active_project))
         elif len(user.projects) == 1:
             project = user.projects[0]
-            logging.debug("Using only project {!r}".format(user.projects[0]))
+            logging.debug("delete: Using sole project {!r}".format(user.projects[0]))
         else:
             raise commands.BadArgument("You didn't specify a project to delete!")
 
-        if self.confirm_del.has_request(ctx.message.author):
-            pid = self.confirm_del.confirm(ctx)
-            logging.info("Overriding previous unconfirmed deletion request for {:d}"
-                .format(pid))
-
-        self.confirm_del.request(ctx, project.project_id)
-        logging.info("Stored deletion request, pending confirmation.")
-
-        await self.bot.reply(
+        # wait for confirmation
+        msg = await self.bot.reply(
             ("you are about to delete {} project, \"{}\". You will lose all metadata, "
              "wordcount history, goals, etc. for this project. **This cannot be undone.**\n\n"
-             "Are you sure? Type `.project delete confirm` or `.project delete cancel`.")
+             "Are you sure? Click one of the buttons below.")
             .format(member.mention + "'s" if target_user else "your", project.title)
         )
+        await self.bot.add_reaction(msg, self.emoji['ok'])
+        await self.bot.add_reaction(msg, self.emoji['cancel'])
+        logging.info("Waiting on confirmation to delete {!r}".format(project))
+        res = await self.bot.wait_for_reaction(
+            [self.emoji['ok'], self.emoji['cancel']],
+            user=member,
+            timeout=self.config.get('projects', 'timeout_confirm')
+        )
 
-    async def delete_confirm(self, ctx: commands.Context, name: str):
-        if name == 'confirm':
-            project_id = self.confirm_del.confirm(ctx)
-            with q.transaction() as session:
-                project = session.query(m.Project).filter_by(project_id=project_id).one()
-                title = project.title
-                user_id = project.user.discord_id
-                admin_deletion = (user_id != ctx.message.author.id)
-                logger.info("Received confirmation. Deleting {!r}.".format(project))
-                q.delete_project(project)
+        if res is None:
+            logging.info("timeout for {!r}'s request to delete {!r})".format(target_user, project))
 
-            await self.bot.reply("{} project \"{}\" has been deleted."
-                .format(user_mention(user_id) if admin_deletion else "Your", title))
-        elif name == 'cancel':
-            pid = self.confirm_del.confirm(ctx)  # just clear and do nothing
-            logger.info("Cancelling deletion request for project id {:d}".format(pid))
-            await self.bot.reply("deletion cancelled.")
+        if res.reaction.emoji == self.emoji['ok']:
+            logging.info("{!r} confirmed request to delete {!r}".format(target_user, project))
+            await self._delete(ctx, project)
         else:
-            raise ValueError(name)
+            logging.info("{!r} cancelled request to delete {!r}".format(target_user, project))
+            await self.bot.reply("deletion of {} project, \"{}\", has been cancelled."
+                .format(member.mention + "'s" if target_user else "your", project.title))
+        await self.bot.delete_message(msg)
+
+    async def _delete(self, ctx: commands.Context, project: m.Project):
+        msg = await self.bot.get_message(self.channel, project.whois_message_id)
+        await self.bot.delete_message(msg)
+
+        with q.transaction():
+            title = project.title
+            user_id = project.user.discord_id
+            admin_deletion = (user_id != ctx.message.author.id)
+            q.delete_project(project)
+
+        await self.bot.reply("{} project \"{}\" has been deleted."
+            .format((user_mention(user_id) + "'s") if admin_deletion else "your", title))
 
     @ready_only
     async def on_message(self, message: discord.Message):
@@ -668,15 +662,7 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_delete(self, ctx: commands.Context, member: MemberConverter2, title: str=None):
         member = member  # type: discord.Member  # for type checking
-
-        if not self.confirm_del.has_request(ctx.message.author):
-            await self.delete_request(ctx, title, target_user=member)
-        else:
-            try:
-                await self.delete_confirm(ctx, title)
-            except ValueError:
-                await self.delete_request(ctx, title)
-        self._save_state()
+        await self._confirmed_delete(ctx, title, member)
 
     @admin.command(name='limit', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -766,5 +752,3 @@ class ProjectsCog(KazCog):
 
     # TODO: post any project w/o whois message at startup
     # TODO: command: purge unknown users
-    # TODO: use reaction for deletion confirmation
-    # TODO: remove project msg in whois on delete
