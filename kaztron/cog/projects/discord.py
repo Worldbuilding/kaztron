@@ -6,7 +6,7 @@ from discord.ext import commands
 
 from kaztron.theme import solarized
 from . import model as m, query as q
-from kaztron.utils.discord import extract_role_id, get_named_role, user_mention
+from kaztron.utils.discord import extract_role_id, get_named_role, user_mention, role_mention
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ __all__ = ['get_role', 'update_user_roles', 'update_project_message', 'get_proje
 EMBED_COLOUR = solarized.orange
 
 
-def get_project_embed(project: m.Project, with_user_info=False) -> discord.Embed:
+def get_project_embed(project: m.Project, user_info=True, desc=True) -> discord.Embed:
     em = discord.Embed(
         title=project.title,
         description='by {}\n\n{}'.format(user_mention(project.user.discord_id), project.pitch),
@@ -25,12 +25,14 @@ def get_project_embed(project: m.Project, with_user_info=False) -> discord.Embed
     em.add_field(name='Genre', value='{0.genre.name} - {0.subgenre}'.format(project))
     em.add_field(name='Type', value=project.type.name)
     if project.follow_role_id:
-        em.add_field(name='Follow role', value=project.follow_role_id)
+        em.add_field(name='Follow role', value=role_mention(project.follow_role_id))
     if project.url:
         em.add_field(name='More info', value="[More info]({})".format(project.url))
+    if desc and project.description:
+        em.add_field(name='Description', value=project.description)
 
     # user info
-    if with_user_info:
+    if user_info:
         user = project.user
         if user.about:
             msg = "{} is {}".format(user_mention(user.discord_id), user.about)
@@ -78,9 +80,9 @@ async def update_user_roles(bot: discord.Client, server: discord.Server, users: 
         member = server.get_member(u.discord_id)
         desired_roles = set()
         for role_id in {u.genre.role_id, u.type.role_id} - {None}:
-            desired_roles |= get_role(server, role_id)
+            desired_roles.add(get_role(server, role_id))
         new_roles = (set(member.roles) - project_roles) | desired_roles
-        await bot.replace_roles(member, new_roles)
+        await bot.replace_roles(member, *new_roles)
 
 
 async def update_project_message(bot: discord.Client, dest: discord.Channel, project: m.Project):
@@ -90,7 +92,7 @@ async def update_project_message(bot: discord.Client, dest: discord.Channel, pro
     Should be executed in a :func:`~q.transaction()` context, as the ``project`` object may be
     modified by this function.
     """
-    new_embed = get_project_embed(project)
+    new_embed = get_project_embed(project, user_info=False, desc=False)
     if project.whois_message_id:
         whois_msg = await bot.get_message(dest, project.whois_message_id)
         await bot.edit_message(whois_msg, embed=new_embed)

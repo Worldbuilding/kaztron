@@ -205,3 +205,10 @@ def update_project(wizard: ProjectWizard) -> Project:
         if v is not None:
             setattr(user.active_project, k, v)
     return user.active_project
+
+
+def delete_project(project: Project):
+    if project.user.active_project_id == project.project_id:
+        project.user.active_project = None
+    session.delete(project)
+

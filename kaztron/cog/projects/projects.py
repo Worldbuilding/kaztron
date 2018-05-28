@@ -12,11 +12,12 @@ from . import model as m, query as q, wizard as w
 from .discord import *
 from .wizard import WizardManager
 from kaztron.kazcog import ready_only
+from kaztron.driver.database import core_exc
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import user_mention, Limits, get_command_str,\
     get_group_help
 from kaztron.utils.embeds import EmbedSplitter
-from kaztron.utils.logging import message_log_str
+from kaztron.utils.logging import message_log_str, tb_log_str
 from kaztron.utils.strings import split_chunks_on, format_list, parse_keyword_args
 
 logger = logging.getLogger(__name__)
@@ -97,15 +98,18 @@ class ProjectsCog(KazCog):
             }
         }
         for attr_name, msgs in data.items():
-            setter = self.make_project_setter(attr_name, *msgs)
-            command_params = {
-                'name': attr_name,
-                'pass_context': True,
-                'ignore_extra': False
-            }
-            cmd = self.project.command(**command_params)(setter)
-            cmd.instance = self
-            self.project_setters[attr_name] = cmd
+            try:
+                setter = self.make_project_setter(attr_name, **msgs)
+                command_params = {
+                    'name': attr_name,
+                    'pass_context': True,
+                    'ignore_extra': False
+                }
+                cmd = self.project.command(**command_params)(setter)
+                cmd.instance = self
+                self.project_setters[attr_name] = cmd
+            except discord.ClientException as e:
+                logger.warning("{}".format(tb_log_str(e)))
 
     @staticmethod
     def make_project_setter(attr_name: str, msg_help: str,
@@ -121,16 +125,16 @@ class ProjectsCog(KazCog):
             is available. Optional; if not passed, None values are not allowed.
         :return:
         """
-        async def setter(self: ProjectsCog, ctx: commands.Context, value: str=None):
+        async def setter(self: ProjectsCog, ctx: commands.Context, *, new_value: str=None):
             logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
             with q.transaction():
                 project = self.check_active_project(ctx.message.author)
-                if value:
+                if new_value:
                     try:
-                        setattr(project, attr_name, w.validators[attr_name](value))
+                        setattr(project, attr_name, w.validators[attr_name](new_value))
                     except ValueError:
-                        raise commands.BadArgument(msg_err.format(project=project, value=value))
-                    msg = msg_success.format(project=project, value=value)
+                        raise commands.BadArgument(msg_err.format(project=project, value=new_value))
+                    msg = msg_success.format(project=project, value=new_value)
 
                     await update_project_message(self.bot, self.channel, project)
                     q.update_user_from_projects(project.user)
@@ -139,7 +143,7 @@ class ProjectsCog(KazCog):
                     if msg_none:
                         msg = msg_none.format(project=project)
                     else:
-                        raise commands.MissingRequiredArgument("value")
+                        raise commands.MissingRequiredArgument("new_value")
 
                 await self.bot.say(msg)
 
@@ -158,21 +162,19 @@ class ProjectsCog(KazCog):
                 max_projects = user.max_projects_eff(self.get_default_max_for(member))
         """
         max_projects_map = self.config.get('projects', 'max_projects_map')  # type: dict
+        cur_max = 0
+        role_found = False
         for role in member.roles:
             if role.name in max_projects_map:
-                return max_projects_map[role.name]
-        else:
-            return self.config.get('projects', 'max_projects')
+                cur_max = max(cur_max, max_projects_map[role.name])
+                role_found = True
+        return cur_max if role_found else self.config.get('projects', 'max_projects')
 
     async def on_ready(self):
+        await super().on_ready()
         channel_id = self.config.get('projects', 'project_channel')
         self.channel = self.validate_channel(channel_id)
-        await super().on_ready()
-        try:
-            self._load_state()
-        except Exception:
-            self.core.set_cog_shutdown(self)
-            raise
+        self._load_state()
 
     def unload_kazcog(self):
         self._save_state()
@@ -247,8 +249,7 @@ class ProjectsCog(KazCog):
             except KeyError:
                 raise commands.UserInputError(
                     "{} does not have any projects containing \"{}\" in its title."
-                    .format(member.nick if member.nick else member.name,
-                            name)
+                    .format(member.nick if member.nick else member.name, name)
                 )
 
         else:
@@ -347,15 +348,15 @@ class ProjectsCog(KazCog):
     async def follow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
         member = member  # type: discord.Member  # for type checking
         project, role = self.get_follow_role(member, title)
-        await self.bot.add_roles(ctx.message.author, [role])
-        await self.bot.reply("You are now following the project {.title}".format(project))
+        await self.bot.add_roles(ctx.message.author, role)
+        await self.bot.reply("you are now following the project {.title}".format(project))
 
     @project.command(pass_context=True, ignore_extra=False)
     async def unfollow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
         member = member  # type: discord.Member  # for type checking
         project, role = self.get_follow_role(member, title)
-        await self.bot.remove_roles(ctx.message.author, [role])
-        await self.bot.reply("You are no longer following the project {.title}".format(project))
+        await self.bot.remove_roles(ctx.message.author, role)
+        await self.bot.reply("you are no longer following the project {.title}".format(project))
 
     @project.command(pass_context=True, ignore_extra=False)
     async def new(self, ctx: commands.Context):
@@ -364,9 +365,10 @@ class ProjectsCog(KazCog):
 
         with q.transaction():
             user = q.get_or_make_user(ctx.message.author)
-            if not user.can_add_projects(self.config.get('projects', 'max_projects')):
+            default_max = self.get_default_max_for(ctx.message.author)
+            if not user.can_add_projects(default_max):
                 raise commands.UserInputError("You can't have more than {:d} projects!"
-                    .format(user.max_projects_eff(self.get_default_max_for(ctx.message.author))))
+                    .format(user.max_projects_eff(default_max)))
 
         await self.bot.reply("I've sent you a PM! Answer my questions to create your project.")
         await self.wizard_manager.create_new_wizard(ctx.message.author, ctx.message.timestamp)
@@ -462,7 +464,7 @@ class ProjectsCog(KazCog):
         logging.info("Stored deletion request, pending confirmation.")
 
         await self.bot.reply(
-            ("You are about to delete {} project, \"{}\". You will lose all metadata, "
+            ("you are about to delete {} project, \"{}\". You will lose all metadata, "
              "wordcount history, goals, etc. for this project. **This cannot be undone.**\n\n"
              "Are you sure? Type `.project delete confirm` or `.project delete cancel`.")
             .format(member.mention + "'s" if target_user else "your", project.title)
@@ -475,17 +477,16 @@ class ProjectsCog(KazCog):
                 project = session.query(m.Project).filter_by(project_id=project_id).one()
                 title = project.title
                 user_id = project.user.discord_id
-                logger.info("Received confirmation. Deleting {!r}.".format(project))
-                session.delete(project)
-
-                # output msg
                 admin_deletion = (user_id != ctx.message.author.id)
-                await self.bot.reply("{} project \"{}\" has been deleted."
-                    .format(user_mention(user_id) if admin_deletion else "Your", title))
+                logger.info("Received confirmation. Deleting {!r}.".format(project))
+                q.delete_project(project)
+
+            await self.bot.reply("{} project \"{}\" has been deleted."
+                .format(user_mention(user_id) if admin_deletion else "Your", title))
         elif name == 'cancel':
             pid = self.confirm_del.confirm(ctx)  # just clear and do nothing
             logger.info("Cancelling deletion request for project id {:d}".format(pid))
-            await self.bot.reply("Deletion cancelled.")
+            await self.bot.reply("deletion cancelled.")
         else:
             raise ValueError(name)
 
@@ -582,9 +583,9 @@ class ProjectsCog(KazCog):
 
             await update_user_roles(self.bot, self.server, q.query_users(genre=genre))
 
-            await self.bot.say("Genre '{}' edited to '{}'".format(old_name, new_name))
-            await self.send_output("[Projects] Genre '{}' edited: {}"
-                .format(old_name, genre.discord_str()))
+        await self.bot.say("Genre '{}' edited to '{}'".format(old_name, new_name))
+        await self.send_output("[Projects] Genre '{}' edited: {}"
+            .format(old_name, genre.discord_str()))
 
     @admin_genre.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -599,8 +600,8 @@ class ProjectsCog(KazCog):
                     "Can't delete this genre: there are still users or projects using it! "
                     "Make sure no users/projects are using the genre, or provide a replacement.")
             await update_user_roles(self.bot, self.server, users)
-            await self.bot.say("Genre deleted: {}".format(name))
-            await self.send_output("[Projects] Genre deleted: {}".format(name))
+        await self.bot.say("Genre deleted: {}".format(name))
+        await self.send_output("[Projects] Genre deleted: {}".format(name))
 
     @admin.group(name='type', pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
@@ -622,8 +623,8 @@ class ProjectsCog(KazCog):
             logger.info("Adding new project type: name={!r} role={!r}".format(name, role))
             pt = m.ProjectType(name=name, role_id=get_role(self.server, role).id if role else None)
             session.add(pt)
-            await self.bot.say("Project type added: {}".format(name))
-            await self.send_output("[Projects] Project type added: {}".format(pt.discord_str()))
+        await self.bot.say("Project type added: {}".format(name))
+        await self.send_output("[Projects] Project type added: {}".format(pt.discord_str()))
 
     @admin_type.command(name='edit', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -643,9 +644,9 @@ class ProjectsCog(KazCog):
 
             await update_user_roles(self.bot, self.server, q.query_users(type_=p_type))
 
-            await self.bot.say("Project type '{}' edited to '{}'".format(old_name, new_name))
-            await self.send_output("[Projects] Project type '{}' edited: {}"
-                .format(old_name, p_type.discord_str()))
+        await self.bot.say("Project type '{}' edited to '{}'".format(old_name, new_name))
+        await self.send_output("[Projects] Project type '{}' edited: {}"
+            .format(old_name, p_type.discord_str()))
 
     @admin_type.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -660,8 +661,8 @@ class ProjectsCog(KazCog):
                     "Can't delete this project type: there are still users or projects using it! "
                     "Make sure no users/projects are using the genre, or provide a replacement.")
             await update_user_roles(self.bot, self.server, users)
-            await self.bot.say("Project type deleted: {}".format(name))
-            await self.send_output("[Projects] Project type deleted: {}".format(name))
+        await self.bot.say("Project type deleted: {}".format(name))
+        await self.send_output("[Projects] Project type deleted: {}".format(name))
 
     @admin.command(name='delete', pass_context=True, ignore_extra=False)
     @mod_only()
@@ -700,22 +701,34 @@ class ProjectsCog(KazCog):
             limit = None
 
         with q.transaction():
-            logger.info("Setting {} limit to {:d}".format(member, limit))
+            logger.info("Setting {} limit to {}".format(member, limit))
             user = q.get_or_make_user(member)
             user.max_projects = limit
 
-            await self.bot.reply("Set {}'s project limit to {:d}{}".format(
-                member.mention,
-                limit if limit else self.config.get('projects', 'max_projects'),
-                " (default)" if limit is None else ""
-            ))
+        await self.bot.reply("set {}'s project limit to {:d}{}".format(
+            member.mention,
+            limit if limit is not None else self.get_default_max_for(member),
+            " (default)" if limit is None else ""
+        ))
 
     @admin.command(name='followable', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_followable(self, ctx: commands.Context,
                           member: MemberConverter2, title: str, role: discord.Role=None):
         """
-        (mention quotation marks in these docs)
+        Set a follow role for a project.
+
+        The follow role must already exist. It should generally be mentionable so that the project
+        author is able to notify followers.
+
+        Arguments
+        * member: The member who owns the project.
+        * title: The title, or an excerpt of the title to search for. If it contains spaces, must
+          be enclosed in double quotes.
+        * role: A mention of the role to use as a follow role.
+
+        Examples
+            .projects admin followable @JaneDoe#0522 "Potato Mansion" @PotatoMansion
         """
         member = member  # type: discord.Member  # for type checking
         with q.transaction():
@@ -729,16 +742,29 @@ class ProjectsCog(KazCog):
 
             logger.info("Setting project follow role {} for project {!r}"
                 .format(role.name if role else "<None>", project))
-            project.follow_role = role.id if role else None
+            project.follow_role_id = role.id if role else None
 
-            if project.follow_role_id:
-                await self.bot.reply("Set {}'s project follow role to {}"
-                    .format(member.mention, role.name))
+        if project.follow_role_id:
+            await self.bot.reply("set {}'s project follow role to {}"
+                .format(member.mention, role.name))
+        else:
+            await self.bot.reply("removed {}'s project follow role".format(member.mention))
+        await update_project_message(self.bot, self.channel, project)
+
+    @admin_followable.error
+    async def admin_followable_error(self, exc, ctx):
+        if isinstance(exc, commands.CommandInvokeError):
+            root_exc = exc.__cause__ if exc.__cause__ is not None else exc
+            if isinstance(root_exc, core_exc.IntegrityError) and \
+                    'UNIQUE constraint failed: projects.follow_role' in root_exc.args[0]:
+                logger.warning("Can't set follow role: already in use")
+                await self.bot.reply("**error**: that follow role is already in use!")
             else:
-                await self.bot.reply("Removed {}'s project follow role".format(member.mention))
+                await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+        else:
+            await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
-    # TO TEST:
-    # TODO: all the set commands for project fields
-    # TODO: admin delete, admin limit
-    # TODO: creating/setting follow roles, join/leave
-    # TODO: role-determined max projects
+    # TODO: post any project w/o whois message at startup
+    # TODO: command: purge unknown users
+    # TODO: use reaction for deletion confirmation
+    # TODO: remove project msg in whois on delete
