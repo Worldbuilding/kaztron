@@ -160,7 +160,7 @@ def safe_delete_project_type(name: str, replace_name: str=None) -> Tuple[List[Us
 
 # noinspection PyUnresolvedReferences
 def query_projects(*,
-                   user: discord.Member=None,
+                   user: User=None,
                    genre: Genre=None,
                    type_: ProjectType=None,
                    title: str=None,
@@ -168,7 +168,7 @@ def query_projects(*,
         -> List[Project]:
     q = session.query(Project)
     if user:
-        q = q.filter_by(user_id=user.id)
+        q = q.filter_by(user_id=user.user_id)
     if genre:
         q = q.filter_by(genre=genre)
     if type_:
@@ -196,6 +196,7 @@ def add_project(wizard: ProjectWizard) -> Project:
 
 
 def update_project(wizard: ProjectWizard) -> Project:
+    """ Update user's current active project with the passed data. """
     user = get_or_make_user(discord.Object(wizard.user_id))
     if not user.active_project:
         raise discord.ClientException(

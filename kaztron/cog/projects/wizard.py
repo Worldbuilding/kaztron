@@ -86,7 +86,7 @@ def url_validator(s: str):
     if s.lower() == 'blank':
         return ''
     else:
-        return len_validator(m.Project.MAX_TITLE)
+        return len_validator(m.Project.MAX_TITLE)(s)
 
 
 validators = {
