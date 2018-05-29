@@ -163,7 +163,8 @@ def query_projects(*,
                    genre: Genre=None,
                    type_: ProjectType=None,
                    title: str=None,
-                   body: str=None)\
+                   body: str=None,
+                   followable: bool=None)\
         -> List[Project]:
     q = session.query(Project)
     if user:
@@ -182,6 +183,11 @@ def query_projects(*,
             Project.description.ilike(body_like),
             Project.title.ilike(body_like)
         ))
+    if followable is not None:
+        if followable:
+            q = q.filter(Project.follow_role_id != None)
+        else:
+            q = q.filter_by(follow_role_id=None)
     return q.all()
 
 

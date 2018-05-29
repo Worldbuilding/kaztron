@@ -231,7 +231,7 @@ class ProjectsCog(KazCog):
 
         elif len(user.projects) > 1 and name is None:  # list and active project
             listed = format_list(['{0.title} ({0.genre.name}, {0.type.name})'.format(p)
-                                  for p in user.projects])
+                                  for p in sorted(user.projects, key=lambda p: p.title.lower())])
             if user.active_project:
                 logger.debug("project: listing {:d} projects for {} + showing active project {!r}"
                     .format(len(user.projects), member, user.active_project))
@@ -307,7 +307,7 @@ class ProjectsCog(KazCog):
                     "You don't have any projects containing \"{}\" in its title.".format(name)
                 )
 
-        logger.info("select: User {0}: active project set to {1.id:d} {1.title!r}"
+        logger.info("select: User {0}: active project set to {1.project_id:d} {1.title!r}"
             .format(ctx.message.author, user.active_project))
         await self.bot.say("{} Your active project has been set to {}"
             .format(ctx.message.author.mention, user.active_project.title))
@@ -354,6 +354,25 @@ class ProjectsCog(KazCog):
         project, role = self.get_follow_role(member, title)
         await self.bot.add_roles(ctx.message.author, role)
         await self.bot.reply("you are now following the project {.title}".format(project))
+
+    @project.command(pass_context=True, ignore_extra=False, aliases=['followables'])
+    async def followable(self, ctx: commands.Context):
+        def sort_key(project: m.Project):
+            try:
+                member = get_member(ctx, project.user.discord_id)
+                return (member.nick if member.nick else member.name).lower()
+            except discord.InvalidArgument:
+                return "\xff"*5  # sort these users at the end
+        projects = sorted(q.query_projects(followable=True), key=sort_key)
+        listed = format_list(['{1} - {0.title} ({0.genre.name}, {0.type.name})'
+                              .format(p, user_mention(p.user.discord_id))
+                              for p in projects]) if projects else 'None'
+        logger.debug("followable: listing {:d} followable projects".format(len(projects)))
+        await self.bot.say(
+            ('**Followable Projects**\n\n'
+             'Following allows the creator of the project to notify you of updates, discussions, '
+             'etc. surrounding their project. Use `.project follow @nickname title-word` to follow '
+             '(`.project unfollow ...` to unfollow).\n\n{}').format(listed))
 
     @project.command(pass_context=True, ignore_extra=False)
     async def unfollow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):

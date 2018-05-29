@@ -37,9 +37,9 @@ def get_project_embed(project: m.Project, user_info=True, desc=True) -> discord.
     if user_info:
         user = project.user
         if user.about:
-            msg = "{} is {}".format(user_mention(user.discord_id), user.about)
+            msg = "{} is {}".format(user_mention(user.nick if user.nick else user.name), user.about)
         else:
-            msg = "{} *(no bio)*"
+            msg = "*(no bio)*"
 
         em.add_field(name="About the author", value=msg, inline=False)
 
@@ -81,8 +81,8 @@ async def update_user_roles(bot: discord.Client, server: discord.Server, users: 
     for u in users:
         member = server.get_member(u.discord_id)
         desired_roles = set()
-        for role_id in {u.genre.role_id, u.type.role_id} - {None}:
-            desired_roles.add(get_role(server, role_id))
+        for taxon in {u.genre, u.type} - {None}:
+            desired_roles.add(get_role(server, taxon.role_id))
         new_roles = (set(member.roles) - project_roles) | desired_roles
         await bot.replace_roles(member, *new_roles)
 
