@@ -48,8 +48,7 @@ def get_or_make_user(member: Union[discord.Member, discord.Object]):
         return user
 
 
-def query_users(*, genre: Genre=None, type_: ProjectType=None) \
-        -> List[User]:
+def query_users(*, genre: Genre=None, type_: ProjectType=None) -> List[User]:
     q = session.query(User)
     if genre:
         q = q.filter_by(genre=genre)
@@ -184,6 +183,10 @@ def query_projects(*,
             Project.title.ilike(body_like)
         ))
     return q.all()
+
+
+def query_unsent_projects():
+    return session.query(Project).filter_by(whois_message_id=None).all()
 
 
 # noinspection PyTypeChecker

@@ -90,7 +90,7 @@ class Project(Base):
 
     def __repr__(self):
         return 'Project<{:d}, user_id={:d}, title={!r}>'\
-            .format(self.project_id, self.user_id, self.whois_message_id, self.title)
+            .format(self.project_id, self.user_id, self.title)
 
     def __str__(self):
         raise NotImplementedError()

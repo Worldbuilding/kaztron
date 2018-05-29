@@ -22,7 +22,9 @@ def get_project_embed(project: m.Project, user_info=True, desc=True) -> discord.
         description='by {}\n\n{}'.format(user_mention(project.user.discord_id), project.pitch),
         color=EMBED_COLOUR
     )
-    em.add_field(name='Genre', value='{0.genre.name} - {0.subgenre}'.format(project))
+    em.add_field(name='Genre',
+        value='{0.genre.name} - {0.subgenre}'.format(project) if project.subgenre
+              else '{0.genre.name}'.format(project))
     em.add_field(name='Type', value=project.type.name)
     if project.follow_role_id:
         em.add_field(name='Follow role', value=role_mention(project.follow_role_id))
@@ -93,9 +95,33 @@ async def update_project_message(bot: discord.Client, dest: discord.Channel, pro
     modified by this function.
     """
     new_embed = get_project_embed(project, user_info=False, desc=False)
-    if project.whois_message_id:
-        whois_msg = await bot.get_message(dest, project.whois_message_id)
+
+    # check for/find the message
+    whois_msg = None
+    try:
+        if project.whois_message_id:
+            whois_msg = await bot.get_message(dest, project.whois_message_id)
+    except discord.NotFound:
+        pass
+
+    # edit or post the message
+    if whois_msg:
         await bot.edit_message(whois_msg, embed=new_embed)
     else:  # no message exists yet
         new_msg = await bot.send_message(dest, embed=new_embed)
         project.whois_message_id = new_msg.id
+
+
+async def delete_project_message(bot: discord.Client, dest: discord.Channel, project: m.Project):
+    try:
+        if project.whois_message_id:
+            whois_msg = await bot.get_message(dest, project.whois_message_id)
+            logger.info("Deleting project whois message (for project {!r})".format(project))
+            await bot.delete_message(whois_msg)
+            project.whois_message_id = None
+    except discord.NotFound:
+        logger.warning("Cannot delete project whois message: not found (for project {!r})"
+            .format(project))
+        logger.warning("Removing whois message ID (for project {!r})".format(project))
+        project.whois_message_id = None
+        pass

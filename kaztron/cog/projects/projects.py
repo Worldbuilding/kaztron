@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 
 from kaztron import KazCog
+from kaztron.cog.projects.discord import delete_project_message
 from kaztron.utils.confirm import ConfirmManager
 from kaztron.utils.converter import MemberConverter2
 from . import model as m, query as q, wizard as w
@@ -14,8 +15,8 @@ from .wizard import WizardManager
 from kaztron.kazcog import ready_only
 from kaztron.driver.database import core_exc
 from kaztron.utils.checks import mod_only
-from kaztron.utils.discord import user_mention, Limits, get_command_str,\
-    get_group_help
+from kaztron.utils.discord import user_mention, Limits, get_command_str, \
+    get_group_help, get_member
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str, tb_log_str
 from kaztron.utils.strings import split_chunks_on, format_list, parse_keyword_args
@@ -38,6 +39,10 @@ class ProjectsCog(KazCog):
     * Use the `.project admin` commands to set up the genre and type list.
     """
     channel_id = KazCog._config.get('projects', 'project_channel')
+    emoji = {
+        'ok': '\U0001f197',
+        'cancel': '\u274c'
+    }
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -47,11 +52,6 @@ class ProjectsCog(KazCog):
 
         self.project_setters = {}
         self.setup_project_setter_commands()
-
-        self.emoji = {
-            'ok': '\U0001f197',
-            'cancel': '\u274c'
-        }
 
     def setup_project_setter_commands(self):
         data = {
@@ -178,7 +178,7 @@ class ProjectsCog(KazCog):
         await super().on_ready()
         channel_id = self.config.get('projects', 'project_channel')
         self.channel = self.validate_channel(channel_id)
-
+        await self._update_unsent_projects()
         self._load_state()
 
     def unload_kazcog(self):
@@ -193,6 +193,14 @@ class ProjectsCog(KazCog):
     def _save_state(self):
         self.state.set('projects', 'wizards', self.wizard_manager.to_dict())
         self.state.write()
+
+    async def _update_unsent_projects(self):
+        unsent_projects = q.query_unsent_projects()
+        if unsent_projects:
+            logger.info("Posting projects without whois message...")
+        for project in unsent_projects:
+            logger.debug("Posting project: {!r}".format(project))
+            await update_project_message(self.bot, self.channel, project)
 
     @staticmethod
     def check_active_project(member: discord.Member) -> m.Project:
@@ -472,14 +480,14 @@ class ProjectsCog(KazCog):
         await self.bot.delete_message(msg)
 
     async def _delete(self, ctx: commands.Context, project: m.Project):
-        msg = await self.bot.get_message(self.channel, project.whois_message_id)
-        await self.bot.delete_message(msg)
 
         with q.transaction():
             title = project.title
             user_id = project.user.discord_id
             admin_deletion = (user_id != ctx.message.author.id)
             q.delete_project(project)
+
+        await delete_project_message(self.bot, self.channel, project)
 
         await self.bot.reply("{} project \"{}\" has been deleted."
             .format((user_mention(user_id) + "'s") if admin_deletion else "your", title))
@@ -750,5 +758,25 @@ class ProjectsCog(KazCog):
         else:
             await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
-    # TODO: post any project w/o whois message at startup
-    # TODO: command: purge unknown users
+    @admin.command(name='purge', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_purge(self, ctx: commands.Context):
+        """
+        Purge all projects from users who have left the server.
+
+        Examples
+            .projects admin purge
+        """
+        n_deleted = 0
+        with q.transaction() as session:
+            for user in q.query_users():
+                try:
+                    get_member(ctx, user.discord_id)
+                except discord.InvalidArgument:
+                    logging.info("User {} not found: deleting user and projects".format(user))
+                    n_deleted += 1
+                    for project in user.projects:
+                        await delete_project_message(self.bot, self.channel, project)
+                        session.delete(project)
+                    session.delete(user)
+        await self.bot.reply("{:d} user(s) purged".format(n_deleted))
