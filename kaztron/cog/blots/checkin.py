@@ -14,7 +14,6 @@ from kaztron.utils.converter import MemberConverter2, NaturalDateConverter, Bool
     NaturalInteger
 from kaztron.utils.discord import Limits, get_group_help, user_mention, get_named_role
 from kaztron.utils.embeds import EmbedSplitter
-from kaztron.utils.logging import message_log_str
 from kaztron.utils.datetime import format_datetime, format_date
 
 from kaztron.cog.blots import model
@@ -337,3 +336,37 @@ class CheckInManager(KazCog):
             rl = ', '.join(r.name for r in ms_info.current_roles) or 'No milestone roles'
             list_str.append('{} {:d} {} (currently: {})'.format(u, wc, wu, rl))
         return '\n'.join(list_str)
+
+    @milestone.group(name='update', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def milestone_update(self, ctx: commands.Context, member: MemberConverter2):
+        """
+        [MOD ONLY] Update a user's milestone roles.
+
+        Arguments:
+        * `member`: An @mention, user highlight or exact name+discriminator for a server member.
+        """
+        member = member  # type: discord.Member  # IDE type checking
+        try:
+            last_check_in = self.c.query_check_ins(member=member)[-1]
+            target_role = self.c.find_target_milestone(last_check_in)
+        except orm.exc.NoResultFound:
+            logger.warning("milestone_update: No check-ins for member {!s}".format(member))
+            target_role = None
+
+        milestone_roles = self.c.get_milestone_roles()
+        logger.debug("Found milestone roles: {}".format(", ".join(r.name for r in milestone_roles)))
+
+        updated_roles = (set(member.roles) - set(milestone_roles))
+
+        if target_role:
+            updated_roles |= {target_role}
+            logger.info("Setting member {!s} milestone role to {.name}".format(member, target_role))
+            await self.bot.replace_roles(member, *updated_roles)
+            await self.bot.reply("Set {.mention} milestone role to {.name}."
+                .format(member, target_role))
+        else:
+            logger.info("Removing member {!s} milestone roles.".format(member))
+            await self.bot.replace_roles(member, *updated_roles)
+            await self.bot.reply(("Member {.mention} has no check-ins; "
+                                  "removing milestone roles (if any).").format(member))
