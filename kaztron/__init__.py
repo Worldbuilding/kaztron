@@ -2,7 +2,7 @@
 from collections import OrderedDict
 from .kazcog import KazCog
 
-__version__ = "2.2a1.dev2"
+__version__ = "2.2a1.dev3"
 
 bot_info = {
     "version": __version__,

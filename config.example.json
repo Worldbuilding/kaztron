@@ -162,5 +162,15 @@
         "etc.": 200
       }
     }
+  },
+  "projects": {
+    "project_channel": "channel ID",
+    "max_projects": 3,
+    "max_projects_map": {
+      "role name 1": 1,
+      "role name 2": 99
+    },
+    "timeout_confirm": 120,
+    "timeout_wizard": 1800
   }
 }

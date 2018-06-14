@@ -114,3 +114,9 @@ def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], s
     return kwargs, args.strip()
 
 
+_count_words_re = re.compile(r'\b\w+?\b')
+
+
+def count_words(s: str) -> int:
+    return len(_count_words_re.findall(s))
+
