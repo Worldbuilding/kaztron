@@ -152,6 +152,10 @@ class KazCog:
         return self._bot
 
     @property
+    def scheduler(self):
+        return self._bot.scheduler
+
+    @property
     def config(self):
         return self._config
 
