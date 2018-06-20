@@ -161,6 +161,9 @@ class Scheduler:
         return self.bot.loop
 
     def _add_task(self, task: Task, at_loop_time: float, every: float=None, times: float=None):
+        if task.is_unique and self.tasks.get(task, {}).keys():
+            raise asyncio.InvalidStateError('Task {} is set unique and already exists'.format(task))
+
         async_task = self.loop.create_task(self._runner(task, at_loop_time, every, times))
         try:
             self.tasks[task][at_loop_time] = async_task
@@ -183,8 +186,6 @@ class Scheduler:
             not, the task is repeated forever.
         :return: A TaskInstance, which can be used to later cancel this task.
         """
-
-        # TODO: consider is_unique ...
 
         if not isinstance(task, Task):
             raise ValueError("Scheduled tasks must be decorated with scheduler.task")

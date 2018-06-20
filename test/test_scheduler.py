@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from types import MethodType
 
 import pytest
 
@@ -38,6 +39,12 @@ class MockTaskFunction:
 def scheduler(mocker):
     bot = mocker.Mock()
     bot.loop = asyncio.get_event_loop()
+
+    async def dispatch(self, *args, **kwargs):
+        self.dispatched = (args, kwargs)
+
+    bot.dispatch = MethodType(dispatch, bot)
+    bot.dispatched = None
     return Scheduler(bot)
 
 
@@ -108,6 +115,7 @@ def test_error(scheduler):
     start = mock_task.loop.time()
     scheduler.schedule_task_in(mock_task.err_task, delay)
     scheduler.loop.run_until_complete(asyncio.sleep(1))
+    assert scheduler.bot.dispatched is not None
     assert len(mock_task.calls) == 1
     assert isinstance(mock_task.err[0], ValueError) and mock_task.err[0].args[0] == 'blah'
     assert (delay - 0.05) <= mock_task.err[1] - start <= (delay + 0.05)
