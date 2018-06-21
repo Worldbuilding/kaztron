@@ -98,6 +98,13 @@ class TaskInstance:
     def cancel(self):
         self.scheduler.cancel_task(self)
 
+    def __await__(self):
+        return self.async_task.__await__()
+
+    def is_current(self):
+        """ Return True if called from within this task. """
+        return self.async_task is asyncio.Task.current_task()
+
     # noinspection PyBroadException
     async def run(self):
         task_id = '{!s}@{:.2f}'.format(self.task, self.timestamp)
@@ -131,6 +138,9 @@ class TaskInstance:
                 await self.task.on_cancel()
         else:
             logger.debug("Task {!s} has no cancellation handler".format(self.task))
+
+    def __str__(self):
+        return str(self.task) + "@{:.2f}".format(self.timestamp)
 
 
 def task(is_unique=True):
@@ -207,10 +217,6 @@ class Scheduler:
         if task.is_unique and self.tasks.get(task, {}).keys():
             raise asyncio.InvalidStateError('Task {} is set unique and already exists'.format(task))
 
-        # process arguments
-        if isinstance(every, timedelta):
-            every = every.total_seconds()
-
         # set up task
         task_inst = TaskInstance(self, task, at_loop_time, task.instance)
         task_inst.async_task = self.loop.create_task(
@@ -241,6 +247,11 @@ class Scheduler:
         :return: A TaskInstance, which can be used to later cancel this task.
         """
         if every:
+            try:
+                every = every.total_seconds()
+            except AttributeError:
+                every = float(every)
+
             logger.info("Scheduling task {!s} at {}, recurring every {:.2f}s for {} times"
                 .format(task, dt.isoformat(' '), every, str(times) if times else 'infinite'))
         else:
@@ -267,6 +278,11 @@ class Scheduler:
             in_time = float(in_time)
 
         if every:
+            try:
+                every = every.total_seconds()
+            except AttributeError:
+                every = float(every)
+
             logger.info("Scheduling task {!s} in {:.2f}s, recurring every {:.2f}s for {} times"
                 .format(task, in_time, every, str(times) if times else 'infinite'))
         else:
@@ -325,9 +341,11 @@ class Scheduler:
         try:
             self.tasks[instance.task][instance.timestamp].async_task.cancel()
         except KeyError:
-            raise asyncio.InvalidStateError("Task does not exist, is finished or cancelled")
+            raise asyncio.InvalidStateError("Task {!s} does not exist, is finished or cancelled"
+                .format(instance))
         except TypeError:
-            raise asyncio.InvalidStateError("Task was not started (??? should not happen?")
+            raise asyncio.InvalidStateError("Task was not started (??? should not happen?"
+                .format(instance))
 
     def cancel_all(self, task: Task=None):
         """

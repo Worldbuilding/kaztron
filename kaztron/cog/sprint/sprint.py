@@ -1,21 +1,20 @@
-import asyncio
 import logging
-from datetime import time, timedelta
+from datetime import timedelta
 from typing import Optional
 
 import discord
 from discord.ext import commands
 
-from kaztron import KazCog
+from kaztron import KazCog, task, TaskInstance
 from kaztron.cog.role_man import RoleManager
 from kaztron.cog.sprint.model import *
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
 from kaztron.utils.converter import NaturalDateConverter
-from kaztron.utils.datetime import utctimestamp, format_date, format_timedelta, parse as dt_parse
-from kaztron.utils.decorators import task_handled_errors
-from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all, get_help_str, \
+from kaztron.utils.datetime import format_date, format_timedelta, parse as dt_parse, \
+    get_weekday
+from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all, \
     get_member, get_group_help
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list
@@ -94,7 +93,7 @@ class WritingSprint(KazCog):
                 ("Participants", "{participants}", INLINE)
             ]
         ),
-        "on_sprint_start": EmbedInfo(
+        "task_on_sprint_start": EmbedInfo(
             title="Sprint start",
             color=DISP_COLORS[SprintState.SPRINT],
             msg="**The sprint is starting!** Get to writing! {notif}",
@@ -104,7 +103,7 @@ class WritingSprint(KazCog):
                 ("Participants", "{participants}", INLINE)
             ]
         ),
-        "on_sprint_warning": EmbedInfo(
+        "task_on_sprint_warning": EmbedInfo(
             title="Sprint reminder",
             color=solarized.orange,
             msg="**Sprint reminder!** {remaining!s} left. You better still be writing! {notif}",
@@ -114,7 +113,7 @@ class WritingSprint(KazCog):
                 ("Participants", "{participants}", INLINE)
             ]
         ),
-        "on_sprint_end": EmbedInfo(
+        "task_on_sprint_end": EmbedInfo(
             title="Sprint end",
             color=DISP_COLORS[SprintState.COLLECT_RESULTS],
             msg="**Pencils down!** The sprint has ended! "
@@ -125,7 +124,7 @@ class WritingSprint(KazCog):
                 ("Participants", "{participants}", INLINE)
             ]
         ),
-        "on_sprint_results": EmbedInfo(
+        "task_on_sprint_results": EmbedInfo(
             title="Sprint results",
             color=DISP_COLORS[SprintState.IDLE],
             msg="**And here are the sprint's results!** "
@@ -240,7 +239,7 @@ class WritingSprint(KazCog):
         self.state.set_defaults(
             'sprint',
             state=SprintState.IDLE.value,
-            sprint_data=SprintData(self.bot.loop).to_dict(),
+            sprint_data=SprintData().to_dict(),
             stats=SprintUserStats().to_dict(),
             weekly_stats={}
         )
@@ -265,11 +264,11 @@ class WritingSprint(KazCog):
         self.duration_max = self.config.get('sprint', 'duration_max')
         self.finalize = self.config.get('sprint', 'finalize_time')
 
-        self.sprint_data = SprintData(self.bot.loop)
-        self.state_task = None
+        self.sprint_data = SprintData()
+        self.state_tasks = []  # type: List[TaskInstance]
 
         self.report_time = dt_parse(self.config.get('sprint', 'report_time', '17:00')).time()
-        self.report_task = None
+        self.report_task = None  # type: TaskInstance
 
     def get_state(self):
         return SprintState(self.state.get('sprint', 'state'))
@@ -288,7 +287,7 @@ class WritingSprint(KazCog):
         # state is always directly read from the config (see get_state), so no need to set it here
         if self.get_state() is not SprintState.IDLE:
             try:
-                self.sprint_data = SprintData.from_dict(self.bot.loop, self.channel.server,
+                self.sprint_data = SprintData.from_dict(self.channel.server,
                     self.state.get('sprint', 'sprint_data'))
             except KeyError:
                 logger.warning("Old sprint data incorrectly formatted, ignoring")
@@ -317,10 +316,6 @@ class WritingSprint(KazCog):
             )
         except KeyError:
             return SprintUserStats()
-
-    def _get_time(self) -> float:
-        """ Convenience function: get the current event loop time, in seconds. """
-        return self.bot.loop.time()
 
     async def _display_embed(self, dest, embed_info: EmbedInfo, *args, **kwargs):
         """ Convenience function: display an embed from the EmbedInfo """
@@ -375,13 +370,11 @@ class WritingSprint(KazCog):
         """
         Utility method: cancels the current sprint, if one is running
         """
-        if self.state_task and self.state_task is not asyncio.Task.current_task():
-            self.state_task.cancel()
-            self.state_task = None
+        await self._reset_sprint_tasks()
 
         old_participants = self._format_wordcount_list(self.sprint_data.start)
         self.set_state(SprintState.IDLE)
-        self.sprint_data = SprintData(self.bot.loop)
+        self.sprint_data = SprintData()
         self._save_sprint()
 
         self._update_roles()
@@ -405,13 +398,6 @@ class WritingSprint(KazCog):
 
         logger.debug("Validating sprint channel...")
         self.channel = self.validate_channel(self.channel_id)
-
-        state = self.get_state()
-        if state is not SprintState.IDLE:
-            logger.info("Loading previous sprint data...")
-            self._load_sprint()
-
-        self._update_roles()
 
         roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
         if roleman:
@@ -447,26 +433,70 @@ class WritingSprint(KazCog):
             except discord.HTTPException:
                 logger.exception("Error sending error to output ch")
 
-        logger.info("Restoring task for current state...")
-        if self.state_task:  # in case this isn't the first time on_ready is called (reconnect)
-            self.state_task.cancel()
-
-        if state is SprintState.IDLE:
+        state = self.get_state()
+        if state is not SprintState.IDLE:
+            logger.info("Loading previous sprint data...")
+            self._load_sprint()
+            logger.info("Restoring tasks for current sprint...")
+            await self._schedule_sprint_tasks()
+        else:
             logger.info("No sprint, no task needs restoring.")
-        elif state is SprintState.PREPARE:
-            self.state_task = self.bot.loop.create_task(self.on_sprint_start())
-        elif state is SprintState.SPRINT:
-            if self.sprint_data.warn_times:
-                self.state_task = self.bot.loop.create_task(self.on_sprint_warning())
+
+        self._update_roles()
+
+        self._schedule_report()
+
+    async def _schedule_sprint_tasks(self):
+        # clear any old sprint tasks
+        await self._reset_sprint_tasks()
+
+        state = self.get_state()
+        prev_state = False
+
+        if state is SprintState.PREPARE:
+            prev_state = True
+            self.state_tasks.append(self.scheduler.schedule_task_at(
+                self.task_on_sprint_start, self.sprint_data.start_time
+            ))
+
+        if prev_state or state is SprintState.SPRINT:
+            prev_state = True
+            for wt in self.sprint_data.warn_times:
+                self.state_tasks.append(self.scheduler.schedule_task_at(
+                    self.task_on_sprint_warning, wt
+                ))
+            self.state_tasks.append(self.scheduler.schedule_task_at(
+                self.task_on_sprint_end, self.sprint_data.end_time
+            ))
+
+        if prev_state or state is SprintState.COLLECT_RESULTS:
+            self.state_tasks.append(self.scheduler.schedule_task_at(
+                self.task_on_sprint_results, self.sprint_data.finalize_time
+            ))
+
+    async def _reset_sprint_tasks(self, join=False):
+        logger.debug("Resetting all sprint tasks...")
+        for ti in self.state_tasks:
+            if not ti.is_current():
+                try:
+                    logger.debug("Cancelling {!s}".format(ti))
+                    ti.cancel()
+                    if join:
+                        await ti
+                except asyncio.InvalidStateError:
+                    pass
+                except asyncio.CancelledError:
+                    pass  # error gets bubbled up on awaiting a cancelled task...
             else:
-                self.state_task = self.bot.loop.create_task(self.on_sprint_end())
-        elif state is SprintState.COLLECT_RESULTS:
-            self.state_task = self.bot.loop.create_task(self.on_sprint_results())
+                logger.debug("Not cancelling {!s}: is the current task".format(ti))
+        self.state_tasks.clear()
 
-        if self.report_task:
-            self.report_task.cancel()
-
-        self.report_task = self.bot.loop.create_task(self.weekly_report_tick())
+    def _schedule_report(self):
+        today_report_time = datetime.combine(datetime.utcnow().date(), self.report_time)
+        next_report_time = get_weekday(today_report_time, weekday=6, future=True)
+        self.report_task = self.scheduler.schedule_task_at(
+            self.weekly_report, next_report_time, every=timedelta(days=7)
+        )
 
     def unload_kazcog(self):
         self.report_task.cancel()
@@ -594,19 +624,18 @@ class WritingSprint(KazCog):
             .format(duration, delay))
 
         self.set_state(SprintState.PREPARE)
-        sprint = SprintData(self.bot.loop)
+        sprint = SprintData()
         sprint.founder = ctx.message.author
-        sprint.start_time = self._get_time() + delay_s
-        sprint.end_time = sprint.start_time + duration_s
-        sprint.finalize_time = sprint.end_time + self.finalize
+        sprint.start_time = datetime.utcnow() + timedelta(seconds=delay_s)
+        sprint.end_time = sprint.start_time + timedelta(seconds=duration_s)
+        sprint.finalize_time = sprint.end_time + timedelta(seconds=self.finalize)
 
         # For now, warnings only in the last 1 minute, if sprint at least 10 minutes
         # if sprint.duration >= 600:
         #     sprint.warn_times.append(sprint.end_time - 60)
-        self.sprint_data = sprint
 
-        # Set up events
-        self.state_task = self.bot.loop.create_task(self.on_sprint_start())
+        self.sprint_data = sprint
+        await self._schedule_sprint_tasks()
 
         self._update_roles()
         await self._display_embed(
@@ -822,9 +851,9 @@ class WritingSprint(KazCog):
         if state is SprintState.COLLECT_RESULTS and \
                 set(self.sprint_data.start.keys()) == self.sprint_data.finalized:
             logger.info("All wordcounts submitted. Fast-forwarding to result announcement.")
-            self.state_task.cancel()
-            self.sprint_data.finalize_time = self._get_time()  # finalize NOW
-            self.state_task = self.bot.loop.create_task(self.on_sprint_results())
+            await self._reset_sprint_tasks(True)
+            # finalize NOW
+            self.state_tasks.append(self.scheduler.schedule_task_in(self.task_on_sprint_results, 0))
         else:
             self._save_sprint()
 
@@ -996,31 +1025,16 @@ class WritingSprint(KazCog):
 
         self._save_sprint()
 
-    @task_handled_errors
-    async def weekly_report_tick(self):
-        while True:
-            now = datetime.utcnow()
-            today = now.date()
-            next_report_date = today + timedelta(days=(6 - today.weekday() + 7) % 7)
-            last_report_dt = datetime.combine(next_report_date - timedelta(days=1), time())
-            next_report_time = datetime.combine(next_report_date, self.report_time)
-            if next_report_time < now:
-                next_report_time += timedelta(days=7)
-            wait_time = (next_report_time - now).total_seconds()
-            logger.debug("Waiting for weekly report tick ({:.1f}s)...".format(wait_time))
-            await asyncio.sleep(wait_time)
+    @task(is_unique=True)
+    async def weekly_report(self):
+        logger.info("Generating weekly report...")
+        report_date = datetime.utcnow() - timedelta(days=1)
+        await self._stats_global(self.channel, report_date)
+        await self._leader_inner(self.channel, report_date)
+        await self.bot.send_message(self.channel, self.DISP_STRINGS['report'])
 
-            logger.info("Generating weekly report...")
-            await self._stats_global(self.channel, last_report_dt)
-            await self._leader_inner(self.channel, last_report_dt)
-            await self.bot.send_message(self.channel, self.DISP_STRINGS['report'])
-
-    @task_handled_errors
-    async def on_sprint_start(self):
-        wait_time = self.sprint_data.start_time - self._get_time()
-        logger.debug("Waiting for sprint start ({:.1f}s)...".format(wait_time))
-        await asyncio.sleep(wait_time)
-
+    @task(is_unique=True)
+    async def task_on_sprint_start(self):
         if not self.sprint_data.members:
             logger.warning("Cancelling sprint: no participants")
             await self._cancel_sprint(self.DISP_STRINGS['cancel_start'])
@@ -1029,126 +1043,112 @@ class WritingSprint(KazCog):
         logger.info("Starting sprint...")
         self.set_state(SprintState.SPRINT)
 
-        try:
-            await self._display_embed(
-                self.channel, self.DISP_EMBEDS['on_sprint_start'],
-                founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-                duration=format_seconds(self.sprint_data.duration),
-                notif=self.role_sprint_mention,
-                participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
-            )
-        finally:
-            logger.debug("Scheduling on_sprint_warning")
-            self.state_task = self.bot.loop.create_task(self.on_sprint_warning())
-            self._save_sprint()
+        await self._display_embed(
+            self.channel, self.DISP_EMBEDS['task_on_sprint_start'],
+            founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
+            duration=format_seconds(self.sprint_data.duration),
+            notif=self.role_sprint_mention,
+            participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
+        )
+        self._save_sprint()
 
-    @task_handled_errors
-    async def on_sprint_warning(self):
-        while self.sprint_data.warn_times:
-            wait_time = self.sprint_data.warn_times[0] - self._get_time()
-            logger.debug("Waiting for next warning time ({:.1f}s)...".format(wait_time))
-            await asyncio.sleep(wait_time)
+    @task(is_unique=False)
+    async def task_on_sprint_warning(self):
+        logger.info("Sending warning...")
+        await self._display_embed(
+            self.channel, self.DISP_EMBEDS['task_on_sprint_warning'],
+            founder=self.sprint_data.founder.mention
+            if self.sprint_data.founder else "None",
+            remaining=format_seconds(self.sprint_data.remaining),
+            notif=self.role_sprint_mention,
+            participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
+        )
 
-            logger.info("Sending warning...")
-            self.sprint_data.warn_times.popleft()
-
-            # noinspection PyBroadException
-            try:
-                await self._display_embed(
-                    self.channel, self.DISP_EMBEDS['on_sprint_warning'],
-                    founder=self.sprint_data.founder.mention
-                    if self.sprint_data.founder else "None",
-                    remaining=format_seconds(self.sprint_data.remaining),
-                    notif=self.role_sprint_mention,
-                    participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Error while issuing warning; ignoring")
-            finally:
-                self._save_sprint()
-        logger.debug("Warnings done. Scheduling on_sprint_end")
-        self.state_task = self.bot.loop.create_task(self.on_sprint_end())
-
-    @task_handled_errors
-    async def on_sprint_end(self):
-        wait_time = self.sprint_data.end_time - self._get_time()
-        logger.debug("Waiting for sprint end ({:.1f}s)...".format(wait_time))
-        await asyncio.sleep(wait_time)
-
+    @task(is_unique=True)
+    async def task_on_sprint_end(self):
         logger.info("Ending sprint...")
         self.set_state(SprintState.COLLECT_RESULTS)
 
-        try:
+        # if everyone's already finalized, give results now
+        if set(self.sprint_data.start.keys()) == self.sprint_data.finalized:
+            logger.info("All participants already finalised; scheduling results task...")
+            await self._reset_sprint_tasks(True)
+            self.state_tasks.append(self.scheduler.schedule_task_in(
+                self.task_on_sprint_results, 0
+            ))  # finalize NOW
+        else:
             await self._display_embed(
-                self.channel, self.DISP_EMBEDS['on_sprint_end'],
+                self.channel, self.DISP_EMBEDS['task_on_sprint_end'],
                 founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
                 finalize=format_seconds(self.finalize),
                 notif=self.role_sprint_mention,
                 participants='\n'.join(self._format_wordcount_list(self.sprint_data.start))
             )
-        finally:
-            logger.debug("Scheduling on_sprint_results")
-            self.state_task = self.bot.loop.create_task(self.on_sprint_results())
-            self._save_sprint()
+        self._save_sprint()
 
-    @task_handled_errors
-    async def on_sprint_results(self):
-        # Wait the finalize time (unless everyone's already finalized)
-        if set(self.sprint_data.start.keys()) != self.sprint_data.finalized:
-            wait_time = self.sprint_data.finalize_time - self._get_time()
-            logger.debug("Waiting for sprint finalize time ({:.1f}s)...".format(wait_time))
-            await asyncio.sleep(wait_time)
+    @task_on_sprint_start.error
+    @task_on_sprint_warning.error
+    @task_on_sprint_end.error
+    async def task_error(self, e: Exception):
+        logger.exception("Error while executing sprint event task")
+        self._save_sprint()
+
+    @task(is_unique=True)
+    async def task_on_sprint_results(self):
+        logger.info("Finalize done; announcing results...")
+
+        # update stats with this sprint's results
+        stats = self.load_stats()
+        stats.update(self.sprint_data)
+        self.save_stats(stats)
+
+        now = datetime.utcnow()
+        w_stats = self.load_weekly_stats(now)
+        w_stats.update(self.sprint_data)
+        self.save_weekly_stats(now, w_stats)
+
+        #
+        # Prepare the output message
+        #
+        sorted_members = self.sprint_data.get_sorted_members()
+        results = []
+        for u in sorted_members:
+            results.append('{} ({:d} words, {:.1f} wpm)'.format(
+                u.mention, self.sprint_data.get_wordcount(u), self.sprint_data.get_wpm(u)))
+        results_str = '\n'.join('{:d}. {}'.format(i+1, s) for i, s in enumerate(results))
 
         try:
-            logger.info("Finalize done; announcing results...")
+            winner = self.sprint_data.find_winner()
+            winner_name = winner.mention
+            winner_wc = self.sprint_data.get_wordcount(winner)
+        except ValueError:
+            winner_name = 'nobody'
+            winner_wc = 0
 
-            # update stats with this sprint's results
-            stats = self.load_stats()
-            stats.update(self.sprint_data)
-            self.save_stats(stats)
+        await remove_role_from_all(self.bot, self.channel.server, self.role_sprint)
+        logger.debug("Removed all users from {} role".format(self.role_sprint_name))
 
-            now = datetime.utcnow()
-            w_stats = self.load_weekly_stats(now)
-            w_stats.update(self.sprint_data)
-            self.save_weekly_stats(now, w_stats)
+        await self._display_embed(
+            self.channel, self.DISP_EMBEDS['task_on_sprint_results'],
+            founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
+            winner=winner_name, wc=winner_wc,
+            duration=format_seconds(self.sprint_data.duration),
+            participants=results_str if results_str else 'None',
+            notif=self.role_sprint_mention
+        )
 
-            #
-            # Prepare the output message
-            #
-            sorted_members = self.sprint_data.get_sorted_members()
-            results = []
-            for u in sorted_members:
-                results.append('{} ({:d} words, {:.1f} wpm)'.format(
-                    u.mention, self.sprint_data.get_wordcount(u), self.sprint_data.get_wpm(u)))
-            results_str = '\n'.join('{:d}. {}'.format(i+1, s) for i, s in enumerate(results))
+        logger.debug("Resetting sprint state...")
+        self.set_state(SprintState.IDLE)
+        self.sprint_data = SprintData()
+        self._save_sprint()  # also calls self.state.write() - OK for stats too
 
-            try:
-                winner = self.sprint_data.find_winner()
-                winner_name = winner.mention
-                winner_wc = self.sprint_data.get_wordcount(winner)
-            except ValueError:
-                winner_name = 'nobody'
-                winner_wc = 0
-
-            await remove_role_from_all(self.bot, self.channel.server, self.role_sprint)
-            logger.debug("Removed all users from {} role".format(self.role_sprint_name))
-
-            await self._display_embed(
-                self.channel, self.DISP_EMBEDS['on_sprint_results'],
-                founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
-                winner=winner_name, wc=winner_wc,
-                duration=format_seconds(self.sprint_data.duration),
-                participants=results_str if results_str else 'None',
-                notif=self.role_sprint_mention
-            )
-
-        finally:
-            logger.debug("Resetting sprint state...")
-            self.set_state(SprintState.IDLE)
-            self.sprint_data = SprintData(self.bot.loop)
-            self._save_sprint()  # also calls self.state.write() - OK for stats too
+    @task_on_sprint_results.error
+    async def task_results_error(self, e: Exception):
+        logger.exception("Error while executing sprint event task")
+        logger.debug("Resetting sprint state...")
+        self.set_state(SprintState.IDLE)
+        self.sprint_data = SprintData()
+        self._save_sprint()
 
     @start.error
     @stop.error
