@@ -97,7 +97,7 @@ def test_cancel(scheduler):
 
     async def canceller(inst):
         await asyncio.sleep(cancel_at)
-        scheduler.cancel_task(inst)
+        inst.cancel()
         await asyncio.sleep(1)
 
     mock_task = MockTaskFunction(scheduler.loop)
@@ -106,6 +106,7 @@ def test_cancel(scheduler):
     instance = scheduler.schedule_task_in(mock_task.my_task, delay)
     scheduler.loop.run_until_complete(canceller(instance))
     assert len(mock_task.calls) == 0
+    assert mock_task.cancelled_at != 0  # check that a cancellation happened
     assert (cancel_at - 0.05) <= mock_task.cancelled_at - start <= (cancel_at + 0.05)
 
 
@@ -119,3 +120,13 @@ def test_error(scheduler):
     assert len(mock_task.calls) == 1
     assert isinstance(mock_task.err[0], ValueError) and mock_task.err[0].args[0] == 'blah'
     assert (delay - 0.05) <= mock_task.err[1] - start <= (delay + 0.05)
+
+
+def test_task_cleanup(scheduler):
+    @task()
+    async def a():
+        pass
+
+    scheduler.schedule_task_in(a, 0.1)
+    scheduler.loop.run_until_complete(asyncio.sleep(0.2))
+    assert a not in scheduler.tasks

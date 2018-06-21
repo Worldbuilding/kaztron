@@ -1,20 +1,21 @@
 import asyncio
 import logging
+
 from collections.abc import Hashable
 from datetime import datetime, timedelta
-from typing import Callable, Union, Tuple, Dict, Awaitable
+from typing import Callable, Union, Dict, Awaitable, Any
 
 import discord
 from discord.ext import commands
 
-from kaztron import KazCog
 from kaztron.utils.asyncio import datetime2loop
 
 logger = logging.getLogger(__name__)
 
 
-TaskInstance = Tuple['Task', float]
-TaskFunction = Callable[[], Awaitable[None]]  #: async def name() -> None
+TaskFunction = Union[
+    Callable[[], Awaitable[None]],
+    Callable[[Any], Awaitable[None]]]  #: async def name() -> None
 
 
 class Task(Hashable):
@@ -32,20 +33,18 @@ class Task(Hashable):
 
         self.callback = callback
         self.is_unique = is_unique
-        self.cog = None  # type: KazCog
+        self.instance = None  # instance the last time this Task was accessed as a descriptor
         self.on_error = None  # type: Callable[[Exception], Awaitable[None]]
         self.on_cancel = None  # type: Callable[[], Awaitable[None]]
 
-    def __get__(self, cog, owner):
-        if cog is not None:
-            self.cog = cog
+    def __get__(self, instance, owner):
+        if instance:
+            self.instance = instance
         return self
 
-    async def execute(self):
-        if self.cog:
-            await self.callback(self.cog)
-        else:
-            await self.callback()
+    def run(self, instance=None):
+        # coroutine - returns the un-awaited coroutine object
+        return self.callback(instance) if instance else self.callback()
 
     def error(self, coro: Callable[[Exception], Awaitable[None]]):
         """
@@ -55,19 +54,11 @@ class Task(Hashable):
         :param coro: Coroutine to handle errors, signature func(exception) -> None.
         :raise discord.ClientException: Argument is not a coroutine
         """
-
         if not asyncio.iscoroutinefunction(coro):
             raise discord.ClientException("Error handler must be a coroutine.")
 
         self.on_error = coro
         return coro
-
-    async def handle_error(self, exc: Exception):
-        if self.on_error:
-            if self.cog:
-                await self.on_error(self.cog, exc)
-            else:
-                await self.on_error(exc)
 
     def cancel(self, coro: Callable[[], Awaitable[None]]):
         """
@@ -77,19 +68,11 @@ class Task(Hashable):
         :param coro: Coroutine to handle cancellation. Takes no parameters.
         :raise discord.ClientException: Argument is not a coroutine
         """
-
         if not asyncio.iscoroutinefunction(coro):
             raise discord.ClientException("Error handler must be a coroutine.")
 
         self.on_cancel = coro
         return coro
-
-    async def handle_cancel(self):
-        if self.on_cancel:
-            if self.cog:
-                await self.on_cancel(self.cog)
-            else:
-                await self.on_cancel()
 
     def __str__(self):
         return repr(self)
@@ -102,6 +85,52 @@ class Task(Hashable):
 
     def __eq__(self, other):
         return self.callback == other.callback and self.is_unique == other.is_unique
+
+
+class TaskInstance:
+    def __init__(self, scheduler: 'Scheduler', task: Task, timestamp: float, instance):
+        self.scheduler = scheduler
+        self.task = task
+        self.instance = instance
+        self.timestamp = timestamp
+        self.async_task = None
+
+    def cancel(self):
+        self.scheduler.cancel_task(self)
+
+    # noinspection PyBroadException
+    async def run(self):
+        task_id = '{!s}@{:.2f}'.format(self.task, self.timestamp)
+        # noinspection PyBroadException
+        try:
+            return await self.task.run(self.instance)
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as e:
+            logger.exception("Error in Task {!s}.".format(task_id))
+            try:
+                await self.on_error(e)
+            except Exception:
+                logger.exception("Error in Task {!s} while handling error.".format(task_id))
+            await self.scheduler.bot.dispatch('error', 'scheduled_task', self.task, self.timestamp)
+
+    async def on_error(self, e: Exception):
+        if self.task.on_error:
+            if self.instance:
+                await self.task.on_error(self.instance, e)
+            else:
+                await self.task.on_error(e)
+        else:
+            logger.debug("Task {!s} has no error handler".format(self.task))
+
+    async def on_cancel(self):
+        if self.task.on_cancel:
+            if self.instance:
+                await self.task.on_cancel(self.instance)
+            else:
+                await self.task.on_cancel()
+        else:
+            logger.debug("Task {!s} has no cancellation handler".format(self.task))
 
 
 def task(is_unique=True):
@@ -151,29 +180,54 @@ class Scheduler:
     event_type = ``'scheduled_task'`` and two arguments corresponding to the TaskInstance tuple
     (i.e. Task object, timestamp/id as a float). This is called even if a local error handler is
     defined as per above.
+
+    A task can be called via a scheduler instance (normally available via ``KazCog.scheduler``),
+    e.g.:
+
+    .. code-block:: py
+
+        self.scheduler.schedule_task_in(self.my_task, 300)  # scheduled in 5 minutes (300s)
+
     """
     def __init__(self, bot: discord.Client):
         self.bot = bot
-        self.tasks = {}  # type: Dict[Task, Dict[float, asyncio.Task]]
+        self.tasks = {}  # type: Dict[Task, Dict[float, TaskInstance]]
 
     @property
     def loop(self):
         return self.bot.loop
 
-    def _add_task(self, task: Task, at_loop_time: float, every: float=None, times: float=None):
+    def _add_task(self, task: Task, at_loop_time: float, every: float=None, times: float=None)\
+            -> TaskInstance:
+
+        # validate
+        if not isinstance(task, Task):
+            raise ValueError("Scheduled tasks must be decorated with scheduler.task")
+
         if task.is_unique and self.tasks.get(task, {}).keys():
             raise asyncio.InvalidStateError('Task {} is set unique and already exists'.format(task))
 
-        async_task = self.loop.create_task(self._runner(task, at_loop_time, every, times))
+        # process arguments
+        if isinstance(every, timedelta):
+            every = every.total_seconds()
+
+        # set up task
+        task_inst = TaskInstance(self, task, at_loop_time, task.instance)
+        task_inst.async_task = self.loop.create_task(
+            self._runner(task_inst, at_loop_time, every, times)
+        )
         try:
-            self.tasks[task][at_loop_time] = async_task
+            self.tasks[task][at_loop_time] = task_inst
         except KeyError:
-            self.tasks[task] = {at_loop_time: async_task}
+            self.tasks[task] = {at_loop_time: task_inst}
         logger.debug("Task added: {!s}, {:.2f} (now={:.2f})"
             .format(task, at_loop_time, self.loop.time()))
+        return task_inst
 
-    def _del_task(self, task: Task, at_loop_time: float):
-        del self.tasks[task][at_loop_time]
+    def _del_task(self, task_inst: TaskInstance):
+        del self.tasks[task_inst.task][task_inst.timestamp]
+        if not self.tasks[task_inst.task]:
+            del self.tasks[task_inst.task]  # avoids leaking memory on a transient task object
 
     def schedule_task_at(self, task: Task, dt: datetime,
                          *, every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
@@ -186,21 +240,13 @@ class Scheduler:
             not, the task is repeated forever.
         :return: A TaskInstance, which can be used to later cancel this task.
         """
-
-        if not isinstance(task, Task):
-            raise ValueError("Scheduled tasks must be decorated with scheduler.task")
-        if isinstance(every, timedelta):
-            every = every.total_seconds()
-
         if every:
             logger.info("Scheduling task {!s} at {}, recurring every {:.2f}s for {} times"
                 .format(task, dt.isoformat(' '), every, str(times) if times else 'infinite'))
         else:
             logger.info("Scheduling task {!s} at {}".format(task, dt.isoformat(' ')))
 
-        at_loop_time = datetime2loop(dt, self.loop)
-        self._add_task(task, at_loop_time, every, times)
-        return task, at_loop_time
+        return self._add_task(task, datetime2loop(dt, self.loop), every, times)
 
     def schedule_task_in(self, task: Task, in_time: Union[float, timedelta],
                          *, every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
@@ -215,12 +261,10 @@ class Scheduler:
             not, the task is repeated forever. If ``every`` is not set, this has no effect.
         :return: A TaskInstance, which can be used to later cancel this task.
         """
-        if not isinstance(task, Task):
-            raise ValueError("Scheduled tasks must be decorated with scheduler.task")
-        if isinstance(every, timedelta):
-            every = every.total_seconds()
-        if isinstance(in_time, timedelta):
+        try:
             in_time = in_time.total_seconds()
+        except AttributeError:
+            in_time = float(in_time)
 
         if every:
             logger.info("Scheduling task {!s} in {:.2f}s, recurring every {:.2f}s for {} times"
@@ -229,11 +273,15 @@ class Scheduler:
             logger.info("Scheduling task {!s} in {:.2f}s".format(task, in_time))
 
         at_loop_time = self.loop.time() + in_time
-        self._add_task(task, at_loop_time, every, times)
-        return task, at_loop_time
+        return self._add_task(task, at_loop_time, every, times)
 
-    async def _runner(self, task: Task, at_loop_time: float, every: float=None, times: float=None):
-        task_id = '{!s}@{:.2f}'.format(task, at_loop_time)
+    async def _runner(self,
+                      task_inst: TaskInstance,
+                      at_loop_time: float,
+                      every: float=None,
+                      times: float=None
+                      ):
+        task_id = '{!s}@{:.2f}'.format(task_inst.task, task_inst.timestamp)
 
         if not every or every <= 0:
             times = 1
@@ -247,42 +295,23 @@ class Scheduler:
                 await asyncio.sleep(wait_time)
 
                 logger.info("Task {}: Running (count so far: {:d})".format(task_id, count))
-                await self._run_task_once(task, at_loop_time)
+                await task_inst.run()
 
                 count += 1
                 if every and every > 0:
                     target_time += every
         except asyncio.CancelledError:
             logger.warning("Task {!s} cancelled.".format(task_id))
-            try:
-                await task.handle_cancel()
-            except TypeError:
-                logger.exception("Task {!s} cancellation handler cannot be run")
-            finally:
-                self._del_task(task, at_loop_time)
-            raise
-        else:
-            if count > 1:
-                logger.info("Recurrent task {} finished (run {:d} times)".format(task_id, count))
-
-    async def _run_task_once(self, task: Task, at_loop_time: float):
-        task_id = '{!s}@{:.2f}'.format(task, at_loop_time)
-        # noinspection PyBroadException
-        try:
-            return await task.execute()
-        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
-            raise
-        except Exception as e:
-            logger.exception("Error in Task {!s}.".format(task_id))
             # noinspection PyBroadException
             try:
-                await task.handle_error(e)
-            except TypeError:
-                logger.exception("Task {!s} error handler cannot be run.")
+                await task_inst.on_cancel()
             except Exception:
-                logger.exception("Error in Task {!s} while handling error.".format(task_id))
-            finally:
-                await self.bot.dispatch('error', 'scheduled_task', task, at_loop_time)
+                logger.exception("Error in Task {!s} while handling cancellation.".format(task_id))
+            raise
+        finally:
+            self._del_task(task_inst)
+            if count > 1:
+                logger.info("Recurring task {} ran {:d} times".format(task_id, count))
 
     def cancel_task(self, instance: TaskInstance):
         """
@@ -293,7 +322,12 @@ class Scheduler:
         :raise asyncio.InvalidStateError: Task is already done, does not exist or was previously
         cancelled.
         """
-        self.tasks[instance[0]][instance[1]].cancel()
+        try:
+            self.tasks[instance.task][instance.timestamp].async_task.cancel()
+        except KeyError:
+            raise asyncio.InvalidStateError("Task does not exist, is finished or cancelled")
+        except TypeError:
+            raise asyncio.InvalidStateError("Task was not started (??? should not happen?")
 
     def cancel_all(self, task: Task=None):
         """
@@ -303,9 +337,9 @@ class Scheduler:
         :param task: If specified, cancel only instances of this task method.
         """
         if task is not None:
-            for async_task in self.tasks[task].values():
-                async_task.cancel()
+            for task_inst in self.tasks[task].values():  # type: TaskInstance
+                task_inst.cancel()
         else:
             for task_map in self.tasks.values():
-                for async_task in task_map.values():
-                    async_task.cancel()
+                for task_inst in task_map.values():  # type: TaskInstance
+                    task_inst.cancel()

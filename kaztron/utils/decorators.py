@@ -28,7 +28,7 @@ def task_handled_errors(func):
         # noinspection PyBroadException
         try:
             return await func(*args, **kwargs)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
             raise
         except Exception:
             core_cog = args[0].bot.get_cog("CoreCog")
