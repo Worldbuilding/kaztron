@@ -34,6 +34,7 @@ class CheckInManager(KazCog):
     }
 
     check_in_channel_id = KazCog._config.get('blots', 'check_in_channel')
+    test_channel_id = KazCog._config.get('discord', 'channel_test')
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -112,7 +113,7 @@ class CheckInManager(KazCog):
         )
 
     @check_in.command(name="type", pass_context=True, ignore_extra=False)
-    @in_channels([check_in_channel_id])
+    @in_channels([check_in_channel_id, test_channel_id])
     async def check_in_type(self, ctx: commands.Context, project_type: str=None):
         """
         Check or set project type for check-ins.
@@ -146,7 +147,7 @@ class CheckInManager(KazCog):
                          .format(ctx.message.author.mention, user.project_type.name))
 
     @check_in.command(name='list', pass_context=True, ignore_extra=False)
-    @in_channels([check_in_channel_id])
+    @in_channels([check_in_channel_id, test_channel_id])
     async def check_in_list(self, ctx: commands.Context, page: int=None):
         """
         Check your list of check-ins. The result is always PMed to you.
