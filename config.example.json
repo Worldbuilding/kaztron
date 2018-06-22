@@ -50,7 +50,8 @@
     "start_date_format": "%d",
     "end_date_format": "%d %B",
     "duration": 172800,
-    "reminders": [21600, 43200, 64800, 86400, 108000, 129600, 151200, 169200]
+    "reminders": [21600, 43200, 64800, 86400, 108000, 129600, 151200, 169200],
+    "queue_reminder_offset": 14400
   },
   "welcome": {
     "channel_welcome": "channel ID for public welcome messages",

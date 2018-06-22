@@ -11,19 +11,16 @@ from discord.ext import commands
 
 from datetime import datetime, date, timedelta
 
-from kaztron import KazCog, theme, task, TaskInstance
+from kaztron import KazCog, theme, task
 from kaztron.cog.role_man import RoleManager
 from kaztron.driver import gsheets
-from kaztron.errors import UnauthorizedUserError
-from kaztron.utils.asyncio import loop2timestamp, timestamp2loop
 from kaztron.utils.checks import mod_only, mod_or_has_role, in_channels_cfg
 from kaztron.utils.converter import NaturalDateConverter
 from kaztron.utils.datetime import utctimestamp, parse as dt_parse, parse_daterange, \
     get_month_offset, truncate, format_timedelta
-from kaztron.utils.decorators import error_handler, task_handled_errors
+from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, Limits, remove_role_from_all, \
-    extract_user_id, user_mention, get_member, get_group_help, get_members_with_role, \
-    check_mod, check_role
+    extract_user_id, user_mention, get_member, get_group_help, get_members_with_role
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
 from kaztron.utils.strings import format_list, natural_truncate, split_chunks_on
 
@@ -222,6 +219,7 @@ class Spotlight(KazCog):
     QUEUE_ENTRY_FMT = '(#{id:d}) [{start}–{end}] {app}'
     QUEUE_CHANGED_FMT = '{msg}: {i:d}. ' + QUEUE_ENTRY_FMT
     QUEUE_SHOWCASE_FMT = '{app_obj.user_disp} with **{app_obj.project}** ({start}–{end})'
+    QUEUE_REMINDER = '{mention} **Upcoming {feature} Reminder** ' + QUEUE_ENTRY_FMT
 
     UNKNOWN_APP_STR = "Unknown - Index out of bounds"
 
@@ -258,7 +256,11 @@ class Spotlight(KazCog):
 
         # queues
         self.current_app_index = int(self.state.get('spotlight', 'current', -1))
+        # deque contains dicts with keys ('index', 'start', 'end')
         self.queue_data = deque(self.state.get('spotlight', 'queue', []))
+        self.queue_reminder_offset = timedelta(
+            seconds=self.config.get('spotlight', 'queue_reminder_offset')
+        )
 
         # reminders
         st_unix = self.state.get('spotlight', 'start_time')
@@ -302,6 +304,13 @@ class Spotlight(KazCog):
                 cur_date += timedelta(days=2)
                 next_date += timedelta(days=2)
             self.queue_data = new_queue
+            self._write_db()
+
+    def _upgrade_queue_v22(self):
+        if self.queue_data and 'reminder_sent' not in self.queue_data[0]:
+            logger.info("Upgrading queue to version 2.2")
+            for queue_item in self.queue_data:
+                queue_item['reminder_sent'] = False
             self._write_db()
 
     async def _get_current(self) -> SpotlightApp:
@@ -482,11 +491,11 @@ class Spotlight(KazCog):
                               "moderators or the Host for news like "
                               "the start of a new {0} or a newly released schedule.\n\n"
                               "To leave the Audience, use `.spotlight leave`.")
-                             .format(self.feature_name, self.role_host_name),
+                        .format(self.feature_name, self.role_host_name),
                     leave_doc=("Leave the {0} Audience. See `.help spotlight join` for more "
                                "information.\n\n"
                                "To join the {0} Audience, use `.spotlight join`.")
-                              .format(self.feature_name, self.role_host_name),
+                        .format(self.feature_name, self.role_host_name),
                     group=self.spotlight,
                     cog_instance=self,
                     ignore_extra=False
@@ -511,14 +520,16 @@ class Spotlight(KazCog):
             logger.warning(msg)
             await self.send_output("[Warning] " + msg)
 
-        # convert queue from v2.0 queue
+        # convert queue from previous versions
         self._upgrade_queue_v21()
+        self._upgrade_queue_v22()
 
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
 
         # start reminders tasks
         self._schedule_reminders()
+        self._schedule_upcoming_reminder()
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):
@@ -809,7 +820,8 @@ class Spotlight(KazCog):
         queue_item = {
             'index': self.current_app_index,
             'start': utctimestamp(dates[0]),
-            'end': utctimestamp(dates[1])
+            'end': utctimestamp(dates[1]),
+            'reminder_sent': False
         }
         self.queue_data.append(queue_item)
         logger.info("queue add: added #{:d} from current select at {} to {}"
@@ -818,6 +830,7 @@ class Spotlight(KazCog):
         self.sort_queue()
         queue_index = self.queue_data.index(queue_item)  # find the new position now
         self._write_db()
+        self._schedule_upcoming_reminder()
         start, end = self.format_date_range(dates[0], dates[1])
         await self.bot.say(self.QUEUE_CHANGED_FMT.format(
             msg=self.QUEUE_ADD_HEADING,
@@ -870,6 +883,7 @@ class Spotlight(KazCog):
             await self.bot.say("**Scheduled for:** {} to {}".format(start_str, end_str))
             await self.send_validation_warnings(ctx, app)
             self._write_db()
+            self._schedule_upcoming_reminder()
 
     @queue.command(name='edit', ignore_extra=False, pass_context=True, aliases=['e'])
     @mod_only()
@@ -937,6 +951,7 @@ class Spotlight(KazCog):
         logger.info("queue edit: changed item {:d} to dates {} to {}"
             .format(queue_index, dates[0].isoformat(' '), dates[1].isoformat(' ')))
         self._write_db()
+        self._schedule_upcoming_reminder()
         await self.bot.say(self.QUEUE_CHANGED_FMT.format(
             msg=self.QUEUE_EDIT_HEADING,
             i=new_queue_index,
@@ -994,6 +1009,7 @@ class Spotlight(KazCog):
 
         logger.info("queue rem: removed index {0:d}".format(queue_index))
         self._write_db()
+        self._schedule_upcoming_reminder()
         await self.bot.say(self.QUEUE_CHANGED_FMT.format(
             msg=self.QUEUE_REM_HEADING,
             i=queue_index, id=list_index, start=start, end=end, app=app_str
@@ -1057,6 +1073,55 @@ class Spotlight(KazCog):
                 await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
         else:
             await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+
+    def _get_next_reminder(self):
+        for queue_item in self.queue_data:
+            if not queue_item['reminder_sent']:
+                return queue_item
+        else:  # no future item found
+            return None
+
+    def _schedule_upcoming_reminder(self):
+        self.scheduler.cancel_all(self.task_upcoming_reminder)
+        queue_item = self._get_next_reminder()
+        if queue_item is not None:
+            start_time = datetime.utcfromtimestamp(queue_item['start'])
+            reminder_time = start_time - self.queue_reminder_offset
+            self.scheduler.schedule_task_at(self.task_upcoming_reminder, reminder_time)
+
+    @task(is_unique=True)
+    async def task_upcoming_reminder(self):
+        queue_item = self._get_next_reminder()
+        if not queue_item:
+            logger.warning("task_upcoming_reminder: no future queue items to remind")
+            await self.send_output("**Spotlight queue reminder failed**: no future queue items!")
+            return
+
+        array_index = queue_item['index']
+        list_index = array_index + 1  # user-facing
+
+        # Prepare the output
+        self._load_applications()
+        try:
+            # don't use _get_app - don't want errmsgs
+            app_str = self.applications[array_index].discord_str()
+        except IndexError:
+            app_str = self.UNKNOWN_APP_STR
+        start_str, end_str = self.format_date_range(
+            date.fromtimestamp(queue_item['start']),
+            date.fromtimestamp(queue_item['end'])
+        )
+        mod_mention = get_named_role(self.server, self.role_mods_name).mention \
+            if self.role_mods_name else ""
+
+        await self.send_output(self.QUEUE_REMINDER.format(
+            feature=self.feature_name, mention=mod_mention, id=list_index,
+            start=start_str, end=end_str, app=app_str
+        ))
+
+        queue_item['reminder_sent'] = True
+        self._write_db()
+        self._schedule_upcoming_reminder()
 
     def get_host(self) -> Optional[discord.Member]:
         host_role = get_named_role(self.server, self.role_host_name)
@@ -1131,13 +1196,20 @@ class Spotlight(KazCog):
         """
         Check the remaining time in the spotlight.
         """
-        elapsed = timedelta(seconds=self.bot.loop.time() - self.start_time)
-        remaining = timedelta(seconds=self.duration) - elapsed
-        elapsed_s = format_timedelta(elapsed, timespec="minutes")
-        rem_s = format_timedelta(remaining, timespec="minutes")
+        host = self.get_host()
+        host_name = host.nick if host.nick else host.name
 
-        msg = "**{0} Reminder**: {2} have passed! {3} remain. {1}" \
-            .format(self.feature_name, ctx.message.author.mention, elapsed_s, rem_s)
+        if self.start_time is None:
+            msg = "{1}'s {0} hasn't started yet!".format(self.feature_name, host_name)
+        else:
+            elapsed = datetime.utcnow() - self.start_time
+            remaining = timedelta(seconds=self.duration) - elapsed
+            elapsed_s = format_timedelta(elapsed, timespec="minutes")
+            rem_s = format_timedelta(remaining, timespec="minutes")
+
+            msg = "{2} have passed for {1}'s {0}! {3} remain." \
+                .format(self.feature_name, host_name, elapsed_s, rem_s)
+
         await self.bot.send_message(ctx.message.channel, msg)
 
     @task(is_unique=False)
@@ -1150,7 +1222,7 @@ class Spotlight(KazCog):
         rem_s = format_timedelta(remaining, timespec="minutes")
 
         logger.info("Sending reminder: {:.3f} elapsed".format(elapsed.total_seconds()))
-        msg = "**{0} Reminder**: {2} have passed! {3} remain. {1}" \
+        msg = "**{0} Reminder**: {2} have passed for {1}'s {0}! {3} remain." \
             .format(self.feature_name, host_mention, elapsed_s, rem_s)
         await self.bot.send_message(self.channel_spotlight, msg)
 
@@ -1174,7 +1246,7 @@ class Spotlight(KazCog):
         sprint has not been started, does nothing.
         """
         scheduled_tasks = self.scheduler.get_instances(self.task_send_reminder) +\
-                        self.scheduler.get_instances(self.task_end_spotlight)
+                          self.scheduler.get_instances(self.task_end_spotlight)
         if self.start_time is not None and not scheduled_tasks:
             for r_dt in self.reminders:
                 self.scheduler.schedule_task_at(self.task_send_reminder, r_dt)
