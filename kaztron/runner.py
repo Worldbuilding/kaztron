@@ -147,7 +147,7 @@ def run(loop: asyncio.AbstractEventLoop):
         #
         # Original code Copyright (c) 2015-2016 Rapptz. MIT licence.
         pending = asyncio.Task.all_tasks(loop=loop)
-        gathered = asyncio.gather(*pending, loop=loop)
+        gathered = asyncio.gather(*pending, loop=loop, return_exceptions=True)
         # noinspection PyBroadException
         try:
             gathered.cancel()

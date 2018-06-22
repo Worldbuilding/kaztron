@@ -3,7 +3,7 @@ import logging
 
 from collections.abc import Hashable
 from datetime import datetime, timedelta
-from typing import Callable, Union, Dict, Awaitable, Any
+from typing import Callable, Union, Dict, Awaitable, Any, List
 
 import discord
 from discord.ext import commands
@@ -214,8 +214,14 @@ class Scheduler:
         if not isinstance(task, Task):
             raise ValueError("Scheduled tasks must be decorated with scheduler.task")
 
-        if task.is_unique and self.tasks.get(task, {}).keys():
-            raise asyncio.InvalidStateError('Task {} is set unique and already exists'.format(task))
+        if task.is_unique:
+            # if already have task, and not rescheduling from within the same task
+            existing_tasks = self.get_instances(task)
+            is_resched = len(existing_tasks) == 1 and existing_tasks[0].is_current()
+            if existing_tasks and not is_resched:
+                raise asyncio.InvalidStateError(
+                    'Task {} is set unique and already exists'.format(task)
+                )
 
         # set up task
         task_inst = TaskInstance(self, task, at_loop_time, task.instance)
@@ -329,6 +335,12 @@ class Scheduler:
             if count > 1:
                 logger.info("Recurring task {} ran {:d} times".format(task_id, count))
 
+    def get_instances(self, task: Task) -> List[TaskInstance]:
+        try:
+            return list(self.tasks[task].values())
+        except KeyError:
+            return []
+
     def cancel_task(self, instance: TaskInstance):
         """
         Cancel a specific instance of a scheduled task.
@@ -350,14 +362,20 @@ class Scheduler:
     def cancel_all(self, task: Task=None):
         """
         Cancel all future-scheduled tasks, either of a specific task method (if specified) or
-        globally.
+        globally. This method will not cancel the currently running task (since that would
+        immediately interrupt it!).
 
         :param task: If specified, cancel only instances of this task method.
         """
         if task is not None:
-            for task_inst in self.tasks[task].values():  # type: TaskInstance
-                task_inst.cancel()
+            try:
+                for task_inst in self.tasks[task].values():  # type: TaskInstance
+                    if not task_inst.is_current():
+                        task_inst.cancel()
+            except KeyError:
+                logger.warning("No task instances for task {!s}".format(task))
         else:
             for task_map in self.tasks.values():
                 for task_inst in task_map.values():  # type: TaskInstance
-                    task_inst.cancel()
+                    if not task_inst.is_current():
+                        task_inst.cancel()
