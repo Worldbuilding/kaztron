@@ -3,7 +3,7 @@ import logging
 
 from collections.abc import Hashable
 from datetime import datetime, timedelta
-from typing import Callable, Union, Dict, Awaitable, Any, List
+from typing import Callable, Union, Dict, Awaitable, Any, List, Sequence, Mapping
 
 import discord
 from discord.ext import commands
@@ -88,12 +88,16 @@ class Task(Hashable):
 
 
 class TaskInstance:
-    def __init__(self, scheduler: 'Scheduler', task: Task, timestamp: float, instance):
+    def __init__(self,
+                 scheduler: 'Scheduler', task: Task, timestamp: float,
+                 instance: Any, args: Sequence[Any], kwargs: Mapping[str, Any]):
         self.scheduler = scheduler
         self.task = task
         self.instance = instance
         self.timestamp = timestamp
         self.async_task = None
+        self.args = tuple(args) if args else ()
+        self.kwargs = dict(kwargs.items()) if kwargs else {}
 
     def cancel(self):
         self.scheduler.cancel_task(self)
@@ -110,7 +114,10 @@ class TaskInstance:
         task_id = '{!s}@{:.2f}'.format(self.task, self.timestamp)
         # noinspection PyBroadException
         try:
-            return await self.task.run(self.instance)
+            if self.instance:
+                return await self.task.run(self.instance, *self.args, **self.kwargs)
+            else:
+                return await self.task.run(*self.args, **self.kwargs)
         except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
@@ -207,8 +214,10 @@ class Scheduler:
     def loop(self):
         return self.bot.loop
 
-    def _add_task(self, task: Task, at_loop_time: float, every: float=None, times: float=None)\
-            -> TaskInstance:
+    def _add_task(self,
+                  task: Task, at_loop_time: float,
+                  args: Sequence[Any], kwargs: Mapping[str, Any],
+                  every: float=None, times: float=None) -> TaskInstance:
 
         # validate
         if not isinstance(task, Task):
@@ -224,7 +233,7 @@ class Scheduler:
                 )
 
         # set up task
-        task_inst = TaskInstance(self, task, at_loop_time, task.instance)
+        task_inst = TaskInstance(self, task, at_loop_time, task.instance, args, kwargs)
         task_inst.async_task = self.loop.create_task(
             self._runner(task_inst, at_loop_time, every, times)
         )
@@ -242,11 +251,15 @@ class Scheduler:
             del self.tasks[task_inst.task]  # avoids leaking memory on a transient task object
 
     def schedule_task_at(self, task: Task, dt: datetime,
-                         *, every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
+                         *, args: Sequence[Any]=(), kwargs: Mapping[str, Any]={},
+                         every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
         """
         Schedule a task to run at a given time.
         :param task: The task to run (a coroutine decorated with :meth:`scheduler.task`)
         :param dt: When to run the task.
+        :param args: Positional args to pass to the task, as a sequence (list/tuple) of values. If
+            the task is a method/descriptor, do NOT include the ``self`` argument's value here.
+        :param kwargs: Keyword args to pass to the task, as a mapping (dict or similar).
         :param every: How often to repeat the task, in seconds or as a timedelta. Optional.
         :param times: How many times to repeat the command. If ``every`` is set but ``times`` is
             not, the task is repeated forever.
@@ -263,16 +276,20 @@ class Scheduler:
         else:
             logger.info("Scheduling task {!s} at {}".format(task, dt.isoformat(' ')))
 
-        return self._add_task(task, datetime2loop(dt, self.loop), every, times)
+        return self._add_task(task, datetime2loop(dt, self.loop), args, kwargs, every, times)
 
     def schedule_task_in(self, task: Task, in_time: Union[float, timedelta],
-                         *, every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
+                         *, args: Sequence[Any]=(), kwargs: Mapping[str, Any]={},
+                         every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
         """
         Schedule a task to run in a certain amount of time. By default, will run the task only once;
         if ``every`` is specified, runs the task recurrently up to ``times`` times.
 
         :param task: The task to run (a coroutine decorated with :meth:`scheduler.task`).
         :param in_time: In how much time to run the task, in seconds or as a timedelta.
+        :param args: Positional args to pass to the task, as a sequence (list/tuple) of values. If
+            the task is a method/descriptor, do NOT include the ``self`` argument's value here.
+        :param kwargs: Keyword args to pass to the task, as a mapping (dict or similar).
         :param every: How often to repeat the task, in seconds or as a timedelta (> 0s). Optional.
         :param times: How many times to repeat the command. If ``every`` is set but ``times`` is
             not, the task is repeated forever. If ``every`` is not set, this has no effect.
@@ -295,7 +312,7 @@ class Scheduler:
             logger.info("Scheduling task {!s} in {:.2f}s".format(task, in_time))
 
         at_loop_time = self.loop.time() + in_time
-        return self._add_task(task, at_loop_time, every, times)
+        return self._add_task(task, at_loop_time, args, kwargs, every, times)
 
     async def _runner(self,
                       task_inst: TaskInstance,
