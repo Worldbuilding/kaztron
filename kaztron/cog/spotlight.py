@@ -11,7 +11,7 @@ from discord.ext import commands
 
 from datetime import datetime, date, timedelta
 
-from kaztron import KazCog, theme
+from kaztron import KazCog, theme, task, TaskInstance
 from kaztron.cog.role_man import RoleManager
 from kaztron.driver import gsheets
 from kaztron.errors import UnauthorizedUserError
@@ -262,11 +262,10 @@ class Spotlight(KazCog):
 
         # reminders
         st_unix = self.state.get('spotlight', 'start_time')
-        self.start_time = timestamp2loop(st_unix, self.bot.loop) if st_unix is not None else None
+        self.start_time = datetime.utcfromtimestamp(st_unix) if st_unix is not None else None
 
-        self.reminders = deque(timestamp2loop(t, self.bot.loop)
+        self.reminders = deque(datetime.utcfromtimestamp(t)
                                for t in self.state.get('spotlight', 'reminders', []))
-        self.reminder_task = None
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
@@ -283,9 +282,9 @@ class Spotlight(KazCog):
         self.state.set('spotlight', 'current', self.current_app_index)
         self.state.set('spotlight', 'queue', list(self.queue_data))
         self.state.set('spotlight', 'start_time',
-            loop2timestamp(self.start_time, self.bot.loop) if self.start_time is not None else None)
+            utctimestamp(self.start_time) if self.start_time is not None else None)
         self.state.set('spotlight', 'reminders',
-            [loop2timestamp(t, self.bot.loop) for t in self.reminders])
+            [utctimestamp(t) for t in self.reminders])
         self.state.write()
 
     def _upgrade_queue_v21(self):
@@ -518,9 +517,8 @@ class Spotlight(KazCog):
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
 
-        # start reminders task
-        if self.start_time is not None and self.reminder_task is None:
-            self.reminder_task = self.bot.loop.create_task(self.process_reminders())
+        # start reminders tasks
+        self._schedule_reminders()
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):
@@ -1119,7 +1117,7 @@ class Spotlight(KazCog):
             raise commands.UserInputError("The spotlight has not yet started! "
                                           "Use `.spotlight start` to start it.")
 
-        await self._send_end_announcement(stop=True)
+        await self._send_end(stop=True)
         self._stop_spotlight()
 
         try:
@@ -1142,27 +1140,11 @@ class Spotlight(KazCog):
             .format(self.feature_name, ctx.message.author.mention, elapsed_s, rem_s)
         await self.bot.send_message(ctx.message.channel, msg)
 
-    def _start_spotlight(self):
-        self.start_time = self.bot.loop.time()
-        self.reminders = deque(self.start_time + offset for offset in self.reminder_offsets)
-
-        if self.reminder_task is not None:
-            self.reminder_task.cancel()
-        self.reminder_task = self.bot.loop.create_task(self.process_reminders())
-        self._write_db()
-
-    def _stop_spotlight(self):
-        self.start_time = None
-        self.reminders = deque()
-        if self.reminder_task and self.reminder_task is not asyncio.Task.current_task():
-            self.reminder_task.cancel()
-            self.reminder_task = None
-        self._write_db()
-
-    async def _send_reminder(self):
+    @task(is_unique=False)
+    async def task_send_reminder(self):
         host = self.get_host()
         host_mention = host.mention if host else "<Error: Cannot find host>"
-        elapsed = timedelta(seconds=self.reminders.popleft() - self.start_time)
+        elapsed = self.reminders.popleft() - self.start_time
         remaining = timedelta(seconds=self.duration) - elapsed
         elapsed_s = format_timedelta(elapsed, timespec="minutes")
         rem_s = format_timedelta(remaining, timespec="minutes")
@@ -1174,7 +1156,39 @@ class Spotlight(KazCog):
 
         self._write_db()
 
-    async def _send_end_announcement(self, stop=False):
+    @task(is_unique=True)
+    async def task_end_spotlight(self):
+        logger.info("Spotlight has ended. Sending notification and cleaning up.")
+        await self._send_end()
+        self._stop_spotlight()
+
+    def _start_spotlight(self):
+        self.start_time = datetime.utcnow()
+        self.reminders = deque(self.start_time + timedelta(seconds=offset)
+                               for offset in self.reminder_offsets)
+        self._schedule_reminders()
+
+    def _schedule_reminders(self):
+        """
+        Schedule reminders in ``self.reminders`` as well as the end of the sprint. If the current
+        sprint has not been started, does nothing.
+        """
+        scheduled_tasks = self.scheduler.get_instances(self.task_send_reminder) +\
+                        self.scheduler.get_instances(self.task_end_spotlight)
+        if self.start_time is not None and not scheduled_tasks:
+            for r_dt in self.reminders:
+                self.scheduler.schedule_task_at(self.task_send_reminder, r_dt)
+            end_time = self.start_time + timedelta(seconds=self.duration)
+            self.scheduler.schedule_task_at(self.task_end_spotlight, end_time)
+
+    def _stop_spotlight(self):
+        self.start_time = None
+        self.reminders = deque()
+        self.scheduler.cancel_all(self.task_send_reminder)
+        self.scheduler.cancel_all(self.task_end_spotlight)
+        self._write_db()
+
+    async def _send_end(self, stop=False):
         host = self.get_host()
         host_mention = host.mention if host else "<Error: Cannot find host>"
         audience_mention = get_named_role(self.server, self.role_audience_name).mention
@@ -1195,23 +1209,6 @@ class Spotlight(KazCog):
 
         await self.bot.send_message(self.channel_spotlight, msg)
         await self.send_output(log_msg)
-
-    @task_handled_errors
-    async def process_reminders(self):
-        while self.reminders:
-            wait_time = self.reminders[0] - self.bot.loop.time()
-            logger.debug("Waiting for next spotlight reminder ({:.1f}s)...".format(wait_time))
-            await asyncio.sleep(wait_time)
-
-            await self._send_reminder()
-
-        # process the end of the spotlight
-        wait_time = (self.start_time + self.duration) - self.bot.loop.time()
-        logger.debug("Waiting for spotlight end ({:.1f}s)...".format(wait_time))
-        await asyncio.sleep(wait_time)
-
-        await self._send_end_announcement()
-        self._stop_spotlight()
 
 
 def setup(bot):

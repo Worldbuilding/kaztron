@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import random
 from typing import List
@@ -6,14 +5,13 @@ from typing import List
 import discord
 from discord.ext import commands
 
-from kaztron import KazCog
+from kaztron import KazCog, task
 from kaztron.cog.modnotes.model import RecordType
 from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller as c, model
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.converter import MemberConverter2
-from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.discord import get_named_role, Limits
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import parse_keyword_args, split_chunks_on
@@ -29,7 +27,6 @@ class ModToolsCog(KazCog):
         self.ch_mod = discord.Object(self.config.get("modtools", "channel_mod"))
         self.role_name = self.config.get("modtools", "tempban_role")
         self.cog_modnotes = None  # type: ModNotes
-        self.tempban_task = None  # type: asyncio.Task
 
     async def on_ready(self):
         await super().on_ready()
@@ -44,14 +41,15 @@ class ModToolsCog(KazCog):
             raise RuntimeError("Can't find ModNotes cog")
         self.ch_mod = self.validate_channel(self.ch_mod.id)
 
-        logger.debug("Starting task...")
-        if self.tempban_task:
-            self.tempban_task.cancel()
-        self.tempban_task = self.bot.loop.create_task(self.update_tempban_tick())
+        if not self.scheduler.get_instances(self.task_update_tempbans):
+            self.scheduler.schedule_task_in(self.task_update_tempbans, 0, every=3600)
+
+    def unload_kazcog(self):
+        self.scheduler.cancel_all(self.task_update_tempbans)
 
     @ready_only
     async def on_member_joined(self, member: discord.Member):
-        await self.update_tempbans()
+        await self._update_tempbans()
 
     @commands.command(pass_context=True)
     @mod_only()
@@ -115,14 +113,11 @@ class ModToolsCog(KazCog):
         tempban_role = get_named_role(server, self.role_name)
         return [m for m in server.members if tempban_role in m.roles]
 
-    async def update_tempban_tick(self):
-        logger.info("Starting update_tempban_tick...")
-        while not self.bot.is_closed:
-            await task_handled_errors(self.update_tempbans)()
-            logger.debug("Waiting an hour for next tempban check...")
-            await asyncio.sleep(3600)
+    @task(is_unique=True)
+    async def task_update_tempbans(self):
+        await self._update_tempbans()
 
-    async def update_tempbans(self):
+    async def _update_tempbans(self):
         """
         Check and update all current tempbans in modnotes. Unexpired tempbans will be applied and
         expired tempbans will be removed, when needed.
@@ -209,7 +204,7 @@ class ModToolsCog(KazCog):
         await ctx.invoke(self.cog_modnotes.add, user, 'temp', note_contents=reason)
 
         # Apply new mutes
-        await self.update_tempbans()
+        await self._update_tempbans()
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()

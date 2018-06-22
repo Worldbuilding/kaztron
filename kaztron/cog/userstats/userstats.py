@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import ChannelConverter
 
-from kaztron import KazCog, utils, theme
+from kaztron import KazCog, utils, theme, task
 from kaztron.cog.userstats import core, reports
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.kazcog import ready_only
@@ -109,6 +109,7 @@ class UserStats(KazCog):
         await super().on_ready()
         await self.update_accumulator()
         await self.init_voice_channels()
+        self.schedule_monthly_task()
 
     async def init_voice_channels(self):
         logger.debug("Collecting all members currently in voice channels")
@@ -117,6 +118,10 @@ class UserStats(KazCog):
             for channel in server.channels:
                 for member in channel.voice_members:
                     self.acc.capture_timed_event_start(now, EventType.voice, member, channel)
+
+    def schedule_monthly_task(self):
+        next_monthly_task = utils.datetime.get_month_offset(self.last_report_dt, 2)
+        self.scheduler.schedule_task_at(self.do_monthly_tasks, next_monthly_task)
 
     def unload_kazcog(self):
         logger.info("Unloading: stopping all ongoing timed events")
@@ -155,8 +160,6 @@ class UserStats(KazCog):
         self.acc.start_times.update(old_start_times)
         self.save_accumulator(force=True)
 
-        await self.do_monthly_tasks()
-
     async def show_report(self, dest, report: reports.Report):
         em = discord.Embed(
             title=report.name,
@@ -190,6 +193,7 @@ class UserStats(KazCog):
 
         await self.bot.send_message(dest, embed=em)
 
+    @task(is_unique=True)
     async def do_monthly_tasks(self):
         last_month = utils.datetime.get_month_offset(self.acc.period, -1)
         if last_month > self.last_report_dt:
@@ -207,6 +211,8 @@ class UserStats(KazCog):
             self.last_report_dt = last_month
             self.state.set('userstats', 'last_report', utctimestamp(self.last_report_dt))
             self.state.write()
+
+        self.schedule_monthly_task()  # re-sched - we don't use recurring since a month's len varies
 
     async def generate_monthly_report(self, month: datetime):
         """
