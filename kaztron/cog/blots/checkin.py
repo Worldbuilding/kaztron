@@ -33,8 +33,8 @@ class CheckInManager(KazCog):
         model.ProjectType.words: "words"
     }
 
-    check_in_channel_id = KazCog._config.get('blots', 'check_in_channel')
-    test_channel_id = KazCog._config.get('discord', 'channel_test')
+    check_in_channel_id = KazCog.config.get('blots', 'check_in_channel')
+    test_channel_id = KazCog.config.get('discord', 'channel_test')
 
     def __init__(self, bot):
         super().__init__(bot)

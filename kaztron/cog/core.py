@@ -2,9 +2,12 @@ import asyncio
 import logging
 
 import sys
+from typing import List, Dict
+
 import discord
 
 import kaztron
+from kaztron.config import SectionView
 from kaztron.errors import *
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str, exc_msg_str
@@ -14,12 +17,28 @@ from kaztron.utils.datetime import format_timestamp
 logger = logging.getLogger(__name__)
 
 
+class CoreConfig(SectionView):
+    name: str
+    extensions: List[str]
+    channel_request: discord.Channel
+    info_links: Dict[str, str]
+    date_format: str
+    datetime_format: str
+    datetime_seconds_format: str
+    daemon: bool
+    daemon_pidfile: str
+    daemon_user: str
+    daemon_group: str
+    daemon_log: str
+
+
 class CoreCog(kaztron.KazCog):
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.ch_request = discord.Object(self.config.get('core', 'channel_request'))
-        self.name = self.config.get("core", "name", "KazTron")
+        super().__init__(bot, 'core')
+        self.cog_config = self.cog_config  # type: CoreConfig
+        self.cog_config.set_converters('channel_request', self.validate_channel, lambda c: c.id)
+        self.name = self.cog_config.name
 
         self.bot.event(self.on_error)  # register this as a global event handler, not just local
         self.bot.add_check(self.check_bot_ready)
@@ -68,7 +87,7 @@ class CoreCog(kaztron.KazCog):
         logger.debug("on_ready")
         await super().on_ready()
 
-        playing = self.config.get('discord', 'playing', default="")
+        playing = self.config.discord.playing
         if playing:
             await self.bot.change_presence(game=discord.Game(name=playing))
 
@@ -333,7 +352,7 @@ class CoreCog(kaztron.KazCog):
         em.add_field(name="Loaded Cogs", value='\n'.join(self.bot.cogs.keys()))
 
         links = kaztron.bot_info["links"].copy()
-        links.update(self.config.get('core', 'info_links', {}))
+        links.update(self.cog_config.info_links)
         for title, url in links.items():
             em.add_field(name=title, value="[{0}]({1})".format(title, url), inline=True)
         await self.bot.say(embed=em)
@@ -365,7 +384,7 @@ class CoreCog(kaztron.KazCog):
             em.add_field(name="Channel", value=ctx.message.channel, inline=True)
         em.add_field(name="Timestamp", value=format_timestamp(ctx.message), inline=True)
         em.add_field(name="Content", value=content, inline=False)
-        await self.bot.send_message(self.ch_request, embed=em)
+        await self.bot.send_message(self.cog_config.channel_request, embed=em)
         await self.bot.say("Your issue was submitted to the bot DevOps team. "
                            "If you have any questions or if there's an urgent problem, "
                            "please feel free to contact the moderators.")
