@@ -48,6 +48,7 @@ def scheduler(mocker):
     return Scheduler(bot)
 
 
+# noinspection PyShadowingNames
 def test_single_run_dt(scheduler):
     mock_task = MockTaskFunction(scheduler.loop)
     delay = 0.8
@@ -59,6 +60,7 @@ def test_single_run_dt(scheduler):
     assert (delay - 0.05) <= mock_task.calls[0] - start <= (delay + 0.05)
 
 
+# noinspection PyShadowingNames
 def test_single_run_in_float(scheduler):
     mock_task = MockTaskFunction(scheduler.loop)
     delay = 0.8
@@ -69,6 +71,7 @@ def test_single_run_in_float(scheduler):
     assert (delay - 0.05) <= mock_task.calls[0] - start <= (delay + 0.05)
 
 
+# noinspection PyShadowingNames
 def test_single_run_in_delta(scheduler):
     mock_task = MockTaskFunction(scheduler.loop)
     delay = 0.8
@@ -79,6 +82,7 @@ def test_single_run_in_delta(scheduler):
     assert (delay - 0.05) <= mock_task.calls[0] - start <= (delay + 0.05)
 
 
+# noinspection PyShadowingNames
 def test_recurring_in_float(scheduler):
     mock_task = MockTaskFunction(scheduler.loop)
     delay = 0.8
@@ -92,6 +96,7 @@ def test_recurring_in_float(scheduler):
         assert (target_time - 0.05) <= mock_task.calls[i] - start <= (target_time + 0.05)
 
 
+# noinspection PyShadowingNames
 def test_cancel(scheduler):
     cancel_at = 0.4
 
@@ -110,6 +115,7 @@ def test_cancel(scheduler):
     assert (cancel_at - 0.05) <= mock_task.cancelled_at - start <= (cancel_at + 0.05)
 
 
+# noinspection PyShadowingNames
 def test_error(scheduler):
     mock_task = MockTaskFunction(scheduler.loop)
     delay = 0.4
@@ -122,6 +128,7 @@ def test_error(scheduler):
     assert (delay - 0.05) <= mock_task.err[1] - start <= (delay + 0.05)
 
 
+# noinspection PyShadowingNames
 def test_task_cleanup(scheduler):
     @task()
     async def a():

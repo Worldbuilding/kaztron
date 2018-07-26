@@ -26,7 +26,7 @@ class BadgeManager(KazCog):
     ITEMS_PER_PAGE = 8
     EMBED_COLOUR = solarized.green
 
-    badge_channel_id = KazCog._config.get('blots', 'badge_channel')
+    badge_channel_id = KazCog.config.get('blots', 'badge_channel')
 
     def __init__(self, bot):
         super().__init__(bot)

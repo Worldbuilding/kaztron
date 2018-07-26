@@ -71,20 +71,21 @@ class KazCog:
         # Detect success/error in cog's on_ready w/o boilerplate from the child class
         def on_ready_wrapper(f):
             @functools.wraps(f)
-            async def wrapper(self):
+            async def wrapper(cog):
                 try:
                     await f()
                 except Exception:
-                    self.core.set_cog_error(self)
-                    await self.bot.send_message(
-                        discord.Object(id=self._ch_out_id),
-                        "[ERROR] Failed to load cog: {}".format(type(self).__name__)
+                    cog.core.set_cog_error(cog)
+                    # noinspection PyProtectedMember
+                    await cog.bot.send_message(
+                        discord.Object(id=cog._ch_out_id),
+                        "[ERROR] Failed to load cog: {}".format(type(cog).__name__)
                     )
                     raise
                 else:
-                    self.core.set_cog_ready(self)
+                    cog.core.set_cog_ready(cog)
             return wrapper
-        self.on_ready = on_ready_wrapper(self.on_ready).__get__(self)
+        self.on_ready = on_ready_wrapper(self.on_ready).__get__(self, type(self))
 
     def _setup_config(self,
                       section: str,

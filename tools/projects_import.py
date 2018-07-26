@@ -23,8 +23,8 @@ def import_file(filename, dry_run, verbose, check_matches):
             try:
                 with query.transaction():
                     import_project(row_dict, dry_run, verbose, check_matches)
-            except Exception as e:
-                print("[ERROR]", tb_log_str(e))
+            except Exception as ee:
+                print("[ERROR]", tb_log_str(ee))
                 success = False
                 continue
             finally:
@@ -127,7 +127,7 @@ if __name__ == '__main__':
             "* Project Type: Project type. Must already exist in the Projects module.",
             "* Elevator pitch: A max 70 word elevator pitch. Enclose in double quotes.",
             "* Description: Optional. A longer description, max 1000 characters. "
-                                                                        "Enclose in double quotes.",
+                "Enclose in double quotes.",
             "* URL: Optional. URL to a website with more project info. " + comma_remark,
         ]
     )

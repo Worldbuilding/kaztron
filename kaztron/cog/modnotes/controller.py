@@ -177,6 +177,7 @@ def update_nicknames(user: User, member: discord.Member):
 
     # actual nickname update
     logger.debug("update_nicknames: Updating names: {!r}...".format(user))
+    # noinspection PyTypeChecker
     alias_names = [a.name for a in user.aliases]
     if member.nick and member.nick != user.name and member.nick not in alias_names:
         # noinspection PyUnresolvedReferences
@@ -194,6 +195,7 @@ def update_nicknames(user: User, member: discord.Member):
 def fix_alias_duplicates(user: User):
     logger.info("fix_alias_duplicates: Fixing duplicates...")
     remove_aliases = []
+    # noinspection PyTypeChecker
     for i, alias in enumerate(user.aliases):
         # if there's a duplicate after this one
         if alias.name in (a.name for a in user.aliases[i+1:]):
@@ -301,6 +303,7 @@ def add_user_alias(user: User, alias: str) -> UserAlias:
     if '\n' in alias or len(alias) > Limits.NAME:
         raise ValueError('Invalid alias')
 
+    # noinspection PyTypeChecker
     if alias in [a.name for a in user.aliases]:
         raise ValueError('Alias already exists')
 

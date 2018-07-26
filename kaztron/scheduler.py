@@ -42,9 +42,10 @@ class Task(Hashable):
             self.instance = instance
         return self
 
-    def run(self, instance=None):
+    def run(self, instance=None, *args, **kwargs):
         # coroutine - returns the un-awaited coroutine object
-        return self.callback(instance) if instance else self.callback()
+        return self.callback(instance, *args, **kwargs) if instance else \
+               self.callback(*args, **kwargs)
 
     def error(self, coro: Callable[[Exception], Awaitable[None]]):
         """
@@ -87,6 +88,7 @@ class Task(Hashable):
         return self.callback == other.callback and self.is_unique == other.is_unique
 
 
+# noinspection PyShadowingNames
 class TaskInstance:
     def __init__(self,
                  scheduler: 'Scheduler', task: Task, timestamp: float,
@@ -167,6 +169,7 @@ def task(is_unique=True):
     return decorator
 
 
+# noinspection PyShadowingNames
 class Scheduler:
     """
     Allows scheduling coroutines for execution at a future point in time, either once or on a
@@ -251,7 +254,7 @@ class Scheduler:
             del self.tasks[task_inst.task]  # avoids leaking memory on a transient task object
 
     def schedule_task_at(self, task: Task, dt: datetime,
-                         *, args: Sequence[Any]=(), kwargs: Mapping[str, Any]={},
+                         *, args: Sequence[Any]=(), kwargs: Mapping[str, Any]=None,
                          every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
         """
         Schedule a task to run at a given time.
@@ -265,6 +268,9 @@ class Scheduler:
             not, the task is repeated forever.
         :return: A TaskInstance, which can be used to later cancel this task.
         """
+        if not kwargs:
+            kwargs = {}
+
         if every:
             try:
                 every = every.total_seconds()
@@ -279,7 +285,7 @@ class Scheduler:
         return self._add_task(task, datetime2loop(dt, self.loop), args, kwargs, every, times)
 
     def schedule_task_in(self, task: Task, in_time: Union[float, timedelta],
-                         *, args: Sequence[Any]=(), kwargs: Mapping[str, Any]={},
+                         *, args: Sequence[Any]=(), kwargs: Mapping[str, Any]=None,
                          every: Union[float, timedelta]=None, times: int=None) -> TaskInstance:
         """
         Schedule a task to run in a certain amount of time. By default, will run the task only once;
@@ -295,6 +301,9 @@ class Scheduler:
             not, the task is repeated forever. If ``every`` is not set, this has no effect.
         :return: A TaskInstance, which can be used to later cancel this task.
         """
+        if not kwargs:
+            kwargs = {}
+
         try:
             in_time = in_time.total_seconds()
         except AttributeError:

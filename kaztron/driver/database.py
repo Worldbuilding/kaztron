@@ -52,7 +52,7 @@ def make_error_handler_decorator(session_callback, logger):
         def db_safe_exec(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
-            except:
+            except Exception as e:
                 logger.error('Error ({!s}) - rolling back'.format(e))
                 session_callback(*args, **kwargs).rollback()
                 raise
@@ -79,10 +79,6 @@ def make_transaction_manager(session_callback, logger):
             session.commit()
         except Exception as e:
             logger.error('Error ({!s}) - rolling back'.format(e))
-            session.rollback()
-            raise
-        except:
-            logger.error('Exit event - rolling back')
             session.rollback()
             raise
 

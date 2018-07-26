@@ -2,6 +2,7 @@ import logging
 import os
 
 import httplib2
+# noinspection PyPackageRequirements
 from googleapiclient import discovery
 from oauth2client import client, tools
 from oauth2client.file import Storage
@@ -11,7 +12,7 @@ from oauth2client.file import Storage
 from oauth2client.client import UnknownClientSecretsFlowError
 # noinspection PyUnresolvedReferences
 from oauth2client.clientsecrets import InvalidClientSecretsError
-# noinspection PyUnresolvedReferences
+# noinspection PyUnresolvedReferences,PyPackageRequirements
 from googleapiclient.errors import Error
 
 

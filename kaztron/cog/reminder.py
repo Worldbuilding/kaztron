@@ -3,12 +3,12 @@ import logging
 import re
 from datetime import datetime
 from functools import reduce
-from typing import List, Callable, Awaitable
+from typing import List
 
 import discord
 from discord.ext import commands
 
-from kaztron import KazCog, Scheduler, TaskInstance, task
+from kaztron import KazCog, TaskInstance, task
 from kaztron.utils.datetime import utctimestamp, format_datetime, format_timedelta, \
     parse as dt_parse
 from kaztron.utils.discord import Limits

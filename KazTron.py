@@ -24,6 +24,7 @@ except OSError as e:
 def stop_daemon():
     import os
     import signal
+    # noinspection PyPackageRequirements
     from daemon import pidfile
     print("Reading pidfile...")
     pidf = pidfile.TimeoutPIDLockFile(config.get('core', 'daemon_pidfile'))

@@ -81,10 +81,12 @@ def section_view() -> SectionFixture:
     f = SectionFixture()
     f.mock_config = Mock(spec=KaztronConfig)
     f.mock_config.get.return_value = 'value'
+    # noinspection PyTypeChecker
     f.section = SectionView(f.mock_config, 'section')
     return f
 
 
+# noinspection PyShadowingNames
 class TestConfig:
     # Untested:
     # - Create non-existent files
@@ -119,21 +121,21 @@ class TestConfig:
         assert config.config.get('discord', 'playing') == 'status'
         assert config.config.get('discord', 'limit') == 5
         assert config.config.get('discord', 'structure') == \
-           OrderedDict([('a', 1), ('b', 2), ('c', 3)])
+            OrderedDict([('a', 1), ('b', 2), ('c', 3)])
 
     def test_get_real_values_with_defaults(self, config: ConfigFixture):
         assert config.config.get('core', 'name') == 'ConfigTest'
         assert config.config.get('core', 'extensions') == ['a', 'b', 'c', 'd', 'e']
 
     def test_get_default_values(self, config: ConfigFixture):
-        assert config.config.get('core', 'daemon') == False
+        assert config.config.get('core', 'daemon') is False
         assert config.config.get('core', 'daemon_pidfile') == 'hippo'
 
     def test_get_default_passed_in_get(self, config: ConfigFixture):
         assert config.config.get('core', 'asdf', 111) == 111
 
     def test_get_default_passed_in_get_when_default_exists(self, config: ConfigFixture):
-        assert config.config.get('core', 'daemon', 111) == False
+        assert config.config.get('core', 'daemon', 111) is False
         assert config.config.get('core', 'daemon_pidfile', 'giraffe') == 'hippo'
 
     def test_get_nonexistent_section(self, config: ConfigFixture):
@@ -193,6 +195,7 @@ class TestConfig:
         print(repr(config.config))
 
 
+# noinspection PyShadowingNames
 class TestConfigObjectApi:
     def test_get_section(self, config: ConfigFixture):
         core1 = config.config.get_section('core')
@@ -241,7 +244,9 @@ class TestConfigObjectApi:
 
         def get(section, key, default=None, converter=None):
             if converter is None:
-                converter = lambda x: x
+                def identity_converter(x):
+                    return x
+                converter = identity_converter
             return converter('value')
         section_view.mock_config.get.side_effect = get
 

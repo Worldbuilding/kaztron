@@ -1,4 +1,3 @@
-import asyncio
 import copy
 import enum
 import logging
@@ -10,7 +9,6 @@ from functools import total_ordering
 from typing import Dict, List, Tuple
 
 from kaztron.driver.stats import MeanVarianceAccumulator
-from kaztron.utils.asyncio import loop2timestamp, timestamp2loop, loop2datetime
 from kaztron.utils.datetime import utctimestamp
 
 logger = logging.getLogger(__name__)

@@ -156,7 +156,7 @@ def run(loop: asyncio.AbstractEventLoop):
         except Exception:
             pass
         # END CONTRIB
-        KazCog._state.write()
+        KazCog.state.write()
 
 
 def run_reboot_loop(loop: asyncio.AbstractEventLoop):
@@ -203,6 +203,7 @@ def get_daemon_context(config: KaztronConfig):
     import grp
     from pathlib import Path
 
+    # noinspection PyPackageRequirements
     from daemon import DaemonContext, pidfile
 
     bot_dir = Path(sys.modules['__main__'].__file__).resolve().parent

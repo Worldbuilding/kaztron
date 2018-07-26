@@ -1,13 +1,11 @@
 import logging
-from datetime import timedelta
-from typing import Tuple
+from typing import Tuple, Iterable
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
-from kaztron.cog.projects.discord import delete_project_message
-from kaztron.utils.confirm import ConfirmManager
+from kaztron.cog.projects.model import Project
 from kaztron.utils.converter import MemberConverter2
 from . import model as m, query as q, wizard as w
 from .discord import *
@@ -38,7 +36,7 @@ class ProjectsCog(KazCog):
     Initial set-up:
     * Use the `.project admin` commands to set up the genre and type list.
     """
-    channel_id = KazCog._config.get('projects', 'project_channel')
+    channel_id = KazCog.config.get('projects', 'project_channel')
     emoji = {
         'ok': '\U0001f197',
         'cancel': '\u274c'
@@ -591,6 +589,7 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_genre_edit(self, ctx: commands.Context,
                                old_name: str, new_name: str, new_role: str=None):
+        genre = None  # type: m.Genre
         with q.transaction() as _:
             try:
                 genre = q.get_genre(old_name)
@@ -651,6 +650,7 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_type_edit(self, ctx: commands.Context,
                               old_name: str, new_name: str, new_role: str=None):
+        p_type = None  # type: m.ProjectType
         with q.transaction():
             try:
                 p_type = q.get_project_type(old_name)
@@ -744,6 +744,7 @@ class ProjectsCog(KazCog):
             .projects admin followable @JaneDoe#0522 "Potato Mansion" @PotatoMansion
         """
         member = member  # type: discord.Member  # for type checking
+        project = None  # type: m.Project
         with q.transaction():
             user = q.get_or_make_user(member)
             try:
@@ -794,7 +795,8 @@ class ProjectsCog(KazCog):
                 except discord.InvalidArgument:
                     logging.info("User {} not found: deleting user and projects".format(user))
                     n_deleted += 1
-                    for project in user.projects:
+                    projects = user.projects  # type: Iterable[Project]
+                    for project in projects:  # type: Project
                         await delete_project_message(self.bot, self.channel, project)
                         session.delete(project)
                     session.delete(user)

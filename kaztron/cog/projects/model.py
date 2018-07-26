@@ -41,6 +41,7 @@ class User(Base):
         Find a project whose title contains the argument (case-insensitive).
         :raises KeyError: project not found
         """
+        # noinspection PyTypeChecker
         for project in self.projects:
             if project.title_contains(search_title):
                 return project
@@ -58,6 +59,7 @@ class User(Base):
         """ Check whether the user can add new projects. If the user does not have a set maximum,
          the default value is used. """
         eff_max = self.max_projects_eff(default_max)
+        # noinspection PyTypeChecker
         return eff_max is None or len(self.projects) < eff_max
 
 

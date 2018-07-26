@@ -1,6 +1,6 @@
 from datetime import datetime, date, timedelta, timezone
 import dateparser
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import discord
 
@@ -14,7 +14,7 @@ DATEPARSER_SETTINGS = {
 }
 
 
-def parse(timespec: str, future=False, **kwargs) -> datetime:
+def parse(timespec: str, future=False, **kwargs) -> Optional[datetime]:
     """
     Datetime parser, using the `dateparse` package. By default, assumes the UTC timezone unless the
     datetime string specifies timezone.

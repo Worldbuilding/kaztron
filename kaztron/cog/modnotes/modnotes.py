@@ -729,8 +729,8 @@ class ModNotes(KazCog):
             if isinstance(root_exc, ValueError) and root_exc.args and 'user ID' in root_exc.args[0]:
                 logger.warning("Invalid user argument: {!s}. For {}".format(root_exc, cmd_string))
                 await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
-                    " User format is not valid. User must be specified as an @mention, as a Discord "
-                    "ID (numerical only), or a KazTron ID (`*` followed by a number).")
+                    " User format is not valid. User must be specified as an @mention, as a "
+                    "Discord ID (numerical only), or a KazTron ID (`*` followed by a number).")
 
             elif isinstance(root_exc, c.UserNotFound):
                 logger.warning("User not found: {!s}. For {}".format(root_exc, cmd_string))

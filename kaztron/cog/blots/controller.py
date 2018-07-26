@@ -1,7 +1,7 @@
 import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from typing import List, Tuple, Dict, Optional, Union, AbstractSet, Sequence, Mapping, \
+from typing import List, Tuple, Dict, Optional, Union, Sequence, Mapping, \
     MutableMapping, Iterable
 
 import discord

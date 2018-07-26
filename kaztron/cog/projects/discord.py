@@ -11,7 +11,8 @@ from kaztron.utils.discord import extract_role_id, get_named_role, user_mention,
 logger = logging.getLogger(__name__)
 
 
-__all__ = ['get_role', 'update_user_roles', 'update_project_message', 'get_project_embed']
+__all__ = ['get_role', 'update_user_roles',
+           'update_project_message', 'delete_project_message', 'get_project_embed']
 
 EMBED_COLOUR = solarized.orange
 
@@ -37,7 +38,7 @@ def get_project_embed(project: m.Project, user_info=True, desc=True) -> discord.
     if user_info:
         user = project.user
         if user.about:
-            msg = "{} is {}".format(user_mention(user.nick if user.nick else user.name), user.about)
+            msg = "{} is {}".format(user_mention(user.discord_id), user.about)
         else:
             msg = "*(no bio)*"
 
@@ -75,6 +76,7 @@ def get_role(server: discord.Server, role_arg: str) -> discord.Role:
 
 
 async def update_user_roles(bot: discord.Client, server: discord.Server, users: Sequence[m.User]):
+    # noinspection PyTypeChecker
     role_ids = [o.role_id for o in q.query_genres() + q.query_project_types()]
     project_roles = set(get_role(server, role_id) for role_id in role_ids if role_id is not None)
 

@@ -1,6 +1,5 @@
 from typing import List
 
-import discord
 from discord.embeds import Embed, EmptyEmbed
 
 from kaztron.utils.discord import Limits

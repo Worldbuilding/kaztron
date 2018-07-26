@@ -1,4 +1,3 @@
-import asyncio
 import random
 import re
 import time
@@ -228,11 +227,11 @@ class Spotlight(KazCog):
     #
 
     # discord stuff
-    feature_name = KazCog._config.get('spotlight', 'name')
-    role_audience_name = KazCog._config.get('spotlight', 'audience_role')
-    role_host_name = KazCog._config.get('spotlight', 'host_role')
-    role_mods_name = KazCog._config.get('spotlight', 'mod_role')
-    ch_id_spotlight = KazCog._config.get('spotlight', 'channel')
+    feature_name = KazCog.config.get('spotlight', 'name')
+    role_audience_name = KazCog.config.get('spotlight', 'audience_role')
+    role_host_name = KazCog.config.get('spotlight', 'host_role')
+    role_mods_name = KazCog.config.get('spotlight', 'mod_role')
+    ch_id_spotlight = KazCog.config.get('spotlight', 'channel')
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -491,11 +490,11 @@ class Spotlight(KazCog):
                               "moderators or the Host for news like "
                               "the start of a new {0} or a newly released schedule.\n\n"
                               "To leave the Audience, use `.spotlight leave`.")
-                        .format(self.feature_name, self.role_host_name),
+                    .format(self.feature_name, self.role_host_name),
                     leave_doc=("Leave the {0} Audience. See `.help spotlight join` for more "
                                "information.\n\n"
                                "To join the {0} Audience, use `.spotlight join`.")
-                        .format(self.feature_name, self.role_host_name),
+                    .format(self.feature_name, self.role_host_name),
                     group=self.spotlight,
                     cog_instance=self,
                     ignore_extra=False

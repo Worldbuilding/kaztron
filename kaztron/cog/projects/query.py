@@ -57,10 +57,12 @@ def query_users(*, genre: Genre=None, type_: ProjectType=None) -> List[User]:
     return q.all()
 
 
+# noinspection PyUnresolvedReferences
 def update_user_from_projects(user: User):
     """
     Sync user's genre/type to their project, if they have only one. Otherwise, do nothing.
     """
+    # noinspection PyTypeChecker, PyUnresolvedReferences
     if len(user.projects) == 1:
         user.genre = user.projects[0].genre
         user.type = user.projects[0].type
@@ -185,6 +187,7 @@ def query_projects(*,
         ))
     if followable is not None:
         if followable:
+            # noinspection PyComparisonWithNone,PyPep8
             q = q.filter(Project.follow_role_id != None)
         else:
             q = q.filter_by(follow_role_id=None)
@@ -200,6 +203,7 @@ def add_project(wizard: ProjectWizard) -> Project:
     member = discord.Object(wizard.user_id)
     user = get_or_make_user(member)
     p = Project(**wizard)
+    # noinspection PyShadowingNames
     user.projects.append(p)
     return p
 
