@@ -9,6 +9,7 @@ import discord
 import kaztron
 from kaztron.config import SectionView
 from kaztron.errors import *
+from kaztron.help_formatter import DiscordHelpFormatter
 from kaztron.utils.checks import mod_only
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str, exc_msg_str
 from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str
@@ -33,6 +34,16 @@ class CoreConfig(SectionView):
 
 
 class CoreCog(kaztron.KazCog):
+    """!kazhelp
+
+    description: |
+        Essential {{name}} functionality: core setup and configuration tasks, general-purpose error
+        handling for other cogs and commands, etc. It also includes commands for general bot
+        information and control. The Core cog cannot be disabled.
+    contents:
+        - info
+        - request
+    """
 
     def __init__(self, bot):
         super().__init__(bot, 'core')
@@ -86,11 +97,16 @@ class CoreCog(kaztron.KazCog):
     async def on_ready(self):
         logger.debug("on_ready")
         await super().on_ready()
+        await self.set_status_message()
+        await self.send_startup_message()
+        await self.prepare_command_help()
 
+    async def set_status_message(self):
         playing = self.config.discord.playing
         if playing:
             await self.bot.change_presence(game=discord.Game(name=playing))
 
+    async def send_startup_message(self):
         startup_info = (
             "Bot name {}".format(self.name),
             "KazTron version {}".format(kaztron.__version__),
@@ -111,9 +127,19 @@ class CoreCog(kaztron.KazCog):
         except discord.HTTPException:
             logger.exception("Error sending startup information to output channel")
 
-    async def on_command(self, command: commands.Command, ctx: commands.Context):
-        # logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
-        pass
+    async def prepare_command_help(self):
+        obj_list = set()
+        formatter = self.bot.formatter  # type: DiscordHelpFormatter
+
+        for cog in self.bot.cogs:
+            if cog not in obj_list:
+                formatter.kaz_preprocess(cog, self.bot)
+                obj_list.add(cog)
+
+        for command in self.bot.walk_commands():
+            if command not in obj_list:
+                formatter.kaz_preprocess(command, self.bot)
+                obj_list.add(command)
 
     async def on_command_completion(self, command: commands.Command, ctx: commands.Context):
         """ On command completion, save state files. """
@@ -337,12 +363,16 @@ class CoreCog(kaztron.KazCog):
     @commands.command(pass_context=True)
     @mod_only()
     async def info(self, ctx):
-        """
-        [MOD ONLY] Provides bot info and useful links.
+        """!kazhelp
 
-        Also useful for testing basic bot responsivity.
+        description: |
+            Provides bot info and useful links.
 
-        Arguments: None.
+            This command provides the version of the {{name}} instance currently running, the latest
+            changelog summary, and links to documentation, the GitHub repository, and other
+            resources for operators and moderators.
+
+            TIP: *For mods.* If {{name}} ever seems unresponsive, try this command first.
         """
         em = discord.Embed(color=0x80AAFF, title=self.name)
         em.add_field(name="KazTron version",
@@ -360,20 +390,40 @@ class CoreCog(kaztron.KazCog):
     @commands.command(pass_context=True, aliases=['bug', 'issue'])
     @commands.cooldown(rate=5, per=60)
     async def request(self, ctx, *, content: str):
-        """
-        Submit a bug report or feature request to the bot DevOps Team.
+        """!kazhelp
 
-        Everyone can use this, but please make sure that your request is clear and has enough
-        enough details. This is especially true for us to be able to track down and fix bugs:
-        we need information like what were you trying to do, what did you expect to happen, what
-        actually happened? Quote exact error messages and give dates/times).
+        description: Submit a bug report or feature request to the {{name}} bot team.
+        details: |
+            Everyone can use this command, but please make sure that:
 
-        Please note that any submissions made via this system may be publicly tracked via the
-        GitHub repo. By submitting a request via this system, you give us permission to post
-        your username and message, verbatim or altered, to a public issue tracker for the purposes
-        of bot development and project management.
+            * Your issue is clear and sufficiently detailed.
+            * You submit **one issue per command**. Do not include multiple issues in one command,
+              or split up one issue into multiple commands. Otherwise the bot team will get mad at
+              you =P
 
-        Abuse may be treated in the same way as other forms of spam on the Discord server.
+            If you're reporting a bug, include the answers to the questions:
+
+            * What were you trying to do? Include the *exact* command you tried to use, if any.
+            * What error messages were given by the bot? *Exact* message.
+            * Where and when did this happen? Ideally, link the message itself (message menu >
+              Copy Link).
+
+            IMPORTANT: Any submissions made via this system may be tracked publicly. By submitting
+            a request via this system, you give us permission to post your username and message,
+            verbatim or altered, to a public database for the purpose of project management.
+
+            IMPORTANT: Abuse of this command may be treated as channel spam, and enforced
+            accordingly.
+
+            NOTE: The three command names do not differ from each other. They are defined purely
+            for convenience.
+        examples:
+            - command: |
+                .request When trying to use the `.roll 3d20` command, I get the message:
+                "An error occurred! Details have been logged. Let a mod know so we can investigate."
+
+                This only happens with d20, I've tried d12 and d6 with no problems.
+                The last time this happened in #tabletop on 2018-01-31 at 5:24PM PST.
         """
         em = discord.Embed(color=0x80AAFF)
         em.set_author(name="User Issue Submission")

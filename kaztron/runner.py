@@ -12,6 +12,7 @@ from discord.ext.commands import HelpFormatter
 import kaztron
 from kaztron import KazCog
 from kaztron.config import get_kaztron_config, KaztronConfig, get_runtime_config
+from kaztron.help_formatter import CoreHelpFormatter, DiscordHelpFormatter
 from kaztron.scheduler import Scheduler
 
 logger = logging.getLogger("kaztron.bootstrap")
@@ -97,14 +98,23 @@ def run(loop: asyncio.AbstractEventLoop):
     state = get_runtime_config()
     kaztron.KazCog.static_init(config, state)
 
+    # custom help formatters
+    kaz_formatter = CoreHelpFormatter({
+        'name': config.core.get('name')
+    })
+
+    # create bot instance (+ some custom hacks)
     client = commands.Bot(
         command_prefix='.',
-        formatter=HelpFormatter(show_check_failure=True),
+        formatter=DiscordHelpFormatter(kaz_formatter, show_check_failure=True),
         description='This an automated bot for the /r/worldbuilding discord server',
         pm_help=True)
-    client.scheduler = Scheduler(client)
     patch_smart_quotes_hack(client)
     patch_command_logging_hack()
+
+    # KazTron-specific extension classes
+    client.scheduler = Scheduler(client)
+    client.kaz_formatter = kaz_formatter
 
     # Load extensions
     startup_extensions = config.get("core", "extensions")
