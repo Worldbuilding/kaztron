@@ -13,6 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class DiceCog(KazCog):
+    """!kazhelp
+
+    brief: Various dice rolls and other randomness-based commands.
+    description:
+    contents:
+        - choose
+        - roll
+        - rollf
+    """
     config = get_kaztron_config()
     ch_allowed_list = (
         config.get('dice', 'channel_dice'),
@@ -32,12 +41,18 @@ class DiceCog(KazCog):
     @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
     @in_channels(ch_allowed_list)
     async def roll(self, ctx, dice: str):
-        """
-        Rolls dice.
+        """!kazhelp
 
-        Rolls a <sides>-sided die <num> times, and reports the rolls and total.
-
-        Example: `.rolls 3d6` rolls three six-sided dice.
+        description: Rolls dice.
+        details: "Rolls an `m`-sided die `n` times, and reports the rolls and total."
+        parameters:
+            - name: dice
+              type: string
+              description: "`ndm` format, where `n` is the number of dice to roll,
+                and `m` is the number of sides on each die. Do not add spaces."
+        examples:
+            - command: .roll 2d6
+              description: Roll three six-sided dice.
         """
         try:
             num_rolls, num_sides = map(int, dice.split('d'))
@@ -67,10 +82,8 @@ class DiceCog(KazCog):
     @commands.command(pass_context=True, ignore_extra=False)
     @in_channels(ch_allowed_list)
     async def rollf(self, ctx):
-        """
-        Rolls four dice for the FATE tabletop roleplaying game system.
-
-        Arguments: None
+        """!kazhelp
+        description: Rolls four dice for the FATE tabletop roleplaying game system.
         """
         dice = (-1, -1, 0, 0, 1, 1)
         str_map = {-1: '-', 0: '0', 1: '+'}
@@ -82,14 +95,18 @@ class DiceCog(KazCog):
 
     @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
     async def choose(self, ctx, *, choices: str):
-        """
-        Need some help making a decision? Let the bot choose for you!
+        """!kazhelp
 
-        Arguments:
-        * choices - Two or more choices, separated by commas `,`.
-
-        Examples:
-        `.choose a, b, c`
+        brief: Randomly choose from a list of items.
+        description: |
+            Need some help making a decision? Let the bot choose for you! This command
+            randomly chooses from a list of items.
+        parameters:
+            - name: choices
+              type: string
+              description: Two or more choices, separated by commas `,`.
+        examples:
+            - command: .choose a, b, c
         """
         choices = list(map(str.strip, choices.split(",")))
         if "" in choices:

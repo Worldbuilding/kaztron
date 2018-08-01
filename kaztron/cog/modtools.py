@@ -20,6 +20,23 @@ logger = logging.getLogger(__name__)
 
 
 class ModToolsCog(KazCog):
+    """!kazhelp
+
+    brief: Miscellaneous tools for moderators.
+    description: |
+        Various tools for moderators to help them in their day-to-day! Some commands are
+        dependent on the {{%ModNotes}} module.
+
+        This module will automatically enforce modnotes of type "temp", at startup and every hour
+        hence. Use {{!tempban}} in order to immediately apply and enforce a new tempban. (Using
+        {{!notes add}} to add a "temp" record will not enforce it until the next hourly check.)
+    contents:
+        - up
+        - down
+        - tempban
+        - whois
+        - wb
+    """
     def __init__(self, bot):
         super().__init__(bot)
         self.distinguish_map = self.config.get("modtools", "distinguish_map", {})
@@ -54,14 +71,12 @@ class ModToolsCog(KazCog):
     @commands.command(pass_context=True)
     @mod_only()
     async def up(self, ctx):
-        """
-        [MOD ONLY] Colours a moderator's username.
-
-        This command colours the moderator's username by applying a special role to it. This is
-        used for moderators to be able to signal when they are speaking or intervening officially
-        in their role as moderator.
-
-        Arguments: None
+        """!kazhelp
+        brief: "Colours a moderator's username."
+        description: |
+            This command colours the moderator's username by applying a special role to it. This
+            allows moderators to clearly show when they are speaking in an official capacity as
+            moderators.
         """
         for status_role_name, distinguish_role_name in self.distinguish_map.items():
             status_role = discord.utils.get(ctx.message.server.roles, name=status_role_name)
@@ -81,12 +96,11 @@ class ModToolsCog(KazCog):
     @commands.command(pass_context=True)
     @mod_only()
     async def down(self, ctx):
-        """
-        [MOD ONLY] Uncolours a moderator's username.
+        """!kazhelp
+        description: |
+            Uncolours a moderator's username.
 
-        This command undoes the `.up` command.
-
-        Arguments: None
+            This command undoes the {{!up}} command.
         """
         for status_role_name, distinguish_role_name in self.distinguish_map.items():
             status_role = discord.utils.get(ctx.message.server.roles, name=status_role_name)
@@ -158,33 +172,40 @@ class ModToolsCog(KazCog):
     @mod_only()
     @mod_channels()
     async def tempban(self, ctx: commands.Context, user: str, *, reason: str=""):
-        """
-        [MOD ONLY] Tempban a user.
+        """!kazhelp
 
-        This method will automatically create a modnote. It will not communicate with the user.
+        description: |
+            Tempban a user.
 
-        This feature integrates with modnotes, and will automatically enforce "temp" notes, giving a
-        role to users with unexpired "temp" notes and removing that role when the note expires. This
-        command is shorthand for `.notes add <user> temp expires="[expires]" [Reason]`.
+            This method will automatically create a modnote. It will not communicate with the user.
 
-        **Arguments:**
-        * user: The user to ban. See [modnotes: .notes](modnotes.html#1-notes) for more
-          information.
-        * expires=datespec: Optional. The datespec for the tempban's expiration. Use quotation
-          marks if the datespec has spaces in it. See [modnotes: .notes add](modnotes.html#11-add)
-          for more information on accepted syntaxes. Default is `expires="in 7 days"`.
-        * reason: Optional, but highly recommended to specify. The reason to record in the
-          modnote
-
-        **Channels:** Mod and bot channels
-
-        **Usable by:** Moderators only
-
-        **Examples:**
-        .tempban @BlitheringIdiot#1234 Was being a blithering idiot.
-            Issues a 7-day ban.
-        .tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight blithering idiot only.
-            Issues a 3-day ban.
+            This module integrates with modnotes, and will automatically enforce "temp" notes,
+            giving a role to users with unexpired "temp" notes and removing that role when the note
+            expires. This command is shorthand for
+            `.notes add <user> temp expires="[expires]" [reason]`.
+        parameters:
+            - name: user
+              type: string
+              description: The user to ban. See {{!notes}}  for more information.
+            - name: reason
+              type: string
+              optional: true
+              description: Complex parameter of the format `[expires=[expires]] [reason]`. `reason`
+                is optional but recommended. The reason to record in the modnote.
+            - name: expires
+              type: datespec
+              optional: true
+              description: |
+                The datespec for the tempban's expiration. Use quotation marks if the
+                datespec has spaces in it. See {{!notes add}} for more information on accepted
+                syntaxes.
+              default: '"in 7 days"'
+        examples:
+            - command: .tempban @BlitheringIdiot#1234 Was being a blithering idiot.
+              description: Issues a 7-day ban.
+            - command: .tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight
+                blithering idiot only.
+              description: Issues a 3-day ban.
         """
         if not self.cog_modnotes:
             raise RuntimeError("Can't find ModNotes cog")
@@ -210,17 +231,29 @@ class ModToolsCog(KazCog):
     @mod_only()
     @mod_channels()
     async def whois(self, ctx, user: str):
-        """
-        [MOD ONLY] Finds a Discord user from their ID, name, or name with discriminator.
+        """!kazhelp
 
-        If an exact match isn't found, then this tool will do a substring search on all visible
-        users' names and nicknames.
+        brief: Find a Discord user.
+        description: |
+            Finds a Discord user from their ID, name, or name with discriminator.
 
-        Warning: If the user is in the channel where you use this command, the user will receive a
-        notification.
+            If an exact match isn't found, then this tool will do a substring search on all visible
+            users' names and nicknames.
 
-        Arguments:
-        * user: An ID number, name, name with discriminator, etc. of a user to find.
+            WARNING: If the user is in the channel where you use this command, the user will receive
+            a notification.
+        parameters:
+            - name: user
+              type: string
+              description: An ID number, name, name with discriminator, etc. of a user to find.
+        examples:
+            - command: .whois 123456789012345678
+              description: Find a user with ID 123456789012345678.
+            - command: .whois JaneDoe#0921
+              description: Find a user exactly matching @JaneDoe#0921.
+            - command: .whois JaneDoe
+              description: Find a user whose name matches JaneDoe, or if not found, a user whose
+                name or nickname contains JaneDoe.
         """
         await self._whois_match(ctx, user) or await self._whois_search(ctx, user)
 
@@ -254,14 +287,23 @@ class ModToolsCog(KazCog):
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
     async def wb(self, ctx, index: int=None):
-        """
-        [MOD ONLY] Shows a "Please talk about worldbuilding" image.
+        """!kazhelp
 
-        For mod intervention, when discussions get off-topic.
+        description: |
+            Show a "Please talk about worldbuilding" image.
 
-        Arguments:
-        * index: Optional. If specified, the index of the image to show. If not specified, a
-          random image is shown.
+            For mod intervention, when discussions get off-topic.
+        parameters:
+            - name: index
+              type: string
+              optional: true
+              description: If specified, the index of the image to show (starting at `0`).
+                If not specified, a random image is shown.
+        examples:
+            - command: .wb
+              description: Show a random image.
+            - command: .wb 3
+              description: Show image at index 3 (the 4th image).
         """
         if index is None:
             index = random.randint(0, len(self.wb_images) - 1)

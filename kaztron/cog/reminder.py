@@ -59,6 +59,20 @@ class ReminderData:
 
 
 class ReminderCog(KazCog):
+    """!kazhelp
+
+    brief: Get reminders for later.
+    description: |
+        The Reminder cog allows you to ask the bot to send you a reminder message in a certain
+        amount of time. Reminders are personal and PMed to you.
+
+        IMPORTANT: While we want this module to be useful and reliable, we can't guarantee that
+        you'll get the reminder on time. Don't rely on this module for anything critical!
+    contents:
+        - reminder:
+            - list
+            - clear
+    """
     CFG_SECTION = 'reminder'
     MAX_PER_USER = 10
     MAX_RETRIES = 10
@@ -98,29 +112,34 @@ class ReminderCog(KazCog):
 
     @commands.group(pass_context=True, invoke_without_command=True, aliases=['remind'])
     async def reminder(self, ctx: commands.Context, *, args: str):
-        """
-        Sends you a personal reminder by PM at some point in the future.
+        """!kazhelp
 
-        TIP: Make sure you've enabled "Allow direct messages from server members" for the server
-        the bot is on.
+        description: |
+            Sends you a personal reminder by PM at some point in the future.
 
-        TIP: You should double-check the reminder time in the confirmation PM, to make sure your
-        timespec was interpreted correctly.
+            TIP: Make sure you've enabled "Allow direct messages from server members" for the server
+            the bot is on.
 
-        **Usage:** `.remind <timespec>: <message>`
-
-        **Arguments:**
-        * `<timespec>: `: A time in the future to send you a reminder, followed by a colon
-          and a space. This can be an absolute date and time `2018-03-07 12:00:00`, a
-          relative time `in 2h 30m` (the space between hours and minutes, or other different units,
-          is important), or combinations of the two (`tomorrow at 1pm`). Times are in UTC+0000,
-          unless you specify your time zone (e.g. `12:00:00 UTC-5`).
-        * `<message>`: The message to include with the reminder.
-
-        **Examples:**
-        .remind in 2 hours: Feed the dog
-        .remind on 24 december at 4:50pm: Grandma's christmas call
-        .remind tomorrow at 8am: Start Spotlight
+            TIP: You should double-check the reminder time in the confirmation PM, to make sure your
+            timespec was interpreted correctly.
+        parameters:
+            - name: args
+              description: "Consists of `<timespec>: <message>`."
+            - name: timespec
+              type: timespec
+              description: |
+                  A time in the future to send you a reminder, followed by a colon and a
+                  space. This can be an absolute date and time `2018-03-07 12:00:00`, a relative
+                  time `in 2h 30m` (the "in" **and** the spaces are important), or combinations of
+                  the two (`tomorrow at 1pm`). If giving an absolute time, you can specify a time
+                  zone (e.g. `1pm UTC-5` or `13:05 EST`); if none specified, default is UTC.
+            - name: message
+              type: string
+              description: The message you want to be reminded with.
+        examples:
+            - command: ".remind in 2 hours: Feed the dog"
+            - command: ".remind on 24 december at 4:50pm: Grandma's Christmas call"
+            - command: ".remind tomorrow at 8am PST: start spotlight"
         """
         # check existing count
         n = reduce(lambda c, r: c+1 if r.user_id == ctx.message.author.id else c, self.reminders, 0)
@@ -221,7 +240,13 @@ class ReminderCog(KazCog):
 
     @reminder.command(ignore_extra=False, pass_context=True)
     async def list(self, ctx: commands.Context):
-        """ Lists all future reminders you've requested. """
+        """!kazhelp
+
+         description: |
+            Lists all future reminders you've requested.
+
+            The list is sent by PM.
+         """
         items = []
         filtered = filter(lambda r: r.user_id == ctx.message.author.id, self.reminders)
         sorted_reminders = sorted(filtered, key=lambda r: r.remind_time)
@@ -243,7 +268,13 @@ class ReminderCog(KazCog):
 
     @reminder.command(pass_context=True, ignore_extra=False)
     async def clear(self, ctx: commands.Context):
-        """ Remove all future reminders you've requested. """
+        """!kazhelp
+
+        description: |
+            Remove all future reminders you've requested.
+
+            WARNING: This command cannot be undone.
+        """
         reminders_to_keep = []
         for reminder in self.reminders:  # type: ReminderData
             if reminder.user_id == ctx.message.author.id:
