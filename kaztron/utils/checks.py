@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import List, Union, Iterable
 
 from discord.ext import commands
@@ -10,6 +11,20 @@ from kaztron.utils.discord import check_mod, check_admin, check_role
 import logging
 
 logger = logging.getLogger('kaztron.checks')
+
+
+class CheckId(Enum):
+    """
+    Identifies the type of check. Used primarily for automatic documentation generation (see
+    :mod:`~kaztron.help_formatter`).
+    """
+    U_ROLE = 0
+    U_MOD = 1
+    U_ADMIN = 2
+    U_ROLE_OR_MODS = 3
+    C_LIST = 10
+    C_MOD = 11
+    C_ADMIN = 12
 
 
 def has_role(role_names: Union[str, Iterable[str]]):
@@ -28,7 +43,7 @@ def mod_or_has_role(role_names: Union[str, Iterable[str]]):
     return _check_role(role_names, True)
 
 
-def _check_role(role_names: Union[str, Iterable[str]], with_mods):
+def _check_role(role_names: Union[str, Iterable[str]], with_mods: bool):
     if isinstance(role_names, str):
         role_names = [role_names]
 
@@ -36,7 +51,7 @@ def _check_role(role_names: Union[str, Iterable[str]], with_mods):
         if check_role(role_names, ctx.message) or (with_mods and check_mod(ctx)):
             return True
         else:
-            msgs = {  # (single_role, with_mods)
+            msgs = {  # (single_role, with_mods): msg
                 (True, True): "You must be a moderator or have the {r} role.",
                 (True, False): "You must have the {r} role to use that command.",
                 (False, True): "You must be a moderator or have one of these roles to use that "
@@ -47,6 +62,8 @@ def _check_role(role_names: Union[str, Iterable[str]], with_mods):
             raise UnauthorizedUserError(msg_fmt.format(
                 r=role_names[0] if role_names else "", rl=", ".join(role_names)
             ))
+    check_role_wrapper.kaz_check_id = CheckId.U_ROLE_OR_MODS if with_mods else CheckId.U_ROLE
+    check_role_wrapper.kaz_check_data = role_names
     return commands.check(check_role_wrapper)
 
 
@@ -60,6 +77,7 @@ def mod_only():
             return True
         else:
             raise ModOnlyError("Only moderators may use that command.")
+    check_mod_wrapper.kaz_check_id = CheckId.U_MOD
     return commands.check(check_mod_wrapper)
 
 
@@ -73,10 +91,12 @@ def admin_only():
             return True
         else:
             raise AdminOnlyError("Only administrators may use that command.", ctx)
+    check_admin_wrapper.kaz_check_id = CheckId.U_ADMIN
     return commands.check(check_admin_wrapper)
 
 
-def in_channels(channel_id_list: List[str], allow_pm=False, delete_on_fail=False):
+def in_channels(channel_id_list: List[str], allow_pm=False, delete_on_fail=False, *,
+                check_id=CheckId.C_LIST):
     """
     Command check decorator. Only allow this command to be run in specific channels (passed as a
     list of channel ID strings).
@@ -94,11 +114,13 @@ def in_channels(channel_id_list: List[str], allow_pm=False, delete_on_fail=False
             else:
                 raise DeleteMessage(
                     UnauthorizedChannelError("Command not allowed in channel.", ctx))
-
+    predicate.kaz_check_id = check_id
+    predicate.kaz_check_data = channel_id_list
     return commands.check(predicate)
 
 
-def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delete_on_fail=False):
+def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delete_on_fail=False, *,
+                    check_id=CheckId.C_LIST):
     """
     Command check decorator. Only allow this command to be run in specific channels (as specified
     from the config).
@@ -122,7 +144,7 @@ def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delet
     if isinstance(config_channels, str):
         config_channels = [config_channels]
 
-    return in_channels(config_channels, allow_pm, delete_on_fail)
+    return in_channels(config_channels, allow_pm, delete_on_fail, check_id=check_id)
 
 
 def mod_channels(delete_on_fail=False):
@@ -130,7 +152,8 @@ def mod_channels(delete_on_fail=False):
     Command check decorator. Only allow this command to be run in mod channels (as configured
     in "discord" -> "mod_channels" config).
     """
-    return in_channels_cfg('discord', 'mod_channels', allow_pm=True, delete_on_fail=delete_on_fail)
+    return in_channels_cfg('discord', 'mod_channels', allow_pm=True, delete_on_fail=delete_on_fail,
+                           check_id=CheckId.C_MOD)
 
 
 def admin_channels(delete_on_fail=False):
@@ -139,4 +162,4 @@ def admin_channels(delete_on_fail=False):
     in "discord" -> "admin_channels" config).
     """
     return in_channels_cfg('discord', 'admin_channels', allow_pm=True,
-        delete_on_fail=delete_on_fail)
+        delete_on_fail=delete_on_fail, check_id=CheckId.C_ADMIN)

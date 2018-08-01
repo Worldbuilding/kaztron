@@ -9,10 +9,11 @@ import discord
 import kaztron
 from kaztron.config import SectionView
 from kaztron.errors import *
-from kaztron.help_formatter import DiscordHelpFormatter
-from kaztron.utils.checks import mod_only
+from kaztron.help_formatter import DiscordHelpFormatter, JekyllHelpFormatter
+from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str, exc_msg_str
-from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str
+from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str, \
+    Limits
 from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class CoreConfig(SectionView):
 class CoreCog(kaztron.KazCog):
     """!kazhelp
 
+    brief: Essential internal {{name}} functionality, plus bot information and control commands.
     description: |
         Essential {{name}} functionality: core setup and configuration tasks, general-purpose error
         handling for other cogs and commands, etc. It also includes commands for general bot
@@ -43,6 +45,7 @@ class CoreCog(kaztron.KazCog):
     contents:
         - info
         - request
+        - jekyllate
     """
 
     def __init__(self, bot):
@@ -438,6 +441,40 @@ class CoreCog(kaztron.KazCog):
         await self.bot.say("Your issue was submitted to the bot DevOps team. "
                            "If you have any questions or if there's an urgent problem, "
                            "please feel free to contact the moderators.")
+
+    @commands.command(pass_context=True)
+    @mod_only()
+    @mod_channels()
+    async def jekyllate(self, ctx: commands.Context):
+        """!kazhelp
+
+        description: Generate Jekyll-compatible markdown documentation for all loaded cogs.
+        """
+        import os
+        import io
+        import zipfile
+
+        jekyll = JekyllHelpFormatter(self.bot.kaz_formatter, self.bot)
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, mode='w', compression=zipfile.ZIP_DEFLATED) as z:
+            for cog_name, cog in self.bot.cogs.items():
+                logger.info("jekyllate: Generating docs for {}".format(cog_name))
+                with z.open(cog_name.lower() + '.md', mode='w') as f:
+                    docs = jekyll.format(cog, ctx)
+                    docs_b = docs.encode('utf8')
+                    f.write(docs_b)
+
+        logger.info("jekyllate: Sending file...")
+        buf.seek(0)
+        await self.bot.send_file(ctx.message.channel, buf,
+                                 filename=self.config.core.name + "-jekyll.zip")
+
+        # for cog in [self.bot.get_cog('ReminderCog')]:
+        #     docs = jekyll.format(cog, ctx)
+        #     from kaztron.utils.strings import split_code_chunks_on
+        #     for msg in split_code_chunks_on(docs, Limits.MESSAGE):
+        #         await self.bot.say(msg)
 
 
 def setup(bot):
