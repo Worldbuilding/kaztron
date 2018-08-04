@@ -58,7 +58,7 @@ class ReminderData:
         )
 
 
-class ReminderCog(KazCog):
+class Reminders(KazCog):
     """!kazhelp
 
     brief: Get reminders for later.
@@ -290,4 +290,4 @@ class ReminderCog(KazCog):
 
 
 def setup(bot):
-    bot.add_cog(ReminderCog(bot))
+    bot.add_cog(Reminders(bot))

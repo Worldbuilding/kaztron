@@ -9,18 +9,45 @@ logger = logging.getLogger(__name__)
 
 
 class VoiceLog(KazCog):
-    """
-     Voice chat support features.
+    """!kazhelp
+    description: Voice chat support features. No commands.
+    jekyll_description: |
 
-     Shows a log of users joining/leaving voice channels. Now you can avoid the "wait, who
-     joined? / who'd we lose?" conversation!
+        * Shows a log of users joining/leaving voice channels. Now you can avoid the "wait, who
+          joined / who'd we lose?" conversation!
+        * Voice role management. Allows people in voice to be assigned a role, e.g. to let voice
+          users see a voice-only text channel or change their colour while in voice.
 
-     Voice role management. Allows people in voice to be assigned a role: for example, to let
-     voice users see a voice-only text channel, or change their colour when in voice, etc.
+        **Channels**: {{voice_log_channels}}
+
+        This cog has no commands. It is fully configured in the config.json file (see
+        [config.example.json](https://github.com/Worldbuilding/KazTron/blob/master/config.example.json)).
+
+        ## Voice user logging
+
+        This feature replicates the join/part logging available in TeamSpeak, mumble and similar,
+        mainly to avoid the "wait, who joined?" and "who'd we lose?" conversations while in voice
+        chat on Discord. {{name}} will log voice join and parts in {{voice_log_out_channel}}
+        like this:
+
+        ```
+        [07:40] KazTron: JaneDoe has joined voice channel #general
+        [07:40] KazTron: JaneDoe has moved from voice channel #general to #tabletop
+        [07:41] KazTron: JaneDoe has left voice channel #tabletop
+        ```
+
+        ## Voice state update
+
+        This cog monitors users' voice channel state. When a user is in a voice channel, they will
+        be given the {{voice_log_role}} role. This is normally used to allow only users currently
+        in voice to access a voice-specific text channel, but may be used for other purposes.
+
+        Currently, this functionality supports any number of voice channels but only one role.
+        This could be extended if needed—mods, talk to DevOps.
      """
     def __init__(self, bot):
         super().__init__(bot)
-        self.channel_voicelog = discord.Object(id=self.config.get("voicelog", "channel_text"))
+        self.channel_voicelog = discord.Object(id=self.config.get("voicelog", "channel_text"))  # type: discord.Channel
 
         self.voice_channel_ids = self.config.get('voicelog', 'channels_voice', [])
 
@@ -55,6 +82,21 @@ class VoiceLog(KazCog):
             err_msg = "In-voice role management is disabled (not configured)."
             logger.warning(err_msg)
             await self.send_output("**Warning:** " + err_msg)
+
+    def export_kazhelp_vars(self):
+        variables = {}
+        channels = []
+        for ch_id in self.voice_channel_ids:
+            try:
+                channel = self.validate_channel(ch_id)
+                channels.append('#' + channel.name)
+            except ValueError:
+                channels.append('{} (unknown channel)'.format(ch_id))
+
+        variables['voice_log_out_channel'] = '#' + self.channel_voicelog.name
+        variables['voice_log_channels'] = ', '.join(channels)
+        variables['voice_log_role'] = self.role_voice_name
+        return variables
 
     async def update_all_voice_role(self):
         if not self.is_role_managed:

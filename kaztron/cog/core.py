@@ -34,7 +34,7 @@ class CoreConfig(SectionView):
     daemon_log: str
 
 
-class CoreCog(kaztron.KazCog):
+class Core(kaztron.KazCog):
     """!kazhelp
 
     brief: Essential internal {{name}} functionality, plus bot information and control commands.
@@ -83,6 +83,7 @@ class CoreCog(kaztron.KazCog):
         registered_cogs = {c for c in self.bot.cogs.values() if isinstance(c, kaztron.KazCog)}
         if self.ready_cogs == registered_cogs:
             logger.info("=== ALL COGS READY ===")
+            self.bot.loop.create_task(self.prepare_command_help())
 
     def set_cog_error(self, cog):
         """
@@ -100,9 +101,16 @@ class CoreCog(kaztron.KazCog):
     async def on_ready(self):
         logger.debug("on_ready")
         await super().on_ready()
+
+        # set global variables (don't use export_kazhelp_vars - these are cog-local)
+        try:
+            self.bot.kaz_help_parser.variables['output_channel'] = '#' + self.channel_out.name
+            self.bot.kaz_help_parser.variables['test_channel'] = '#' + self.channel_test.name
+        except AttributeError:
+            logger.warning("Help parser not found in bot")
+
         await self.set_status_message()
         await self.send_startup_message()
-        await self.prepare_command_help()
 
     async def set_status_message(self):
         playing = self.config.discord.playing
@@ -134,15 +142,26 @@ class CoreCog(kaztron.KazCog):
         obj_list = set()
         formatter = self.bot.formatter  # type: DiscordHelpFormatter
 
-        for cog in self.bot.cogs:
+        for cog_name, cog in self.bot.cogs.items():
             if cog not in obj_list:
-                formatter.kaz_preprocess(cog, self.bot)
-                obj_list.add(cog)
+                try:
+                    formatter.kaz_preprocess(cog, self.bot)
+                    obj_list.add(cog)
+                except Exception as e:
+                    raise discord.ClientException(
+                        "Error while parsing !kazhelp for cog {}".format(cog_name))\
+                        from e
 
         for command in self.bot.walk_commands():
             if command not in obj_list:
-                formatter.kaz_preprocess(command, self.bot)
-                obj_list.add(command)
+                try:
+                    formatter.kaz_preprocess(command, self.bot)
+                    obj_list.add(command)
+                except Exception as e:
+                    raise discord.ClientException("Error while parsing !kazhelp for command {}"
+                        .format(command.qualified_name)) from e
+
+        logger.info("=== KAZHELP PROCESSED ===")
 
     async def on_command_completion(self, command: commands.Command, ctx: commands.Context):
         """ On command completion, save state files. """
@@ -454,7 +473,7 @@ class CoreCog(kaztron.KazCog):
         import io
         import zipfile
 
-        jekyll = JekyllHelpFormatter(self.bot.kaz_formatter, self.bot)
+        jekyll = JekyllHelpFormatter(self.bot.kaz_help_parser, self.bot)
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, mode='w', compression=zipfile.ZIP_DEFLATED) as z:
@@ -470,12 +489,6 @@ class CoreCog(kaztron.KazCog):
         await self.bot.send_file(ctx.message.channel, buf,
                                  filename=self.config.core.name + "-jekyll.zip")
 
-        # for cog in [self.bot.get_cog('ReminderCog')]:
-        #     docs = jekyll.format(cog, ctx)
-        #     from kaztron.utils.strings import split_code_chunks_on
-        #     for msg in split_code_chunks_on(docs, Limits.MESSAGE):
-        #         await self.bot.say(msg)
-
 
 def setup(bot):
-    bot.add_cog(CoreCog(bot))
+    bot.add_cog(Core(bot))

@@ -12,7 +12,7 @@ from kaztron.utils.logging import message_log_str
 logger = logging.getLogger(__name__)
 
 
-class DiceCog(KazCog):
+class Dice(KazCog):
     """!kazhelp
 
     brief: Various dice rolls and other randomness-based commands.
@@ -148,4 +148,4 @@ class DiceCog(KazCog):
 
 
 def setup(bot):
-    bot.add_cog(DiceCog(bot))
+    bot.add_cog(Dice(bot))

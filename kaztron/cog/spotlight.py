@@ -190,6 +190,41 @@ class SpotlightApp:
 
 
 class Spotlight(KazCog):
+    """!kazhelp
+
+    brief: |
+        Management of the {{spotlight_name}} community feature: applications, upcoming, reminders
+        and timing.
+    description: |
+        The Spotlight cog provides functionality which manages the {{spotlight_name}} community
+        feature. A number of functions are bundled in this cog:
+
+        * Applications review and management (mod only)
+        * Announcing a project in the {{spotlight_name}} channel (mod only)
+        * Management of a queue of upcoming {{spotlight_name}} events (mod only)
+        * Following or unfollowing {{spotlight_name}} notifications (everyone)
+        * Starting a {{spotlight_name}}, timing and reminders ({{spotlight_host_name}} only)
+    contents:
+        - spotlight:
+            - join
+            - leave
+            - start
+            - stop
+            - time
+            - list
+            - current
+            - select
+            - roll
+            - showcase
+            - queue:
+                - list
+                - showcase
+                - add
+                - edit
+                - next
+                - rem
+                - insert
+    """
     msg_join = \
         "You are now a part of the {0} audience. You can be pinged by the "\
         "moderators or the {1} for {0}-related news. " \
@@ -267,6 +302,12 @@ class Spotlight(KazCog):
 
         self.reminders = deque(datetime.utcfromtimestamp(t)
                                for t in self.state.get('spotlight', 'reminders', []))
+
+    def export_kazhelp_vars(self):
+        return {
+            'spotlight_name': self.feature_name,
+            'spotlight_host_name': self.role_host_name
+        }
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
@@ -532,16 +573,21 @@ class Spotlight(KazCog):
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):
-        """
-        Manages the World Spotlight event. Users: see `.help spotlight join`.
+        """!kazhelp
+        brief: "{{spotlight_name}} commands group. See sub-commands."
+        description: |
+            {{spotlight_name}} commands group. See sub-commands.
+
+            TIP: For convenience, most sub-commands support a single-letter shorthand. Check each
+            command's Usage section.
         """
         await self.bot.say(get_group_help(ctx))
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['l'])
     @mod_only()
     async def list(self, ctx):
-        """
-        [MOD ONLY] List all the spotlight applications in summary form.
+        """!kazhelp
+        description: List all the {{spotlight_name}} applications in summary form.
         """
         self._load_applications()
         logger.info("Listing all spotlight applications for {0.author!s} in {0.channel!s}"
@@ -566,7 +612,13 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['c'])
     @mod_only()
     async def current(self, ctx):
-        """ [MOD ONLY] Show the currently selected application. """
+        """!kazhelp
+        description: |
+            Show the currently selected application.
+
+            The "current application" is selected by {{!spotlight roll}} or {{!spotlight select}},
+            and is the application used by {{!spotlight showcase}} and {{!spotlight queue add}}.
+        """
         self._load_applications()
         try:
             app = await self._get_current()
@@ -578,9 +630,10 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['r'])
     @mod_only()
     async def roll(self, ctx):
-        """
-        [MOD ONLY] Select a spotlight application at random, and set it as the currently selected
-        application. Only applications that are marked 'ready for Spotlight' will be selected.
+        """!kazhelp
+        description: |
+            Select a {{spotlight_name}} application at random, and set it as the currently selected
+            application. Only applications that are marked 'ready for Spotlight' will be selected.
         """
         self._load_applications()
 
@@ -601,12 +654,16 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['s'])
     @mod_only()
     async def select(self, ctx, list_index: int):
-        """
-        [MOD ONLY] Set a specific spotlight application as the currently selected application.
-
-        Arguments:
-        * list_index: Required. The numerical index of a spotlight application, as shown with
-         .spotlight list.
+        """!kazhelp
+        description: Set the currently selected application.
+        parameters:
+            - name: list_index
+              optional: false
+              type: number
+              description: The numerical index of an application, as shown by {{!spotlight list}}.
+        examples:
+            - command: .spotlight set 5
+              description: Set the current application to entry #5.
         """
         self._load_applications()
 
@@ -632,9 +689,12 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False)
     @mod_only()
     async def showcase(self, ctx):
-        """
-        [MOD ONLY] Publicly announce the currently selected application in the Spotlight channel,
-        and switch the Spotlight Host role to the application's owner (if valid).
+        """!kazhelp
+
+        brief: Announce the next {{spotlight_name}} from the currently selected application.
+        description: Announce the next {{spotlight_name}} from the currently selected application
+            in the configured public {{spotlight_name}} channel. Also switches the
+            {{spotlight_host_name}}  role to the applicant (if a valid user).
         """
 
         # Retrieve and showcase the app
@@ -686,9 +746,9 @@ class Spotlight(KazCog):
     @spotlight.group(pass_context=True, invoke_without_command=True, aliases=['q'])
     @mod_only()
     async def queue(self, ctx):
-        """
-        [MOD ONLY] The `.spotlight queue` sub-command contains sub-sub-commands that let moderators
-        manage a queue of upcoming spotlights.
+        """!kazhelp
+        description: Command group containing subcommands that allow managing the queue of upcoming
+            {{spotlight_name}} events. See sub-commands for more information.
         """
         await self.bot.say(get_group_help(ctx))
 
@@ -725,8 +785,12 @@ class Spotlight(KazCog):
     @queue.command(name='list', ignore_extra=False, pass_context=True, aliases=['l'])
     @mod_only()
     async def queue_list(self, ctx):
-        """
-        [MOD ONLY] Lists the current queue of upcoming spotlights.
+        """!kazhelp
+        description: |
+            Lists the current queue of upcoming {{spotlight_name}} events.
+
+            The queue is always ordered chronologically. If two queue items have the exact same
+            date, the order between them is undefined.
         """
         self._load_applications()
         logger.info("Listing queue for {0.author!s} in {0.channel!s}".format(ctx.message))
@@ -741,15 +805,21 @@ class Spotlight(KazCog):
     @queue.command(name='showcase', ignore_extra=False, pass_context=True, aliases=['s'])
     @mod_only()
     async def queue_showcase(self, ctx, *, month: NaturalDateConverter=None):
-        """
-        [MOD ONLY] Lists a month's queue in the showcase format.
-
-        Arguments:
-        * month: Optional. Specify the month to list applications for. Default: next month.
-
-        Examples:
-            .spotlight q s 2018-03
-            .spotlight q s March 2018
+        """!kazhelp
+        brief: Lists the queued {{spotlight_name}} events for a given month.
+        description: |
+            Lists the queued {{spotlight_name}} events for a given month. This is sent as markdown
+            in a code block, suitable for copy-pasting so that a mod can use it to prepare an
+            announcement.
+        parameters:
+            - name: month
+              optional: true
+              type: date
+              default: next month
+              description: The month for which to list queued applications.
+        examples:
+            - command: .spotlight q s 2018-03
+            - command: .spotlight q s March 2018
         """
         self._load_applications()
         logger.info("Listing showcase queue for {0.author!s} in {0.channel!s}".format(ctx.message))
@@ -780,29 +850,34 @@ class Spotlight(KazCog):
     @queue.command(name='add', ignore_extra=False, pass_context=True, aliases=['a'])
     @mod_only()
     async def queue_add(self, ctx, *, daterange: str):
-        """
-        [MOD ONLY] Add a spotlight application scheduled for a given date range.
+        """!kazhelp
+        description: |
+            Add a {{spotlight_name}} application scheduled for a given date range.
 
-        The currently selected spotlight will be added. Use `.spotlight select` or `.spotlight roll`
-        to change the currently selected spotlight.
+            The currently selected application will be added. Use {{!spotlight select}} or
+            {{!spotlight roll}} to change the currently selected application.
+        details: |
+            NOTE: {{name}} will not take any action on the scheduled date. The date is used to order
+            the queue and as an informational tool to the moderators responsible for the
+            {{spotlight_name}}.
 
-        NOTE: KazTron will not take any action on the scheduled date. It is purely informational,
-        intended for the bot operator, as well as determining the order of the queue.
+            TIP: You can add the same {{spotlight_name}} application to the queue multiple times
+            (e.g. on different dates). To edit the date instead, use {{!spotlight queue edit}}.
+        parameters:
+            - name: daterange
+              optional: false
+              type: string
+              description: |
+                    A string in the form of `date1 to date2`. Each of the two dates can be in any
+                    of these formats:
 
-        TIP: You can add the same Spotlight application to the queue multiple times (e.g. on
-        different dates). To edit the date instead, use `.spotlight queue edit`.
-
-        Arguments:
-        * `daterange`: Required, string. A string in the form "date1 to date2". Each date can be
-          in one of these formats:
-            * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
-            * A partial date: "April 23"
-            * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
-              the week ("next Tuesday").
-
-        Examples:
-        * `.spotlight queue add 2018-01-25 to 2018-01-26`
-        * `.spotlight queue add april 3 to april 5`
+                    * An exact date: `2017-12-25`, `25 December 2017`, `December 25, 2017`.
+                    * A partial date: `April 23` (nearest future date)
+                    * A time expression: `tomorrow`, `next week`, `in 5 days`. You **cannot** use
+                      days of the week (e.g. "next Tuesday").
+        examples:
+            - command: .spotlight queue add 2018-01-25 to 2018-01-26
+            - command: .spotlight queue add april 3 to april 5
         """
         self._load_applications()
 
@@ -843,15 +918,20 @@ class Spotlight(KazCog):
     @queue.command(name='insert', pass_context=True, hidden=True, aliases=['i'])
     @mod_only()
     async def queue_insert(self, ctx):
+        """!kazhelp
+        description: "**Unsupported** as of v2.1."
+        """
         await self.bot.say("**Error**: This command is no longer supported (>= 2.1).")
 
     @queue.command(name='next', ignore_extra=False, pass_context=True, aliases=['n'])
     @mod_only()
     async def queue_next(self, ctx):
-        """
-        [MOD ONLY] Set the next spotlight in the queue as the currently selected spotlight, and
-        remove it from the queue. This is useful when a new spotlight is ready to start, as you can
-        then immediately use `.spotlight showcase` to announce it publicly.
+        """!kazhelp
+        brief: "Pop the next {{spotlight_name}} in the queue."
+        description: |
+            Pop the next {{spotlight_name}} in the queue and set it as the currently selected
+            application. This is a useful shortcut to announce the next {{spotlight_name}} in queue,
+            and is usually followed by a call to {{!spotlight showcase}}.
         """
         try:
             queue_item = self.queue_data.popleft()
@@ -887,27 +967,27 @@ class Spotlight(KazCog):
     @queue.command(name='edit', ignore_extra=False, pass_context=True, aliases=['e'])
     @mod_only()
     async def queue_edit(self, ctx, queue_index: int, *, daterange: str):
-        """
-        [MOD ONLY] Change the scheduled date of a spotlight application in the queue.
+        """!kazhelp
+        description: |
+            Change the scheduled date of a {{spotlight_name}} in the queue.
 
-        This command takes a QUEUE INDEX, not by spotlight number. Check the index with
-        `.spotlight queue list`.
-
-        Note: KazTron will not take any action on the scheduled date. It is purely informational,
-        intended for the bot operator, as well as determining the order of the queue.
-
-        Arguments:
-        * `<queue_index>`: Required, int. The numerical position in the queue, as shown with
-          `.spotlight queue list`.
-        * `<daterange>`: Required, string. A string in the form "date1 to date2". Each date can be
-          in one of these formats:
-            * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
-            * A partial date: "April 23"
-            * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
-              the week ("next Tuesday").
-
-        Examples:
-            `.spotlight queue edit 3 april 3 to april 6`
+            IMPORTANT: This command takes a **queue index**, as shown by {{!spotlight queue list}}.
+        details: |
+            NOTE: {{name}} will not take any action on the scheduled date. The date is used to order
+            the queue and as an informational tool to the moderators responsible for the
+            {{spotlight_name}}.
+        parameters:
+            - name: queue_index
+              type: number
+              optional: false
+              description: The queue position to edit, as shown with {{!spotlight queue list}}.
+            - name: daterange
+              type: string
+              optional: false
+              description: A daterange in the form `date1 to date2`. The same kind of dates are
+                accepted as for {{!spotlight queue add}}.
+        examples:
+            - command: .spotlight queue edit 3 april 3 to april 6
         """
         self._load_applications()
 
@@ -963,19 +1043,22 @@ class Spotlight(KazCog):
     @queue.command(name='rem', ignore_extra=False, pass_context=True, aliases=['r', 'remove'])
     @mod_only()
     async def queue_rem(self, ctx, queue_index: int=None):
-        """
-        [MOD ONLY] Remove a spotlight application from the queue.
+        """!kazhelp
+        description: |
+            Remove a {{spotlight_name}} application from the queue.
 
-        Removes by QUEUE INDEX, not by spotlight number. If no queue index is passed, removes the
-        last item in the queue.
-
-        Arguments:
-        * queue_index: Optional, int. The numerical position in the queue, as shown with `.spotlight
-          queue list`. If this is not provided, the last queue item will be removed.
-
-        Examples:
-            `.spotlight queue rem` - Remove the last spotlight in the queue.
-            `.spotlight queue rem 3` - Remove the third spotlight in the queue.
+            IMPORTANT: This command takes a **queue index**, as shown by {{!spotlight queue list}}.
+        parameters:
+            - name: queue_index
+              optional: true
+              type: number
+              description: The queue position to remove, as shown with {{!spotlight queue list}}.
+                If not specified, then the last item in the queue is removed.
+        examples:
+            - command: .spotlight queue rem
+              description: Remove the last spotlight in the queue.
+            - command: .spotlight queue rem 3
+              description: Remove the third spotlight in the queue.
         """
         self._load_applications()
 
@@ -1134,13 +1217,15 @@ class Spotlight(KazCog):
     @in_channels_cfg('spotlight', 'channel')
     @mod_or_has_role(role_host_name)
     async def start(self, ctx: commands.Context):
-        """
-        Start the spotlight.
+        """!kazhelp
+        description: |
+            Start the {{spotlight_name}}. For use by the {{spotlight_host_name}}.
 
-        The bot will announce the start of your spotlight. It will also remind you about remaining
-        time periodically, and announce the end of the spotlight duration.
+            {{name}} will announce the start of your {{spotlight_name}} and start counting down
+            your remaining time. You will get periodic reminders about the time remaining, as well
+            as an announcement about the end of your {{spotlight_name}}.
 
-        You must be either a moderator or the current Spotlight Host to use this command.
+            You can stop the {{spotlight_name}} early by calling {{!spotlight stop}}.
         """
         if self.start_time is not None:
             raise commands.UserInputError("The spotlight has already started! "
@@ -1172,10 +1257,9 @@ class Spotlight(KazCog):
     @in_channels_cfg('spotlight', 'channel')
     @mod_or_has_role(role_host_name)
     async def stop(self, ctx: commands.Context):
-        """
-        Stop an ongoing spotlight started with `.spotlight start`.
-
-        You must be either a moderator or the current Spotlight Host to use this command.
+        """!kazhelp
+        description: Stop an ongoing {{spotlight_name}} previously started with
+            {{!spotlight start}}.
         """
         if self.start_time is None:
             raise commands.UserInputError("The spotlight has not yet started! "
@@ -1192,8 +1276,8 @@ class Spotlight(KazCog):
     @spotlight.command(ignore_extra=False, pass_context=True)
     @in_channels_cfg('spotlight', 'channel')
     async def time(self, ctx: commands.Context):
-        """
-        Check the remaining time in the spotlight.
+        """!kazhelp
+        description: Check the remaining time for the current {{spotlight_name}}.
         """
         host = self.get_host()
         host_name = host.nick if host.nick else host.name

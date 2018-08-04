@@ -8,9 +8,28 @@ logger = logging.getLogger(__name__)
 
 
 class Welcome(KazCog):
+    """!kazhelp
+    brief: Welcomes new users to the server and logs users joining/leaving.
+    description: |
+        The Welcome cog welcomes new users to the server in the {{welcome_channel}} channel. This
+        serves as a replacement to Discord's terrible built-in welcome messages.
+
+        This cog also logs users joining and leaving the server to {{output_channel}}, for
+        moderation purposes, such as detecting raids, impersonation and ban evasion.
+
+        It has no usable commands.
+    """
     def __init__(self, bot):
         super().__init__(bot)
-        self.channel_welcome = discord.Object(id=self.config.get("welcome", "channel_welcome"))
+        self.channel_welcome: discord.Channel = \
+            discord.Object(id=self.config.welcome.channel_welcome)
+
+    async def on_ready(self):
+        await super().on_ready()
+        self.channel_welcome = self.validate_channel(self.config.welcome.channel_welcome)
+
+    def export_kazhelp_vars(self):
+        return {'welcome_channel': '#' + self.channel_welcome.name}
 
     async def on_member_join(self, member: discord.Member):
         """

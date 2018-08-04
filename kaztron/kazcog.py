@@ -1,6 +1,7 @@
 import functools
 import logging
-from typing import Type
+from asyncio import iscoroutinefunction
+from typing import Type, Dict
 
 import discord
 from discord.ext import commands
@@ -85,6 +86,8 @@ class KazCog:
                 else:
                     cog.core.set_cog_ready(cog)
             return wrapper
+        if not iscoroutinefunction(self.on_ready):
+            raise discord.ClientException("on_ready must be a coroutine function")
         self.on_ready = on_ready_wrapper(self.on_ready).__get__(self, type(self))
 
     def _setup_config(self,
@@ -147,6 +150,17 @@ class KazCog:
         """
         pass
 
+    def export_kazhelp_vars(self) -> Dict[str, str]:
+        """
+        Can be overridden to make dynamic help variables available for structured help ("!kazhelp").
+        Returns a dict mapping variable name to values.
+
+        Variable names must start with a character in the set [A-Za-z0-9_].
+
+        :return: variable name -> value
+        """
+        return {}
+
     def setup_custom_state(self, name, defaults=None):
         """
         Set up a custom state file for this cog instance. To be called by the child class.
@@ -188,10 +202,10 @@ class KazCog:
     @property
     def core(self):
         # cached since we need this when handling disconnect, after cog potentially unloaded...
-        from kaztron.cog.core import CoreCog
+        from kaztron.cog.core import Core
         if not self._core_cache:
-            self._core_cache = self.bot.get_cog('CoreCog')
-        return self._core_cache  # type: CoreCog
+            self._core_cache = self.bot.get_cog('Core')
+        return self._core_cache  # type: Core
 
     @property
     def is_ready(self):

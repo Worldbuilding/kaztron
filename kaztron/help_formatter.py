@@ -4,8 +4,8 @@ from datetime import datetime
 import inspect
 import logging
 import re
-from textwrap import shorten, indent
-from typing import Union, Callable
+from textwrap import shorten, indent, wrap
+from typing import Union, Callable, Dict
 
 import discord
 from discord.ext.commands import HelpFormatter
@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 CommandOrGroup = Union[commands.Command, commands.GroupMixin]
 
 
-class CoreHelpFormatter:
+class NotKazhelpError(ValueError):
+    pass
+
+
+class CoreHelpParser:
     """ Core help formatter for KazCogs. This formatter will make use of
     structured help data and compatible KazTron-defined check functions to construct the help data.
     If this data is not available for a given command, then the normal discord.py help formatting is
@@ -69,6 +73,10 @@ class CoreHelpFormatter:
         - {{!command name}} - A link to another command (or subcommand).
         - {{%CogName}} - A link to a cog.
 
+    Cogs may override KazCog's :meth:`~KazCog.export_kazhelp_vars` in order to define custom
+    variables. Predefined variables cannot be overridden. Variable names must start with
+    [A-Za-z0-9_] and must not contain curly braces.
+
     In addition, the cog docstring may specify the order of commands and subcommands as part of its
     structured data. This data may or may not be used: e.g. for the Discord output format, this data
     is not considered, but for the Jekyll formatter it is. For example:
@@ -106,9 +114,9 @@ class CoreHelpFormatter:
         - command:
           description:
     """
-    cog_fields = {'description', 'brief', 'details',
+    cog_fields = {'description', 'jekyll_description', 'brief', 'details',
                   'parameters', 'examples', 'users', 'channels', 'contents'}
-    cmd_fields = {'description', 'brief', 'details',
+    cmd_fields = {'description', 'jekyll_description', 'brief', 'details',
                   'parameters', 'examples', 'users', 'channels'}
     blocks = ('IMPORTANT', 'WARNING', 'NOTE', 'TIP')
     var_re = re.compile('{{\s*([A-Za-z0-9_-]+)\s*}}')
@@ -117,6 +125,7 @@ class CoreHelpFormatter:
 
     def __init__(self, variables=None):
         self.variables = variables or {}
+        self.cog_vars = {}  # type: Dict[str, Dict[str, str]]
         self.yaml = YAML(typ='safe')
 
     def parse(self, command: Union[commands.Command, KazCog], bot: commands.Bot):
@@ -139,20 +148,21 @@ class CoreHelpFormatter:
         """
         try:
             doc_data = copy.deepcopy(command.kaz_structured_help)
-        except AttributeError:
+        except AttributeError:  # kaz_structured_help doesn't exist yet
             try:
                 doc_data = self._parse_yaml(command)
             except YAMLError as e:
                 if isinstance(command, commands.Command):
-                    name = command.qualified_name
+                    name = "command {} (cog {})".format(
+                        command.qualified_name, type(command.instance).__name__
+                    )
                 else:
-                    name = type(command).__name__
-                raise ValueError("Error parsing structured help YAML from command {}".format(name))\
-                    from e
+                    name = "cog {}".format(type(command).__name__)
+                raise ValueError("Error parsing !kazhelp YAML for {}".format(name)) from e
             if isinstance(command, commands.Command):
                 self._process_checks(doc_data, command, bot)
             command.kaz_structured_help = copy.deepcopy(doc_data)
-        self._parse_vars(doc_data)
+        self._parse_vars(command, doc_data)
         return doc_data
 
     def parse_tags(self, text: str, callback: Callable[[str, str], str]):
@@ -205,6 +215,7 @@ class CoreHelpFormatter:
         # defaults
         parsed_data = {
             'description': '',
+            'jekyll_description': None,
             'brief': None,
             'details': None,
             'parameters': [],
@@ -223,8 +234,13 @@ class CoreHelpFormatter:
         # parse the help YAML
         raw_help = self.get_raw_help(command)
         if not raw_help or not raw_help.startswith(START_STRING):
-            raise ValueError('KazCog structured help must start with !kazhelp')
-        parsed_data.update(self.yaml.load(raw_help[len(START_STRING):]))
+            raise NotKazhelpError()
+        raw_data = self.yaml.load(raw_help[len(START_STRING):])
+
+        # update parsed_data's default values, but don't overwrite defaults with a None value
+        for key, value in raw_data.items():
+            if value is not None or key not in parsed_data:
+                parsed_data[key] = value
 
         # validation: check for unknown fields
         unknown_fields = set(parsed_data.keys()) - fields
@@ -333,23 +349,43 @@ class CoreHelpFormatter:
         if new_brief:
             data['brief'] = new_brief
 
-    def _parse_vars(self, data: dict):
-        for k in ('description', 'brief', 'details', 'users', 'channels'):
+    def _parse_vars(self, command: Union[commands.Command, KazCog], data: dict):
+        if isinstance(command, commands.Command):
+            cog = command.instance
+        else:
+            cog = command
+        cog_name = type(cog).__name__
+
+        # get any cog-specific variables
+        if cog_name not in self.cog_vars:
+            self.cog_vars[cog_name] = cog.export_kazhelp_vars().copy()
+
+        # generate variables - order is important, self.variables should have priority
+        try:
+            variables = self.cog_vars[cog_name].copy()
+            variables.update(self.variables)
+        except KeyError:
+            variables = self.variables
+
+        for k in ('description', 'jekyll_description', 'brief', 'details', 'users', 'channels'):
             if data[k]:
-                data[k] = self._subst_vars(data[k])
+                data[k] = self._subst_vars(data[k], variables)
         for p in data['parameters']:
             for k in ('default', 'type', 'description'):
                 if p[k]:
-                    p[k] = self._subst_vars(p[k])
+                    p[k] = self._subst_vars(p[k], variables)
         for e in data['examples']:
             for k in ('command', 'description'):
                 if e[k]:
-                    e[k] = self._subst_vars(e[k])
+                    e[k] = self._subst_vars(e[k], variables)
 
-    def _subst_vars(self, s: str):
+    def _subst_vars(self, s: str, variables: Dict[str, str]):
         def subst_var_inner(m):
+            varname = m.group(1)
+            if not re.match('[A-Za-z0-9_]', varname[0]):
+                return m.group(0)  # ignore invalid variable name
             try:
-                return self.variables[m.group(1)]
+                return variables[varname]
             except KeyError:
                 return m.group(0)
         return self.var_re.sub(subst_var_inner, s)
@@ -358,9 +394,9 @@ class CoreHelpFormatter:
 class DiscordHelpFormatter(commands.HelpFormatter):
     """
     Handles formatting of the help command for KazTron cogs. Format is as defined in the
-    KazHelpFormatter.
+    CoreHelpParser.
     """
-    def __init__(self, parser: CoreHelpFormatter, *args, **kwargs):
+    def __init__(self, parser: CoreHelpParser, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.parser = parser
 
@@ -384,18 +420,20 @@ class DiscordHelpFormatter(commands.HelpFormatter):
         if command is not bot:  # command or cog - not the bot itself
             try:
                 data = self.parser.parse(command, bot)
-            except ValueError as e:
-                if '!kaz' in e.args[0]:
-                    logger.debug("Non-KazCog help for command '{!s}'".format(command))
-                else:
-                    raise
+            except NotKazhelpError:
+                logger.debug("Non-!kazhelp for command '{!s}'".format(command))
             else:
-                logger.debug("Parsed KazCog YAML help info for command '{!s}'".format(command))
-                command.description = self._format_links(data['description'])
-                command.brief = self._format_links(data['brief'] or data['description'])
-                command.help = self._format_links(self._build_detailed_info(data))
-                if isinstance(command, commands.GroupMixin):
-                    command.help += '\n\n' + self._make_title("SUB-COMMANDS")
+                logger.debug("Parsed !kazhelp for command '{!s}'".format(command))
+                if isinstance(command, commands.Command):
+                    command.description = self._format_links(data['description'])
+                    command.brief = self._format_links(data['brief'] or data['description'])
+                    command.help = self._format_links(self._build_detailed_info(data))
+                    if isinstance(command, commands.GroupMixin):
+                        command.help += '\n\n' + self._make_title("SUB-COMMANDS")
+                else:  # cog
+                    command.__doc__ = self._format_links(
+                        data['description'] + '\n\n' + self._build_detailed_info(data)
+                    )
 
     def _build_detailed_info(self, data: dict):
         sections = []
@@ -405,7 +443,7 @@ class DiscordHelpFormatter(commands.HelpFormatter):
         if data['details'] or data['users'] or data['channels']:
             sections.append(self._make_title("DETAILS"))
             if data['details']:
-                sections.append(data['details'])
+                sections.append(self._format_links(data['details']))
             if data['users']:
                 sections.append('MEMBERS: {users}'.format(**data))
             if data['channels']:
@@ -421,30 +459,40 @@ class DiscordHelpFormatter(commands.HelpFormatter):
     def _build_parameters(data: dict):
         strings = []
         for p in data['parameters']:
+            p_strings = []
             is_optional = p['optional']
+
+            # name/type
             if is_optional:
-                strings.append('* [{name}]'.format(**p))
+                p_strings.append('* [{name}]'.format(**p))
             else:
-                strings.append('* <{name}>'.format(**p))
+                p_strings.append('* <{name}>'.format(**p))
             if p['type']:
-                strings.append(' ({type})'.format(**p))
-            strings.append(':')
+                p_strings.append('({type})'.format(type=p['type'].strip()))
+            p_strings.append(':')
+
+            # description
             if is_optional:
-                strings.append(' Optional. {description} Default: {default}'.format(**p))
+                p_strings.append('Optional.')
+                p_strings.append(p['description'].strip())
+                if p['default']:
+                    p_strings.append('Default: {}'.format(p['default'].strip()))
             else:
-                strings.append(' ')
-                strings.append(p['description'])
-            strings.append('\n')
-        return ''.join(strings)
+                p_strings.append(p['description'].strip())
+            strings.append(' '.join(p_strings))
+        return '\n\n'.join(strings)
 
     @staticmethod
     def _build_examples(data: dict):
         strings = []
         for e in data['examples']:
             if 'description' in e and e['description']:
-                strings.append('{command}\n    {description}'.format(**e))
+                strings.append('{command}\n    {description}'.format(
+                    command=e['command'].strip(),
+                    description=e['description'].strip()
+                ))
             else:
-                strings.append(e['command'])
+                strings.append(e['command'].strip())
         return '\n\n'.join(strings)
 
     @staticmethod
@@ -470,7 +518,7 @@ class JekyllHelpFormatter:
     """
     slugify_re = re.compile('[^A-Za-z0-9\-]')
 
-    def __init__(self, parser: CoreHelpFormatter, bot: commands.Bot):
+    def __init__(self, parser: CoreHelpParser, bot: commands.Bot):
         self.parser = parser
         self.bot = bot
         self.output = None  # type: list
@@ -488,15 +536,13 @@ class JekyllHelpFormatter:
 
         try:
             data = self.parser.parse(cog, self.bot)
-        except ValueError as e:
-            if '!kaz' in e.args[0]:
-                data = {
-                    'brief': None,
-                    'description': cog.__doc__ or '',
-                    'contents': []
-                }
-            else:
-                raise
+        except NotKazhelpError as e:
+            data = {
+                'brief': None,
+                'description': cog.__doc__ or '',
+                'jekyll_description': None,
+                'contents': []
+            }
         self._format_front_matter(data)
         self._format_all_commands(data)
 
@@ -516,7 +562,9 @@ class JekyllHelpFormatter:
         if data['brief']:
             parts.append('summary: "{brief}"'.format(brief=shorten(data['brief'], 200)))
         parts.append('---\n')
-        if data['description']:
+        if data['jekyll_description']:
+            parts.append(self._format_md_field(data['jekyll_description']))
+        elif data['description']:
             parts.append(self._format_md_field(data['description']))
         self.output.append('\n'.join(parts))
 
@@ -532,10 +580,10 @@ class JekyllHelpFormatter:
 
     def _format_iterate_names(self, name_list: list, parent: CommandOrGroup):
         for name in name_list:
-            self.section[-1] += 1
             if isinstance(name, str):
                 command = parent.get_command(name)
                 if command:
+                    self.section[-1] += 1
                     self.commands.append(command)
                     self._format_command(command)
                 else:
@@ -544,6 +592,7 @@ class JekyllHelpFormatter:
                 command_name, subcommand_struct = next(iter(name.items()))
                 command = parent.get_command(command_name)
                 if command:
+                    self.section[-1] += 1
                     self.commands.append(command)
                     self._format_command(command)
 
@@ -578,17 +627,17 @@ class JekyllHelpFormatter:
         try:
             data = self.parser.parse(command, self.bot)
             logger.debug("Parsed KazCog YAML help info for command '{!s}'".format(command))
-        except ValueError as e:
-            if '!kaz' in e.args[0]:
-                data = None
-                logger.debug("Non-KazCog help for command '{!s}'".format(command))
-            else:
-                raise
+        except NotKazhelpError as e:
+            data = None
+            logger.debug("Non-!kazhelp docs for command '{!s}'".format(command))
 
         self.output.append(self._make_cmd_header(command.qualified_name, command.aliases))
 
         if data:
-            self.output.append(self._format_md_field(data['description']))
+            if data['jekyll_description']:
+                self.output.append(self._format_md_field(data['jekyll_description']))
+            else:
+                self.output.append(self._format_md_field(data['description']))
             self.output.append('**Usage**: `' + self.get_command_signature(command) + '`')
             self.output.append(self._build_detailed_info(data))
         else:
@@ -634,9 +683,9 @@ class JekyllHelpFormatter:
             if is_optional:
                 strings.append('[{name}]\n:'.format(**p))
             else:
-                strings.append('<{name}>\n:'.format(**p))
+                strings.append('&lt;{name}&gt;\n:'.format(**p))
             if p['type']:
-                strings.append(' {type}.'.format(**p))
+                strings.append(' {type}.'.format(type=p['type'].strip()))
 
             if is_optional:
                 if p['default']:
@@ -653,7 +702,7 @@ class JekyllHelpFormatter:
             desc_lines = desc.splitlines()
             strings.append(desc_lines[0])
             strings.append(indent('\n'.join(desc_lines[1:]), '  '))
-            strings.append('\n')
+            strings.append('\n\n')
         return ''.join(strings)
 
     @staticmethod
@@ -679,7 +728,7 @@ class JekyllHelpFormatter:
         return '\n'.join(strings)
 
     def _make_cmd_header(self, title: str, aliases: str):
-        return '{} {}. {}\n{{ :#{} }}'.format(
+        return '{} {}. {}\n{{: #{} }}'.format(
             '#' * (len(self.section) + 1),
             '.'.join(str(i) for i in self.section),
             title + ((' (' + ', '.join(aliases) + ')') if aliases else ''),
@@ -703,7 +752,7 @@ class JekyllHelpFormatter:
 
     def _format_tags(self, text: str) -> str:
         return self.parser.parse_tags(text, lambda name, contents:
-            '{{% include {tag}.html content="{content}" %}}'.format(
+            "{{% include {tag}.html content='{content}' %}}".format(
                 tag=name.lower(),
                 content=html.escape(contents)
             ))

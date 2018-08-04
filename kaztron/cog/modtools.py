@@ -19,7 +19,7 @@ from kaztron.utils.strings import parse_keyword_args, split_chunks_on
 logger = logging.getLogger(__name__)
 
 
-class ModToolsCog(KazCog):
+class ModTools(KazCog):
     """!kazhelp
 
     brief: Miscellaneous tools for moderators.
@@ -177,28 +177,31 @@ class ModToolsCog(KazCog):
         description: |
             Tempban a user.
 
-            This method will automatically create a modnote. It will not communicate with the user.
+            This command will immediately tempban (mute) the user, and create a modnote. It will not
+            communicate with the user.
 
-            This module integrates with modnotes, and will automatically enforce "temp" notes,
-            giving a role to users with unexpired "temp" notes and removing that role when the note
-            expires. This command is shorthand for
-            `.notes add <user> temp expires="[expires]" [reason]`.
+            The user will be unbanned (unmuted) when the tempban expires.
+
+            Note that the ModTools module automatically enforces all tempban modules. See the
+            {{%ModTools}} introduction or `.help ModTools` for more info.
+
+            This command is shorthand for `.notes add <user> temp expires="[expires]" [reason]`.
         parameters:
             - name: user
               type: string
-              description: The user to ban. See {{!notes}}  for more information.
+              description: The user to ban. See {{!notes}} for more information.
             - name: reason
               type: string
               optional: true
-              description: Complex parameter of the format `[expires=[expires]] [reason]`. `reason`
-                is optional but recommended. The reason to record in the modnote.
+              description: "Complex parameter of the format `[expires=[expires]] [reason]`. `reason`
+                is the reason for the tempban, to be recorded as a modnote (optional but highly
+                recommended)."
             - name: expires
               type: datespec
               optional: true
-              description: |
-                The datespec for the tempban's expiration. Use quotation marks if the
+              description: "The datespec for the tempban's expiration. Use quotation marks if the
                 datespec has spaces in it. See {{!notes add}} for more information on accepted
-                syntaxes.
+                syntaxes."
               default: '"in 7 days"'
         examples:
             - command: .tempban @BlitheringIdiot#1234 Was being a blithering idiot.
@@ -331,4 +334,4 @@ class ModToolsCog(KazCog):
 
 
 def setup(bot):
-    bot.add_cog(ModToolsCog(bot))
+    bot.add_cog(ModTools(bot))
