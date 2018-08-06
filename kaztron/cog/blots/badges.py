@@ -23,6 +23,24 @@ logger = logging.getLogger(__name__)
 
 
 class BadgeManager(KazCog):
+    """!kazhelp
+    brief: Give users badges for community contributions. Part of Inkblood Writing Guild BLOTS.
+    description: |
+        BadgeManager lets users give each other badges for contribution to each others' projects
+        and to the community.
+
+        Badges can be given in the {{badge_channel}} channel. Check the pins in this channel for
+        instructions. {{name}} will detect all messages in this channel and let you know when it
+        detects that you've given a badge. **Check the {{name}} response to make sure your badge
+        registered properly.**
+
+        You can also edit or delete your old message, and {{name}} will detect the change and update
+        its badge list accordingly.
+    contents:
+        - badges:
+            - report
+            - load
+    """
     ITEMS_PER_PAGE = 8
     EMBED_COLOUR = solarized.green
 
@@ -38,6 +56,9 @@ class BadgeManager(KazCog):
         channel_id = self.config.get('blots', 'badge_channel')
         self.channel = self.validate_channel(channel_id)
         self.c = BlotsBadgeController(self.server, self.config)
+
+    def export_kazhelp_vars(self):
+        return {'badge_channel': '#' + self.channel.name}
 
     async def add_badge(self, message: discord.Message, suppress_errors=False) \
             -> Optional[model.Badge]:
@@ -177,17 +198,27 @@ class BadgeManager(KazCog):
 
     @commands.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
     async def badges(self, ctx: commands.Context, user: MemberConverter2, page: int=None):
-        """
-        Check a user's badges.
+        """!kazhelp
+        brief: Check a user's badges.
+        description: |
+            Check a user's badges.
 
-        Arguments:
-        * user: Required. The user to check (as an @mention or a Discord ID).
-        * page: Optional. The page number to access, if there are more than 1 page of badges.
-          Default: last page.
-
-        Examples:
-            .checkin badge @JaneDoe - List all of JaneDoe's badges (last page if multiple pages)..
-            .checkin badge @JaneDoe 4 - List the 4th page of JaneDoe's badges
+            TIP: If you want to give a badge, leave a properly formatted message in
+            {{badge_channel}}. See {{%BadgeManager}} or `.help BadgeManager` for more information.
+        parameters:
+            - name: user
+              type: "@mention"
+              description: The user to check (as an @mention or a Discord ID).
+            - name: page
+              type: number
+              optional: true
+              description: The page number to access, if a user has more than 1 page of badges.
+              default: last page (most recent)
+        examples:
+            - command: .badge @JaneDoe
+              description: List all of JaneDoe's badges (most recent, if there are multiple pages).
+            - command: .checkin badge @JaneDoe 4
+              description: List the 4th page of JaneDoe's badges.
         """
         user = user  # type: discord.Member  # for IDE type checking
         try:
@@ -220,11 +251,14 @@ class BadgeManager(KazCog):
     @mod_only()
     @mod_channels()
     async def report(self, ctx: commands.Context, min_badges: int=1):
-        """
-        [MOD ONLY] Shows a report of all members with badges.
-
-        Arguments:
-        * min_badges: Optional. Minimum number of badges to report.
+        """!kazhelp
+        description: "Show a report of member badge counts."
+        parameters:
+            - name: min_badges
+              optional: true
+              type: number
+              description: |
+                Minimum number of badges a user needs to have to be included in the report.
         """
         if min_badges < 1:
             raise commands.BadArgument("`min` must be at least 1.")
@@ -239,12 +273,16 @@ class BadgeManager(KazCog):
     @badges.command(pass_context=True, ignore_extra=True)
     @mod_only()
     async def load(self, ctx: commands.Context, messages: int=100):
-        """
-        [MOD ONLY] Read the badge channel history and add any missing badges. Mostly useful for
-        transitioning to bot-managed badges, or loading missed badges from bot downtime.
-
-        Arguments:
-        * messages: Optional (default 100). Number of messages to read in history.
+        """!kazhelp
+        description:
+            Read the badge channel history and add any missing badges. Mostly useful for
+            transitioning to bot-managed badges, or loading missed badges from bot downtime.
+        parameters:
+            - name: messages
+              optional: true
+              default: 100
+              type: number
+              description: Number of messages to read in history.
         """
         if messages <= 0:
             raise commands.BadArgument("`messages` must be positive")

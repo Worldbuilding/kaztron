@@ -271,6 +271,8 @@ class CoreHelpParser:
                 'type': ''
             }
             p_v.update(p)
+            if 'description' not in p or 'name' not in p:
+                raise KeyError("Parameters must have name and description")
             validated.append(p_v)
         data['parameters'] = validated
 
@@ -369,15 +371,15 @@ class CoreHelpParser:
 
         for k in ('description', 'jekyll_description', 'brief', 'details', 'users', 'channels'):
             if data[k]:
-                data[k] = self._subst_vars(data[k], variables)
+                data[k] = self._subst_vars(str(data[k]), variables)
         for p in data['parameters']:
             for k in ('default', 'type', 'description'):
                 if p[k]:
-                    p[k] = self._subst_vars(p[k], variables)
+                    p[k] = self._subst_vars(str(p[k]), variables)
         for e in data['examples']:
             for k in ('command', 'description'):
                 if e[k]:
-                    e[k] = self._subst_vars(e[k], variables)
+                    e[k] = self._subst_vars(str(e[k]), variables)
 
     def _subst_vars(self, s: str, variables: Dict[str, str]):
         def subst_var_inner(m):
@@ -664,11 +666,11 @@ class JekyllHelpFormatter:
             if data['details']:
                 sections.append(self._format_md_field(data['details']))
             if data['users']:
-                sections.append(self._make_header("Members") + ': ' +
-                                self._format_md_field(data['users'], tags=False))
+                sections.append(self._make_definition("Members",
+                                self._format_md_field(data['users'], tags=False)))
             if data['channels']:
-                sections.append(self._make_header("Channels") + ': ' +
-                                self._format_md_field(data['channels'], tags=False))
+                sections.append(self._make_definition("Channels",
+                                self._format_md_field(data['channels'], tags=False)))
         if data['examples']:
             sections.append(
                 self._make_header("Examples" if len(data['examples']) > 1 else "Example")
@@ -679,29 +681,25 @@ class JekyllHelpFormatter:
     def _build_parameters(self, data: dict):
         strings = []
         for p in data['parameters']:
+            type_str = ' {type}.'.format(type=p['type'].strip()) if p['type'] else ''
+
             is_optional = p['optional']
             if is_optional:
-                strings.append('[{name}]\n:'.format(**p))
-            else:
-                strings.append('&lt;{name}&gt;\n:'.format(**p))
-            if p['type']:
-                strings.append(' {type}.'.format(type=p['type'].strip()))
-
-            if is_optional:
                 if p['default']:
-                    desc = ' Optional. {description} Default: {default}'.format(
+                    desc = '{type} Optional. {description} Default: {default}'.format(
+                        type=type_str,
                         description=self._format_md_field(p['description'], tags=False),
                         default=self._format_md_field(p['default'], tags=False)
                     )
                 else:
-                    desc = ' Optional. {description}'.format(
+                    desc = '{type} Optional. {description}'.format(
+                        type=type_str,
                         description=self._format_md_field(p['description'], tags=False)
                     )
+                strings.append(self._make_definition('[{}]'.format(p['name']), desc))
             else:
-                desc = ' ' + self._format_md_field(p['description'], tags=False)
-            desc_lines = desc.splitlines()
-            strings.append(desc_lines[0])
-            strings.append(indent('\n'.join(desc_lines[1:]), '  '))
+                desc = type_str + ' ' + self._format_md_field(p['description'], tags=False)
+                strings.append(self._make_definition('&lt;{}&gt;'.format(p['name']), desc))
             strings.append('\n\n')
         return ''.join(strings)
 
@@ -742,6 +740,15 @@ class JekyllHelpFormatter:
     def _make_header(title: str):
         return '**{}**'.format(title)
 
+    @staticmethod
+    def _make_definition(term: str, definition: str):
+        definition_lines = definition.splitlines()
+        return "{}\n: {}\n{}".format(
+            term.strip(),
+            definition_lines[0].strip(),
+            '\n'.join(('  ' + l.strip()) for l in definition_lines[1:])
+        )
+
     def _format_md_field(self, text: str, tags=True, links=True):
         text_f = text.strip()
         if tags:
@@ -769,6 +776,14 @@ class JekyllHelpFormatter:
                             link_target
                         )
                 else:
+                    # communicate the warning
+                    msg = "Link target not found: \"{}\" in cog {}".format(
+                        link_target, type(self.cog).__name__
+                    )
+                    logger.warning(msg)
+                    self.bot.loop.create_task(
+                        self.bot.send_message(self.context.message.channel, msg))
+
                     return '<a href="#">{}</a> (error: link target not found)'.format(link_target)
             else:
                 return '<a href="./{}.html">{}</a>'.format(link_target.lower(), link_target)

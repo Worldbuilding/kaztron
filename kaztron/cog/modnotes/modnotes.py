@@ -27,6 +27,30 @@ logger = logging.getLogger(__name__)
 
 
 class ModNotes(KazCog):
+    """!kazhelp
+    brief: Store moderation notes about users.
+    description: |
+        The ModNotes cog implements the storage of records for use by moderators in the course
+        of their duty, and as a tool of communication between moderators. It allows arbitrary text
+        records to be recorded, alongside with the author and timestamp, associated to various
+        community users.
+    contents:
+        - notes:
+            - finduser
+            - add
+            - expires
+            - rem
+            - watches
+            - temps
+            - name
+            - alias
+            - group:
+                - add
+                - rem
+            - removed
+            - restore
+            - purge
+    """
     NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
 
@@ -182,18 +206,24 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def notes(self, ctx, user: str, page: int=None):
-        """
-        [MOD ONLY] Access moderation logs.
-
-        Arguments:
-        * user: Required. The user for whom to find moderation notes. This can be an @mention, a
-          Discord ID (numerical only), or a KazTron ID (starts with *).
-        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
-          Default: last page.
-
-        Example:
-            .notes @User#1234
-            .notes 330178495568436157 3
+        """!kazhelp
+        description: "Access a user's moderation logs."
+        details: |
+            10 notes are shown per page. This is partly due to Discord message length limits, and
+            partly to avoid too large a data dump in a single request.
+        parameters:
+            - name: user
+              type: "@user"
+              description: "The user for whom to retrieve moderation notes. This can be an
+                `@mention`, a Discord ID (numerical only), or a KazTron ID (starts with `*`)."
+            - name: page
+              optional: true
+              default: last page (latest notes)
+              type: number
+              description: "The page number to show, if there are more than 1 page of notes."
+        examples:
+            - command: .notes @User#1234
+            - command: .notes 330178495568436157 3
         """
         db_user = await c.query_user(self.bot, user)
         db_group = c.query_user_group(db_user)
@@ -212,12 +242,18 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels()
     async def watches(self, ctx, page: int=None):
-        """
-        [MOD ONLY] Show all watches currently in effect (i.e. non-expired watch, int, warn records).
-
-        Arguments:
-        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
-          Default: last page.
+        """!kazhelp
+        description: Show all watches currently in effect (i.e. all `watch`, `int` and `warn`
+            records that are not expired).
+        details: |
+            10 notes are shown per page. This is partly due to Discord message length limits, and
+            partly to avoid too large a data dump in a single request.
+        parameters:
+            - name: page
+              optional: true
+              default: last page (latest notes)
+              type: number
+              description: The page number to show, if there are more than 1 page of notes.
         """
         watch_types = (RecordType.watch, RecordType.int, RecordType.warn)
         db_records = c.query_unexpired_records(types=watch_types)
@@ -235,12 +271,17 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels()
     async def temps(self, ctx, page: int=None):
-        """
-        [MOD ONLY] Show all tempbans currently in effect (i.e. non-expired temp records).
-
-        Arguments:
-        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
-          Default: last page.
+        """!kazhelp
+        description: Show all tempbans currently in effect (i.e. non-expired `temp` records).
+        details: |
+            10 notes are shown per page. This is partly due to Discord message length limits, and
+            partly to avoid too large a data dump in a single request.
+        parameters:
+            - name: page
+              optional: true
+              default: last page (latest notes)
+              type: number
+              description: The page number to show, if there are more than 1 page of notes.
         """
         db_records = c.query_unexpired_records(types=RecordType.temp)
 
@@ -257,47 +298,57 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def add(self, ctx, user: str, type_: str, *, note_contents):
-        """
-        [MOD ONLY] Add a new note.
+        """!kazhelp
+        description: Add a new note.
+        details: Attachments in the same message as the command are saved to the note.
+        parameters:
+            - name: user
+              type: "@user"
+              description: User. See {{!notes}}.
+            - name: type_
+              type: string
+              description: |
+                Type of record. One of:
 
-        Attachments in the same message as the command are appended to the note.
-
-        Arguments:
-        * <user>: Required. The user to whom the note applies. See `.help notes`.
-        * <type>: Required. The type of record. One of:
-            * note: Miscellaneous note.
-            * good: Noteworthy positive contributions
-            * watch: Moderative problems to monitor
-            * int: Moderator intervention
-            * warn: Formal warning
-            * temp: Temporary ban
-            * perma: Permanent ban
-            * appeal: Formal appeal or decision
-        * [OPTIONS]: Optional. Options of the form:
-            * timestamp="timespec": Sets the note's time (e.g. the time of an event).
-              Default is "now". Instead of `timestamp`, you can also use the synonyms `starts`,
-              `start`, `time`.
-            * expires="timespec": Sets when a note expires. This is purely documentation. For
-              example, when a temp ban ends, or a permaban appeal is available, etc.
-              Default is no expiration. Instead of `expires`, you can also use the synonyms
-              `expire`, `ends` or `end`.
-            * The timespec is "smart". You can type a date and time (like "3 Dec 2017 5PM"), or
-              relative times in natural language ("10 minutes ago", "in 2 days", "now"). Just make
-              sure not to forget quotation marks. No days of the week.
-        * <note_contents>: The remainder of the command message is stored as the note text.
-
-        Example:
-
-        .notes add @BlitheringIdiot#1234 perma Repeated plagiarism.
-            Create a record timestamped for right now, with no expiry date.
-
-        .notes add @BlitheringIdiot#1234 temp expires="in 7 days" Insulting users, altercation with
-        intervening mod.
-            Create a record timestamped for right now, that expires in 7 days.
-
-        .notes add @CalmPerson#4187 good timestamp="2 hours ago" Cool-headed, helped keep the
-        BlitheringIdiot plagiarism situation from exploding
-            Create a record for an event 2 hours ago.
+                  * `note`: Miscellaneous note
+                  * `good`: Positive contributions
+                  * `watch`: Behaviours to monitor
+                  * `int`: Moderator intervention
+                  * `warn`: Formal warning
+                  * `temp`: Temporary ban (enforced by bot)
+                  * `perma`: Permanent ban (not auto-enforced)
+                  * `appeal`: Formal appeal received, decisions, etc.
+            - name: note_contents
+              type: string
+              description: 'Complex field of the form:
+                `[timestamp="timespec"] [expires="timespec"] <contents>`'
+            - name: "timestamp|starts|start|time"
+              type: timespec
+              optional: true
+              default: now
+              description: "Set the note's time (e.g. of an incident). The timespec is \\"smart\\",
+                and can accept a date/time (`3 Dec 2017 5PM` - default timezone is UTC), or relative
+                times (`10 minutes ago`, `in 2 days`, `now`). Quotation marks required. Do not use
+                days of the week (e.g. Monday)."
+            - name: "expires|expire|ends|end"
+              type: timespec
+              optional: true
+              default: never
+              description: 'Set when a note expires. Affects tempbans and the {{!notes watches}}
+                function, otherwise is a remark for moderators. See above for timespec formats.'
+            - name: contents
+              type: string
+              description: The note text to store.
+        examples:
+            - command: ".notes add @BlitheringIdiot#1234 perma Repeated plagiarism."
+              description: Create a permanent ban record with no expiry date.
+            - command:
+                '.notes add @BlitheringIdiot#1234 temp expires="in 7 days" Insulted @JaneDoe#0422'
+              description: Create a temp ban record that expires in 7 days.
+            - command:
+                '.notes add @CalmPerson#4187 good timestamp="2 hours ago" Helped keep an argument in
+                check'
+              description: Create a record for an incident 2 hours ago.
         """
 
         # !!! WARNING !!!
@@ -368,20 +419,23 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def expires(self, ctx, note_id: int, *, timespec: str="now"):
-        """
-
-        [MOD ONLY] Change the expiration time of an existing note.
-
-        Arguments:
-        * <note_id>: Required. The ID of the note. See `.help notes`.
-        * [timespec]: Optional. The time at which the ban will expire. Default is now. Format
-        accepted is the same as `.notes add` (quotation marks not required). See `.help notes add`.
-
-        Example:
-        .notes expires 122 tomorrow
-            Change the expiration time of note #122 to tomorrow (24 hours from now).
-        .notes expires 138 2018-01-24
-            Change the expiration time of note #138 to 24 January 2018.
+        """!kazhelp
+        description: Change the expiration time of an existing note.
+        parameters:
+            - name: note_id
+              type: number
+              description: The ID of the note to edit. See {{!notes}}.
+            - name: timespec
+              type: timespec
+              optional: true
+              default: now
+              description: The time that the note will expire. Format is the same as {{!notes add}}
+                (but quotation marks not required).
+        examples:
+            - command: .notes expires 122 tomorrow
+              description: Change the expiration time of note #122 to tomorrow (24 hours from now).
+            - command: .notes expires 138 2018-01-24
+              description: Change the expiration time of note #138 to 24 January 2018.
         """
         expires = dt_parse(timespec, future=True)
         if expires is None:  # dateparser failed to parse
@@ -401,20 +455,17 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def rem(self, ctx, note_id: int):
-        """
-
-        [MOD ONLY] Remove an existing note.
-
-        To prevent accidental data deletion, the removed note can be viewed and restored by admin
-        users.
-
-        Arguments:
-        * <note_id>: Required. The ID of the note to remove. See `.help notes`.
-
-        Example:
-
-        .notes rem 122
-            Remove note number 122.
+        """!kazhelp
+        description: Remove an existing note.
+        details: To prevent accidental data deletion, the removed note can be viewed and restored by
+            admin users.
+        parameters:
+            - name: note_id
+              type: number
+              description: The ID of the note to remove. See {{!notes}}.
+        examples:
+            - command: .notes rem 122
+              description: Remove note number 122.
         """
         try:
             record = c.mark_removed_record(note_id)
@@ -428,14 +479,17 @@ class ModNotes(KazCog):
     @admin_only()
     @admin_channels(delete_on_fail=True)
     async def removed(self, ctx, user: str, page: int=None):
-        """
-
-        [ADMIN ONLY] Show deleted notes.
-
-        Arguments:
-        * <user>: Required. The user to filter by, or `all`. See `.help notes`.
-        * page: Optional[int]. The page number to access, if there are more than 1 pages of notes.
-          Default: last page.
+        """!kazhelp
+        description: Show all removed notes, optionally filtered by user.
+        parameters:
+            - name: user
+              type: "@user"
+              description: The user to filter by, or `all`. See {{!notes}} for user format.
+            - name: page
+              optional: true
+              default: last page (latest notes)
+              type: number
+              description: The page number to show, if there are more than 1 page of notes.
         """
         if user != 'all':
             db_user = await c.query_user(self.bot, user)
@@ -459,11 +513,12 @@ class ModNotes(KazCog):
     @admin_only()
     @mod_channels(delete_on_fail=True)
     async def restore(self, ctx, note_id: int):
-        """
-        [ADMIN ONLY] Restore a removed note.
-
-        Arguments:
-        * <note_id>: Required. The ID of the note to remove. Use `.notes removed` to list.
+        """!kazhelp
+        description: Restore a removed note.
+        parameters:
+            - name: note_id
+              type: number
+              description: The ID of the note to remove. See {{!notes}}.
         """
         try:
             record = c.mark_removed_record(note_id, removed=False)
@@ -477,11 +532,16 @@ class ModNotes(KazCog):
     @admin_only()
     @mod_channels(delete_on_fail=True)
     async def purge(self, ctx, note_id: int):
-        """
-        [ADMIN ONLY] Permanently destroy a removed note.
+        """!kazhelp
+        description: |
+            Permanently destroy a removed now.
 
-        Arguments:
-        * <note_id>: Required. The ID of the note to remove. Use `.notes removed` to list.
+            NOTE: This function intentionally does not include a mass purge, to prevent broad data
+            loss, accidental or malicious.
+        parameters:
+            - name: note_id
+              type: number
+              description: The ID of the note to remove. See {{!notes}}.
         """
         try:
             record = c.get_record(note_id, removed=True)
@@ -497,20 +557,24 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def finduser(self, ctx, search_term: str, page: int=1):
-        """
+        """!kazhelp
+        description: |
+            Find a user in the modnotes database.
 
-        [MOD ONLY] User search.
-
-        This command searches the name and aliases fields.
-
-        Arguments:
-        * <search_term>: Required. A substring to search for in the user database's name and aliases
-          fields.
-
-        Example:
-
-        .notes finduser Indium
-            If there is a user called "IndiumPhosphide", they would be matched.
+            This command searches both the name and aliases fields.
+        parameters:
+            - name: search_term
+              type: "@user"
+              description: "Part of a user's name to find. Searches both the canonical name and
+                aliases. If this contains spaces, use quotation marks."
+            - name: page
+              optional: true
+              default: 1
+              type: number
+              description: "The page number to show, if there are more than 1 page of notes."
+        examples:
+            - command: ".notes finduser Indium"
+              description: 'This would match, for example, a user called "IndiumPhosphide".'
         """
         search_term_s = search_term[:Limits.NAME]
 
@@ -576,22 +640,18 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def name(self, ctx, user: str, *, new_name: str):
-        """
-
-        [MOD ONLY] Set the canonical name by which a user is known. This replaces the previous name;
-        to add aliases, see `.help notes alias`.
-
-        This command searches the name and aliases fields.
-
-        Arguments:
-        * <user>: Required. The user to whom the note applies. See Section 1.
-        * <new_name>: Required. The new canonical name to set for a user. Max 32 characters, no
-          newlines.
-
-        Example:
-
-        .notes search Indium
-            If there is a user called "IndiumPhosphide", they would be matched.
+        """!kazhelp
+        description: "Set the primary name for a user. This replaces the old name; to add aliases,
+            use {{!notes alias}}."
+        parameters:
+            - name: user
+              type: "@user"
+              description: The user to modify. See {{!notes}} for user format.
+            - name: new_name
+              type: string
+              description: The new primary name for the user. Max 32 characters, no newlines.
+        examples:
+            - command: .notes name @BlitheringIdiot#1234 Blathers
         """
         new_name_s = new_name.split('\n', maxsplit=1)[0][:Limits.NAME]
         db_user = await c.query_user(self.bot, user)
@@ -603,21 +663,30 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def alias(self, ctx, addrem: str, user: str, *, alias: str):
-        """
+        """!kazhelp
+        description: "Command group. Set or remove user's aliases."
+        details: |
+            Recommended usage:
 
-        [MOD ONLY] Set or remove alternative names a user is known under.
+            * Reddit usernames: `/u/RedditUsername`
+            * IRC NickServ accounts: `R:Nickname`
+            * Unregistered IRC users: `nick!username@hostname` masks
+            * Known previous names or nicknames the user's known by in the community.
 
-        Suggested usage: /u/RedditUsername for Reddit usernames, R:Nickname for IRC registered
-        nicknames, nick!username@hostname masks for unregistered IRC users (or whatever format you
-        prefer to communicate the relevant information, this is freeform).
-
-        Arguments:
-        * <add|rem>: Required. Whether to add or remove the indicated alias.
-        * <user>: Required. The user to whom the note applies. See `.help notes`.
-        * <alias>: Required. The alias to set for the user. Max 32 characters, no newlines.
-
-        Example:
-        .notes alias add @FireAlchemist#1234 The Flame Alchemist
+            **For other Discord accounts**, use {{!notes group}} instead to group the accounts and their
+            modnotes together.
+        parameters:
+            - name: addrem
+              type: "`add` or `rem`"
+              description: Whether to add or remove an alias.
+            - name: user
+              type: "@user"
+              description: The user to modify. See {{!notes}} for user format.
+            - name: alias
+              type: string
+              description: The alias to add or remove. Max 32 characters, no newlines.
+        examples:
+            - command: ".notes alias add @FireAlchemist#6543 The Flame Alchemist"
         """
         alias_s = alias.split('\n', maxsplit=1)[0][:Limits.NAME]
         addrem = addrem[0].lower()
@@ -651,13 +720,15 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def group(self, ctx):
-        """
-        [MOD ONLY] Group and ungroup users together.
+        """!kazhelp
+        description: |
+            Command group. Group accounts belonging to the same user.
 
-        An identity group identifies users which are all considered to be the same
-        individual. The .notes command will show the user info and records for both simultaneously,
-        if one of them is looked up. The users remain separate and can be removed from the group
-        later.
+            A group identifiers different Discord accounts that are all considered to be the same
+            individual. The {{!notes}} command will show the user info and records for both
+            simultaneously when either user account is looked up.
+
+            The users' notes remain separate and can be removed from the group later.
         """
         await self.bot.say(get_group_help(ctx))
 
@@ -665,19 +736,21 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def group_add(self, ctx, user1: str, user2: str):
-        """
-        Group two users together.
+        """!kazhelp
+        description: |
+            Group two users together.
 
-        If one user is not in a group, that user is added to the other user's group. If both users
-        are in separate groups, both groups are merged. This is irreversible.
+            If one user is already in a group, the other user is added to that group.
 
-        See `.help group` for more information on grouping.
+            If both users are in separate groups, both groups are merged. This is irreversible.
 
-        Arguments:
-        * <user1> and <user2>: Required. The two users to link. See `.help notes`.
-
-        Example:
-        .notes group add @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
+            See {{!notes group}} for more information on grouping.
+        parameters:
+            - name: user1, user2
+              type: "@user"
+              description: The users to group. See {{!notes}} for user format.
+        examples:
+            - command: .notes group add @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444
         """
         db_user1 = await c.query_user(self.bot, user1)
         db_user2 = await c.query_user(self.bot, user2)
@@ -696,16 +769,20 @@ class ModNotes(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def group_rem(self, ctx, user: str):
-        """
-        Remove a user from the group.
+        """!kazhelp
+        description: |
+            Remove a user from the group.
 
-        See `.help group` for more information on grouping.
+            See {{!notes group}} for more information on grouping.
 
-        Arguments:
-        * <user>: Required. The user to ungroup. See `.help notes`.
-
-        Example:
-        .notes group rem @FireAlchemist#1234
+            NOTE: You only need to specify 1 user, who will be disassociated from all other users
+            in the group. The other users will remain grouped together.
+        parameters:
+            - name: user
+              type: "@user"
+              description: The user to modify. See {{!notes}} for user format.
+        examples:
+            - command: .notes group rem #FireAlchemist#1234
         """
         db_user = await c.query_user(self.bot, user)
 

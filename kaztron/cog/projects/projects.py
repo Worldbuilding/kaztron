@@ -1,12 +1,16 @@
+import datetime
 import logging
-from typing import Tuple, Iterable
+from textwrap import indent
+from typing import Tuple, Iterable, Dict
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.projects.model import Project
+from kaztron.config import SectionView
 from kaztron.utils.converter import MemberConverter2
+from kaztron.utils.datetime import format_timedelta
 from . import model as m, query as q, wizard as w
 from .discord import *
 from .wizard import WizardManager
@@ -22,29 +26,126 @@ from kaztron.utils.strings import split_chunks_on, format_list, parse_keyword_ar
 logger = logging.getLogger(__name__)
 
 
-class ProjectsCog(KazCog):
-    """
-    Configuration section ``projects``:
+class ProjectsConfig(SectionView):
+    project_channel: str
+    max_projects: int
+    max_projects_map: Dict[str, int]
+    timeout_confirm: int
+    timeout_wizard: int
 
-    * ``project_channel``: String (channel ID). Channel in which to output/archive projects.
-    * ``max_projects``: Maximum number of projects. This can be overridden on a per-user basis.
-    * ``max_projects_map``: Dict that associates role names to max projects. Takes priority over
-      the ``max_projects`` configuration value, but is superseded by individual project numbers.
-    * ``timeout_confirm``: Timeout (in seconds) for confirming certain commands like delete.
-    * ``timeout_wizard``: Timeout (in seconds) for wizards.
 
-    Initial set-up:
-    * Use the `.project admin` commands to set up the genre and type list.
+class ProjectsState(SectionView):
+    wizards: dict
+
+
+class ProjectsManager(KazCog):
+    """!kazhelp
+    brief: Share your projects with other members!
+    description: |
+        The Projects module lets members share their projects with each other! With this module,
+        they can set up a basic member profile; set up projects with basic info and a summary;
+        look up each others' projects; and follow each other's project notification roles.
+
+        Projects are output to {{out_channel}}, in addition to being browsable via the
+        {{!project}}, {{!project search}}, etc. commands.
+
+        If roles are set up for genres and project types, this module is able to manage roles
+        according to the current active project for each user.
+
+        INITIAL SET-UP
+        --------------
+
+        Once this module is loaded and running in the bot, you must set up the genre and type lists
+        from within Discord. See the help for {{!project admin genre}} and {{!project admin type}}.
+
+    jekyll_description: |
+        The Projects module lets members share their projects with each other! With this module,
+        they can set up a basic member profile; set up projects with basic info and a summary;
+        look up each others' projects; and follow each other's project notification roles.
+
+        Projects are output to {{out_channel}}, in addition to being browsable via the
+        {{!project}}, {{!project search}}, etc. commands.
+
+        If roles are set up for genres and project types, this module is able to manage roles
+        according to the current active project for each user.
+
+        ## Configuration
+
+        `projects` configuration section:
+
+        `project_channel`
+        : channel ID (18-digit numeric). Channel in which to output/archive projects.
+
+        `max_projects`
+        : number. Maximum number of projects. This can be overridden on a per-user basis with
+          {{!project admin limit}}.
+
+        `max_projects_map`
+        : Dict. Associates role names to max projects. Takes priority over the `max_projects`
+          configuration value, but is superseded by per-user limits.
+
+        `timeout_confirm`
+        : number. Amount of time (in seconds) to confirm certain actions like delete.
+
+        `timeout_wizard`
+        : number. Inactivity (in seconds) before a wizard times out (cancels itself).
+
+        ## Initial set-up
+
+        Once this module is loaded and running in the bot, you must set up the genre and type lists
+        from within Discord. See {{!project admin genre}} and {{!project admin type}}.
+    contents:
+        - project:
+            - search
+            - select
+            - follow
+            - unfollow
+            - followable
+            - new
+            - wizard
+            - aboutme
+            - cancel
+            - delete
+            - title
+            - genre
+            - subgenre
+            - type
+            - pitch
+            - url
+            - description
+            - admin:
+                - genre:
+                    - add
+                    - edit
+                    - rem
+                - type:
+                    - add
+                    - edit
+                    - rem
+                - limit
+                - followable
+                - delete
+                - purge
     """
-    channel_id = KazCog.config.get('projects', 'project_channel')
+    cog_config: ProjectsConfig  # for IDE autocomplete
+    cog_state: ProjectsState
+
+    channel_id = KazCog.config.projects.project_channel
     emoji = {
         'ok': '\U0001f197',
         'cancel': '\u274c'
     }
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.state.set_defaults('projects', wizards={})
+        super().__init__(bot, 'projects', ProjectsConfig, ProjectsState)
+        self.cog_state.set_defaults(wizards={})
+        self.cog_state.set_converters('wizards',
+            lambda d: WizardManager.from_dict(
+                self.bot, self.server, d, self.cog_config.timeout_wizard
+            ),
+            lambda wm: wm.to_dict()
+        )
+
         self.wizard_manager = None  # type: WizardManager
         self.channel = None  # type: discord.Channel
 
@@ -127,7 +228,7 @@ class ProjectsCog(KazCog):
             is available. Optional; if not passed, None values are not allowed.
         :return:
         """
-        async def setter(self: ProjectsCog, ctx: commands.Context, *, new_value: str=None):
+        async def setter(self: ProjectsManager, ctx: commands.Context, *, new_value: str=None):
             logger.info("{}: {}".format(get_command_str(ctx), message_log_str(ctx.message)))
             with q.transaction():
                 project = self.check_active_project(ctx.message.author)
@@ -149,7 +250,10 @@ class ProjectsCog(KazCog):
 
                 await self.bot.say(msg)
 
-        setter.__doc__ = msg_help
+        setter.__doc__ = "!kazhelp\ndescription: |\n{}\n\n{}".format(
+            indent(msg_help, '  '),
+            '  The active project can be set with {{!project select}}.'
+        )
         return setter
 
     def get_default_max_for(self, member: discord.Member):
@@ -163,34 +267,31 @@ class ProjectsCog(KazCog):
                 user = q.get_or_make_user(member)
                 max_projects = user.max_projects_eff(self.get_default_max_for(member))
         """
-        max_projects_map = self.config.get('projects', 'max_projects_map')  # type: dict
+        max_projects_map = self.cog_config.max_projects_map
         cur_max = 0
         role_found = False
         for role in member.roles:
             if role.name in max_projects_map:
                 cur_max = max(cur_max, max_projects_map[role.name])
                 role_found = True
-        return cur_max if role_found else self.config.get('projects', 'max_projects')
+        return cur_max if role_found else self.cog_config.max_projects
 
     async def on_ready(self):
         await super().on_ready()
-        channel_id = self.config.get('projects', 'project_channel')
-        self.channel = self.validate_channel(channel_id)
+        self.channel = self.validate_channel(self.channel_id)
         await self._update_unsent_projects()
-        self._load_state()
+        self.wizard_manager = self.cog_state.wizards
+
+    def export_kazhelp_vars(self):
+        return {
+            'out_channel': '#' + self.channel.name,
+            'timeout_wizard_min': format_timedelta(
+                datetime.timedelta(seconds=self.cog_config.timeout_wizard),
+                'minutes')
+        }
 
     def unload_kazcog(self):
-        self._save_state()
-
-    def _load_state(self):
-        self.wizard_manager = WizardManager.from_dict(
-            self.bot, self.server, self.state.get('projects', 'wizards'),
-            timeout=self.config.get('projects', 'timeout_wizard')
-        )
-
-    def _save_state(self):
-        self.state.set('projects', 'wizards', self.wizard_manager.to_dict())
-        self.state.write()
+        self.cog_state.wizards = self.wizard_manager
 
     async def _update_unsent_projects(self):
         unsent_projects = q.query_unsent_projects()
@@ -212,6 +313,34 @@ class ProjectsCog(KazCog):
     @commands.group(invoke_without_command=True, pass_context=True, ignore_extra=False,
         aliases=['projects'])
     async def project(self, ctx: commands.Context, member: MemberConverter2=None, name: str=None):
+        """!kazhelp
+        description: |
+            Show project information or a list of a user's projects.
+
+            If no user or project name is specified, this command shows your own projects.
+
+            If no name is specified, this command shows a list of the user's projects and their
+            currently active project.
+
+            If a name is specified, this command shows that project's information.
+        parameters:
+            - name: member
+              type: "@user"
+              optional: true
+              default: yourself
+              description: The user to look up.
+            - name: name
+              type: string
+              optional: true
+              description: Part of a title to look up. One word or a substring is fine.
+        examples:
+            - command: .project
+              description: Get a list of your own projects.
+            - command: .project @JaneDoe#0921
+              description: Get Jane Doe's list of projects and currently active project.
+            - command: .project @JaneDoe#0921 flaming
+              description: Get info on Jane Doe's project with 'flaming' in the title.
+        """
         member = member  # type: discord.Member
 
         if not member:
@@ -259,6 +388,39 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def search(self, ctx: commands.Context, *, search: str):
+        """!kazhelp
+        description: |
+            Search projects by genre or type, or within title and body text.
+
+            Title and body text searches are case-insensitive.
+        parameters:
+            - name: search
+              type: string with keywords ("genre", "type", "title")
+              description: What to search. Text entered here will search the body text (that is,
+                title + elevator pitch + description). You can include keyword arguments ("genre",
+                "type" and "title") at the **beginning** of the search string (see examples).
+            - name: genre (keyword)
+              type: string
+              description: The genre name. This must exactly match an item in the list of genres.
+            - name: type (keyword)
+              type: string
+              description: The project type. This must exactly match an item in the list of types.
+            - name: title (keyword)
+              type: string
+              description: Search string in the title.
+        examples:
+            - command: .project search flamingo
+              description: Find all projects that contain 'flamingo' in their title, description or
+                pitch.
+            - command: .project search title="flamingo"
+              description: Find all projects that contain 'flamingo' in their title.
+            - command: .project search genre="fantasy" flamingo
+              description: Find all projects in the fantasy genre that contain the word 'flamingo'
+                in their title, description or pitch.
+            - command: .project search genre="fantasy" title="flamingo" grapefruit
+              description: Find all fantasy projects with 'flamingo' in the title and 'grapefruit'
+                in the body text.
+        """
         kwargs, body_search = parse_keyword_args(['genre', 'type', 'title'], search)
 
         try:
@@ -292,8 +454,22 @@ class ProjectsCog(KazCog):
 
     @project.command(pass_context=True, ignore_extra=False)
     async def select(self, ctx: commands.Context, name: str):
+        """!kazhelp
+        description: |
+            Select a project to mark as your 'active' project.
+
+            This project will be shown by default when someone looks you up. This is also the
+            project that will be modified by project-editing commands like {{!project wizard}},
+            {{!project title}}, etc.
+        parameters:
+            - name: name
+              type: string
+              description: Part of the project's title. One word or a substring is fine.
+        examples:
+            - command: .project select Gale
+        """
         await self.wizard_manager.cancel_wizards(ctx.message.author)
-        self._save_state()
+        self.cog_state.wizards = self.wizard_manager
 
         with q.transaction():
             user = q.get_or_make_user(ctx.message.author)
@@ -347,14 +523,47 @@ class ProjectsCog(KazCog):
         return project, role
 
     @project.command(pass_context=True, ignore_extra=False)
-    async def follow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
+    async def follow(self, ctx: commands.Context, member: MemberConverter2, *, name: str=None):
+        """!kazhelp
+        description: |
+            Follow a project.
+
+            This adds you to the project's followable role, and allows you to get @mention'd in
+            relationship to the project. This can be used for news, for the author to open
+            discussions on their project, etc. - exact usage will depend on the specific Discord
+            server's community and rules.
+
+            Not all projects have a follow role. To check, look up the project with {{!project}}, or
+            check the full list of followable projects with {{!project followable}}.
+
+            Use {{!project unfollow}} to un-follow a project.
+        parameters:
+            - name: member
+              type: "@user"
+              description: The user to look up.
+            - name: name
+              type: string
+              optional: true
+              default: user's active project
+              description: Part of the project's title. One word or a substring is fine.
+        examples:
+            - command: .project follow @JaneDoe#0921 flamingo
+        """
         member = member  # type: discord.Member  # for type checking
-        project, role = self.get_follow_role(member, title)
+        project, role = self.get_follow_role(member, name)
         await self.bot.add_roles(ctx.message.author, role)
         await self.bot.reply("you are now following the project {.title}".format(project))
 
     @project.command(pass_context=True, ignore_extra=False, aliases=['followables'])
     async def followable(self, ctx: commands.Context):
+        """!kazhelp
+        description: |
+            List all projects that can be followed.
+
+            See {{!project follow}} for more information on followable projects.
+        examples:
+            - command: .project followable
+        """
         def sort_key(project: m.Project):
             try:
                 member = get_member(ctx, project.user.discord_id)
@@ -373,14 +582,47 @@ class ProjectsCog(KazCog):
              '(`.project unfollow ...` to unfollow).\n\n{}').format(listed))
 
     @project.command(pass_context=True, ignore_extra=False)
-    async def unfollow(self, ctx: commands.Context, member: MemberConverter2, *, title: str=None):
+    async def unfollow(self, ctx: commands.Context, member: MemberConverter2, *, name: str=None):
+        """!kazhelp
+        description: |
+            Un-follow a project.
+
+            See {{!project follow}} for more information on followable projects.
+        parameters:
+            - name: member
+              type: "@user"
+              description: The user to look up.
+            - name: name
+              type: string
+              optional: true
+              default: user's active project
+              description: Part of the project's title. One word or a substring is fine.
+        examples:
+            - command: .project unfollow @JaneDoe#0921 flamingo
+        """
         member = member  # type: discord.Member  # for type checking
-        project, role = self.get_follow_role(member, title)
+        project, role = self.get_follow_role(member, name)
         await self.bot.remove_roles(ctx.message.author, role)
         await self.bot.reply("you are no longer following the project {.title}".format(project))
 
     @project.command(pass_context=True, ignore_extra=False)
     async def new(self, ctx: commands.Context):
+        """!kazhelp
+        description: |
+            Create a new project using the wizard.
+
+            {{name}} will PM you with a series of questions to answer to set up the basics of your
+            project. Make sure you have PMs enabled.
+        details: |
+            WARNING: If you don't respond for more than {{timeout_wizard_min}}, the new
+            project command will automatically be cancelled.
+
+            TIP: You can specify more information about your project, like a URL and extended
+            description, using {{!project title}}, {{!project genre}}, {{!project subgenre}},
+            {{!project type}}, {{!project pitch}}, {{!project url}}, {{!project description}}.
+        examples:
+            - command: .project new
+        """
         if self.wizard_manager.has_open_wizard(ctx.message.author):
             raise commands.UserInputError("You already have an ongoing wizard!")
 
@@ -393,10 +635,28 @@ class ProjectsCog(KazCog):
 
         await self.bot.reply("I've sent you a PM! Answer my questions to create your project.")
         await self.wizard_manager.create_new_wizard(ctx.message.author, ctx.message.timestamp)
-        self._save_state()
+        self.cog_state.wizards = self.wizard_manager
 
     @project.command(pass_context=True, ignore_extra=False)
     async def wizard(self, ctx: commands.Context):
+        """!kazhelp
+        description: |
+            Edit your active project using the wizard.
+
+            Your active project is the one set with {{!project select}}.
+
+            {{name}} will PM you with a series of questions to answer to set up the basics of your
+            project. Make sure you have PMs enabled.
+        details: |
+            WARNING: If you don't respond for more than {{timeout_wizard_min}}, the new
+            project command will automatically be cancelled.
+
+            TIP: You can specify more information about your project, like a URL and extended
+            description, using ({{!project title}}, {{!project genre}}, {{!project subgenre}},
+            {{!project type}}, {{!project pitch}}, {{!project url}}, {{!project description}}).
+        examples:
+            - command: .project wizard
+        """
         if self.wizard_manager.has_open_wizard(ctx.message.author):
             raise commands.UserInputError("You already have an ongoing wizard!")
 
@@ -413,24 +673,60 @@ class ProjectsCog(KazCog):
         await self.wizard_manager.create_edit_wizard(
             ctx.message.author, ctx.message.timestamp, user.active_project
         )
-        self._save_state()
+        self.cog_state.wizards = self.wizard_manager
 
     @project.command(pass_context=True, ignore_extra=False)
     async def aboutme(self, ctx: commands.Context):
+        """!kazhelp
+        description: |
+            Set up your author profile with the wizard.
+
+            {{name}} will PM you with a series of questions to answer to set up the basics of your
+            project. Make sure you have PMs enabled.
+        details: |
+            WARNING: If you don't respond for more than {{timeout_wizard_min}}, the new
+            project command will automatically be cancelled.
+        examples:
+            - command: .project aboutme
+        """
         if self.wizard_manager.has_open_wizard(ctx.message.author):
             raise commands.UserInputError("You already have an ongoing wizard!")
 
         await self.bot.reply("I've sent you a PM! Answer my questions to set up your user profile.")
         await self.wizard_manager.create_author_wizard(ctx.message.author, ctx.message.timestamp)
-        self._save_state()
+        self.cog_state.wizards = self.wizard_manager
 
     @project.command(pass_context=True, ignore_extra=False)
     async def cancel(self, ctx: commands.Context):
+        """!kazhelp
+        description: |
+            Cancel any open wizard.
+
+            Wizards are started by commands like {{!project new}}, {{!project wizard}} and
+            {{!project aboutme}}.
+        examples:
+            - command: .project cancel
+        """
         await self.wizard_manager.cancel_wizards(ctx.message.author)
-        self._save_state()
+        self.cog_state.wizards = self.wizard_manager
 
     @project.command(pass_context=True, ignore_extra=False)
     async def delete(self, ctx: commands.Context, name: str=None):
+        """!kazhelp
+        description: |
+            Delete one of your projects.
+
+            {{name}} will send a message with project info. Use the emoji reactions to confirm or
+            cancel. The request will auto-cancel if you do not respond within a few minutes.
+        parameters:
+            - name: name
+              type: string
+              optional: true
+              default: your active project
+              description: Part of the project's title. One word or a substring is fine.
+        examples:
+            - command: .project delete flamingo
+        """
         await self._confirmed_delete(ctx, name)
 
     async def _confirmed_delete(self, ctx: commands.Context,
@@ -481,7 +777,7 @@ class ProjectsCog(KazCog):
         res = await self.bot.wait_for_reaction(
             [self.emoji['ok'], self.emoji['cancel']],
             user=member,
-            timeout=self.config.get('projects', 'timeout_confirm')
+            timeout=self.cog_config.timeout_confirm
         )
 
         if res is None:
@@ -555,16 +851,22 @@ class ProjectsCog(KazCog):
                     q.update_user_from_projects(project.user)
                     await update_user_roles(self.bot, self.server, [project.user])
 
-        self._save_state()
+        self.cog_state.wizards = self.wizard_manager
 
     @project.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     async def admin(self, ctx: commands.Context):
+        """!kazhelp
+        description: Command group for administrative tools.
+        """
         await self.bot.say("{}".format(get_group_help(ctx)))
 
     @admin.group(name='genre', pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     async def admin_genre(self, ctx: commands.Context):
+        """!kazhelp
+        description: List all genres.
+        """
         genres = q.query_genres()
         genre_strings = []
         for genre in genres:
@@ -577,6 +879,26 @@ class ProjectsCog(KazCog):
     @admin_genre.command(name='add', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_genre_add(self, ctx: commands.Context, name: str, role: str=None):
+        """!kazhelp
+        description: Add a new genre.
+        parameters:
+            - name: name
+              type: string
+              description: The name of the genre. Must be unique. Users will have to type this
+                exactly, so keep it short and easy to type. Use quotation marks if the name
+                contains spaces.
+            - name: role
+              type: "@role"
+              optional: true
+              default: None
+              description: "@mention of the role to associate to this genre. This role must already
+                exist on the server."
+        examples:
+            - command: .project admin genre add Fantasy
+              description: Add a "Fantasy" genre with no associated role.
+            - command: .project admin genre add Fantasy @Fantasy Writers
+              description: Add a "Fantasy" genre with the role "Fantasy Writers".
+        """
         with q.transaction() as session:
             logger.info("Adding new genre: name={!r} role={!r}".format(name, role))
             role_id = get_role(self.server, role).id if role else None
@@ -589,6 +911,29 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_genre_edit(self, ctx: commands.Context,
                                old_name: str, new_name: str, new_role: str=None):
+        """!kazhelp
+        description: Change an existing genre.
+        parameters:
+            - name: old_name
+              type: string
+              description: The current name for this genre. Use quotation marks if the name
+                contains spaces.
+            - name: new_name
+              type: string
+              description: The new name of the genre. Must be unique. Users will have to type this
+                exactly, so keep it short and easy to type. Use quotation marks if the name contains
+                spaces.
+            - name: new_role
+              type: "@role"
+              optional: true
+              default: None
+              description: "@mention of the role to associate to this genre. This role must already
+                exist on the server."
+        examples:
+            - command: .project admin genre edit Fantasy "High Fantasy"
+              description: Rename the Fantasy genre to High Fantasy (and remove the role, if it
+                had one - if you want to keep a role you MUSt specify it as a third argument).
+        """
         genre = None  # type: m.Genre
         with q.transaction() as _:
             try:
@@ -610,6 +955,27 @@ class ProjectsCog(KazCog):
     @admin_genre.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_genre_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
+        """!kazhelp
+        description: |
+            Remove a genre.
+
+            This is only allowed if: a) no projects are using this genre, or b) you specify a
+            replacement genre.
+        parameters:
+            - name: name
+              type: string
+              description: The current name for this genre. Use quotation marks if the name
+                contains spaces.
+            - name: replace_name
+              type: string
+              optional: true
+              description: The name of another existing genre. Any projects using the old genre
+                will be updated to this genre. Use quotation marks if the name contains spaces.
+        examples:
+            - command: .project admin genre remove "High Fantasy" Fantasy
+              description: Remove the "High Fantasy" genre, and replace any projects using that
+                genre with the "Fantasy" genre.
+        """
         with q.transaction():
             try:
                 users, _ = q.safe_delete_genre(name, replace_name)
@@ -626,6 +992,9 @@ class ProjectsCog(KazCog):
     @admin.group(name='type', pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     async def admin_type(self, ctx: commands.Context):
+        """!kazhelp
+        description: List all project types.
+        """
         p_types = q.query_project_types()
         types_strings = []
         for t in p_types:
@@ -639,6 +1008,26 @@ class ProjectsCog(KazCog):
     @admin_type.command(name='add', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_type_add(self, ctx: commands.Context, name: str, role: str=None):
+        """!kazhelp
+        description: Add a new project type.
+        parameters:
+            - name: name
+              type: string
+              description: The name of the project type. Must be unique. Users will have to type
+                this exactly, so keep it short and easy to type. Use quotation marks if the name
+                contains spaces.
+            - name: role
+              type: "@role"
+              optional: true
+              default: None
+              description: "@mention of the role to associate to this project type. This role must
+                already exist on the server."
+        examples:
+            - command: .project admin type add Novel
+              description: Add a "Novel" project type with no associated role.
+            - command: .project admin type add Novel @Novelists
+              description: Add a "Novel" project type with the role "Novelists".
+        """
         with q.transaction() as session:
             logger.info("Adding new project type: name={!r} role={!r}".format(name, role))
             pt = m.ProjectType(name=name, role_id=get_role(self.server, role).id if role else None)
@@ -650,6 +1039,29 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_type_edit(self, ctx: commands.Context,
                               old_name: str, new_name: str, new_role: str=None):
+        """!kazhelp
+        description: Change an existing project type.
+        parameters:
+            - name: old_name
+              type: string
+              description: The current name for this project type. Use quotation marks if the name
+                contains spaces.
+            - name: new_name
+              type: string
+              description: The new name of the project type. Must be unique. Users will have to
+                type this exactly, so keep it short and easy to type. Use quotation marks if the
+                name contains spaces.
+            - name: new_role
+              type: "@role"
+              optional: true
+              default: None
+              description: "@mention of the role to associate to this project type. This role must
+                already exist on the server."
+        examples:
+            - command: .project admin type edit "Short Story" Anthology
+              description: Rename the Short Story type to Anthology (and remove the role, if it
+                had one - if you want to keep a role you MUSt specify it as a third argument).
+        """
         p_type = None  # type: m.ProjectType
         with q.transaction():
             try:
@@ -672,6 +1084,28 @@ class ProjectsCog(KazCog):
     @admin_type.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_type_remove(self, ctx: commands.Context, name: str, replace_name: str=None):
+        """!kazhelp
+        description: |
+            Remove a project type.
+
+            This is only allowed if: a) no projects are using this project type, or b) you specify a
+            replacement project type.
+        parameters:
+            - name: name
+              type: string
+              description: The current name for this project type. Use quotation marks if the name
+                contains spaces.
+            - name: replace_name
+              type: string
+              optional: true
+              description: The name of another existing project type. Any projects using the old
+                project type will be updated to this one. Use quotation marks if the name contains
+                spaces.
+        examples:
+            - command: .project admin type remove "Game Script" Script
+              description: Remove the "Game Script" genre, and replace any projects using that
+                genre with the "Script" genre.
+        """
         with q.transaction():
             try:
                 users, _ = q.safe_delete_project_type(name, replace_name)
@@ -687,27 +1121,49 @@ class ProjectsCog(KazCog):
 
     @admin.command(name='delete', pass_context=True, ignore_extra=False)
     @mod_only()
-    async def admin_delete(self, ctx: commands.Context, member: MemberConverter2, title: str=None):
+    async def admin_delete(self, ctx: commands.Context, member: MemberConverter2, name: str=None):
+        """!kazhelp
+        description: |
+            Delete a user's project.
+
+            {{name}} will send a message with project info. Use the emoji reactions to confirm or
+            cancel. The request will auto-cancel if you do not respond within a few minutes.
+        parameters:
+            - name: member
+              type: "@user"
+              description: The user to look up.
+            - name: name
+              type: string
+              optional: true
+              default: user's active project
+              description: Part of the project's title. One word or a substring is fine.
+        examples:
+            - command: .project delete flamingo
+        """
         member = member  # type: discord.Member  # for type checking
-        await self._confirmed_delete(ctx, title, member)
+        await self._confirmed_delete(ctx, name, member)
 
     @admin.command(name='limit', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_limit(self, ctx: commands.Context, member: MemberConverter2, limit: int):
-        """
-        Set a maximum number of projects that a user can have.
+        """!kazhelp
+        description: |
+            Set a maximum number of projects that a user can have.
 
-        If the user exceeds this number of projects, their old projects will not be deleted.
-        However, they will be denied creating new projects until they delete enough projects to be
-        below this limit.
-
-        Arguments
-        * member: The member to change, as an @mention or user ID.
-        * limit: The new maximum number of projects. Use -1 to set this to the default value
-          (as specified in the configuration file).
-
-        Examples
-            .projects admin limit @MultiCoreProcessor#1234 8
+            If the user exceeds this number of projects, their old projects will not be deleted.
+            However, they will be denied creating new projects until they delete enough projects to
+            be below this limit.
+        parameters:
+            - name: member
+              type: "@user"
+              description: The user to look up.
+            - name: limit
+              type: string
+              description: New maximum number of projects. Use -1 to set this to the default value
+                (as specified in the configuration file).
+        examples:
+            - command: .projects admin limit @MultiCoreProcessor#1234 8
+              description: Change the limit to 8 for the user MultiCoreProcessor.
         """
         member = member  # type: discord.Member  # for type checking
         if limit < 0:
@@ -728,20 +1184,26 @@ class ProjectsCog(KazCog):
     @mod_only()
     async def admin_followable(self, ctx: commands.Context,
                           member: MemberConverter2, title: str, role: discord.Role=None):
-        """
-        Set a follow role for a project.
+        """!kazhelp
+        description: |
+            Set a follow role for a project.
 
-        The follow role must already exist. It should generally be mentionable so that the project
-        author is able to notify followers.
-
-        Arguments
-        * member: The member who owns the project.
-        * title: The title, or an excerpt of the title to search for. If it contains spaces, must
-          be enclosed in double quotes.
-        * role: A mention of the role to use as a follow role.
-
-        Examples
-            .projects admin followable @JaneDoe#0522 "Potato Mansion" @PotatoMansion
+            The follow role must already exist. It should generally be mentionable so that the
+            project author is able to notify followers.
+        parameters:
+            - name: member
+              type: "@user"
+              description: The user to look up.
+            - name: name
+              type: string
+              description: Part of a title to look up. One word or a substring is fine.
+            - name: role
+              type: "@role"
+              optional: true
+              description: A mention of the role to use as a follow role. If not specified, the
+                follow role is **removed** from the project.
+        examples:
+            - command: .projects admin followable @JaneDoe#0921 "Potato Mansion" @PotatoMansion
         """
         member = member  # type: discord.Member  # for type checking
         project = None  # type: m.Project
@@ -781,11 +1243,10 @@ class ProjectsCog(KazCog):
     @admin.command(name='purge', pass_context=True, ignore_extra=False)
     @mod_only()
     async def admin_purge(self, ctx: commands.Context):
-        """
-        Purge all projects from users who have left the server.
-
-        Examples
-            .projects admin purge
+        """!kazhelp
+        description: Purge all projects from users who have left the server.
+        examples:
+            - command: .projects admin purge
         """
         n_deleted = 0
         with q.transaction() as session:

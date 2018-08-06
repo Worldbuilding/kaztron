@@ -11,6 +11,7 @@ from kaztron.config import SectionView
 from kaztron.errors import *
 from kaztron.help_formatter import DiscordHelpFormatter, JekyllHelpFormatter
 from kaztron.utils.checks import mod_only, mod_channels
+from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str, exc_msg_str
 from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str, \
     Limits
@@ -34,7 +35,7 @@ class CoreConfig(SectionView):
     daemon_log: str
 
 
-class Core(kaztron.KazCog):
+class CoreCog(kaztron.KazCog):
     """!kazhelp
 
     brief: Essential internal {{name}} functionality, plus bot information and control commands.
@@ -138,6 +139,7 @@ class Core(kaztron.KazCog):
         except discord.HTTPException:
             logger.exception("Error sending startup information to output channel")
 
+    @task_handled_errors
     async def prepare_command_help(self):
         obj_list = set()
         formatter = self.bot.formatter  # type: DiscordHelpFormatter
@@ -491,4 +493,4 @@ class Core(kaztron.KazCog):
 
 
 def setup(bot):
-    bot.add_cog(Core(bot))
+    bot.add_cog(CoreCog(bot))

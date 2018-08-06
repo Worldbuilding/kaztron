@@ -202,10 +202,10 @@ class KazCog:
     @property
     def core(self):
         # cached since we need this when handling disconnect, after cog potentially unloaded...
-        from kaztron.cog.core import Core
+        from kaztron.cog.core import CoreCog
         if not self._core_cache:
-            self._core_cache = self.bot.get_cog('Core')
-        return self._core_cache  # type: Core
+            self._core_cache = self.bot.get_cog('CoreCog')
+        return self._core_cache  # type: CoreCog
 
     @property
     def is_ready(self):

@@ -31,6 +31,5 @@ def task_handled_errors(func):
         except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
             raise
         except Exception:
-            core_cog = args[0].bot.get_cog("CoreCog")
-            await core_cog.on_error(func.__name__)
+            await args[0].core.on_error(func.__name__)
     return wrapper
