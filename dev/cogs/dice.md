@@ -1,55 +1,65 @@
 ---
-title: "Cogs: Dice"
-summary: "The Dice cog implements various dice rolls and other randomness-based functions."
-last_updated: 21 February 2018
+title: "Dice"
+last_updated: 05 August 2018
+summary: "Various dice rolls and other randomness-based commands."
 ---
 
-## 1. roll
+
+## 1. choose
+{: #choose }
+
+Need some help making a decision? Let the bot choose for you! This command
+randomly chooses from a list of items.
+
+**Usage**: `.choose <choices>`
+
+**Arguments**
+
+&lt;choices&gt;
+: string. Two or more choices, separated by commas `,`.
+
+
+
+
+**Example**
+
+* `.choose a, b, c`
+
+## 2. roll (rolls)
+{: #roll }
 
 Rolls dice.
 
-Rolls a `<sides>`-sided die `<num>` times, and reports the rolls and total.
+**Usage**: `.[roll|rolls] <dice>`
 
-**Usage:** `.roll <num>d<sides>`
+**Arguments**
 
-Arguments:
-* `<num>`: Number of dice to roll.
-* `<sides>`: Number of sides for each die.
-* Do **not** include spaces between the arguments and the `d`.
-
-**Channels:** #tabletop, #bot-test
-
-**Usable By:** Anyone
-
-**Example:**
-* `.rolls 3d6` - Roll three six-sided dice.
+&lt;dice&gt;
+: string. `ndm` format, where `n` is the number of dice to roll, and `m` is the number of sides on each die. Do not add spaces.
 
 
-## 2. rollf
+
+
+**Details**
+
+Rolls an `m`-sided die `n` times, and reports the rolls and total.
+
+Channels
+: #specific.
+
+
+**Example**
+
+* `.roll 2d6` - Roll three six-sided dice.
+
+## 3. rollf
+{: #rollf }
 
 Rolls four dice for the FATE tabletop roleplaying game system.
 
-**Usage:** `.rollf`
+**Usage**: `.rollf`
 
-**Arguments:** None
+**Details**
 
-**Channels:** #tabletop, #bot-test
-
-**Usable By:** Anyone
-
-
-## 3. choose
-
-Need some help making a decision? Let the bot choose for you!
-
-**Usage:** `.choose <choices>`
-
-**Arguments:**
-* `<choices>` - Two or more choices, separated by commas `,`.
-
-**Channels:** Any
-
-**Usable By:** Anyone
-
-**Examples:**
-* `.choose a, b, c`
+Channels
+: #specific.

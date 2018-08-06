@@ -1,101 +1,155 @@
 ---
-title: "Cogs: ModTools"
-last_updated: 21 April 2018
-summary: "The ModTools cog provides miscellaneous tools for moderators."
+title: "ModTools"
+last_updated: 05 August 2018
+summary: "Miscellaneous tools for moderators."
 ---
 
+Various tools for moderators to help them in their day-to-day! Some commands are
+dependent on the <a href="./modnotes.html">ModNotes</a> module.
+
+This module will automatically enforce modnotes of type "temp", at startup and every hour
+hence. Use <a href="./modtools.html#tempban">tempban</a> in order to immediately apply and enforce a new tempban. (Using
+<a href="./modnotes.html#notes-add">notes add</a> to add a "temp" record will not enforce it until the next hourly check.)
+
 ## 1. up
+{: #up }
 
-Colours a moderator's username.
+This command colours the moderator's username by applying a special role to it. This
+allows moderators to clearly show when they are speaking in an official capacity as
+moderators.
 
-This command colours the moderator's username by applying a special role to it. This is used for moderators to be able to signal when they are speaking or intervening officially in their role as moderator.
+**Usage**: `.up`
 
-**Usage:** `.up`
+**Details**
 
-**Arguments:** None
-
-**Channels:** Any
-
-**Usable by:** Moderators only
+Members
+: Moderators, Administrators.
 
 
 ## 2. down
+{: #down }
 
 Uncolours a moderator's username.
 
-This command undoes the `.up` command.
+This command undoes the <a href="./modtools.html#up">up</a> command.
 
-**Usage:** `.down`
+**Usage**: `.down`
 
-**Arguments:** None
+**Details**
 
-**Channels:** Any
-
-**Usable by:** Moderators only
+Members
+: Moderators, Administrators.
 
 
 ## 3. tempban
+{: #tempban }
 
 Tempban a user.
 
-This method will automatically create a modnote. It will not communicate with the user.
+This command will immediately tempban (mute) the user, and create a modnote. It will not
+communicate with the user.
 
-This module integrates with modnotes, and will automatically enforce "temp" notes, giving a role to users with unexpired "temp" notes and removing that role when the note expires. This command is shorthand for `.notes add <user> temp expires="[expires]" [Reason]`.
+The user will be unbanned (unmuted) when the tempban expires.
 
-**Usage:** `.tempban <user> [expires=datespec] [reason]`
+Note that the ModTools module automatically enforces all tempban modules. See the
+<a href="./modtools.html">ModTools</a> introduction or `.help ModTools` for more info.
 
-**Arguments:**
-* `<user>`: The user to ban. See [modnotes: .notes](modnotes.html#1-notes) for more information.
-* `[expires=datespec]`: Optional. The datespec for the tempban's expiration. Use quotation marks if the datespec has spaces in it. See [modnotes: .notes add](modnotes.html#11-add) for more information on accepted syntaxes. Default is `expires="in 7 days"`.
-* `[reason]`: Optional, but highly recommended to specify. The reason to record in the modnote
+This command is shorthand for `.notes add <user> temp expires="[expires]" [reason]`.
 
-**Channels:** Mod and bot channels
+**Usage**: `.tempban <user> [reason]`
 
-**Usable by:** Moderators only
+**Arguments**
 
-**Examples:**
+&lt;user&gt;
+: string. The user to ban. See <a href="./modnotes.html#notes">notes</a> for more information.
+
+
+[reason]
+: string. Optional. Complex parameter of the format `[expires=[expires]] [reason]`. `reason` is the reason for the tempban, to be recorded as a modnote (optional but highly recommended).
+
+
+[expires]
+: datespec. Optional. The datespec for the tempban's expiration. Use quotation marks if the datespec has spaces in it. See <a href="./modnotes.html#notes-add">notes add</a> for more information on accepted syntaxes. Default: "in 7 days"
+
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
 * `.tempban @BlitheringIdiot#1234 Was being a blithering idiot.` - Issues a 7-day ban.
 * `.tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight blithering idiot only.` - Issues a 3-day ban.
 
-
 ## 4. whois
+{: #whois }
 
 Finds a Discord user from their ID, name, or name with discriminator.
 
-If an exact match isn't found, then this tool will do a substring search on all visible users' names and nicknames.
+If an exact match isn't found, then this tool will do a substring search on all visible
+users' names and nicknames.
 
-{% include warning.html content="If the user is in the channel where you use this command, the user will receive a notification." %}
+{% include warning.html content='If the user is in the channel where you use this command, the user will receive
+a notification.' %}
 
-**Usage:** `.whois <user>`
+**Usage**: `.whois <user>`
 
-**Arguments:**
-* `user`: An ID number, name, name with discriminator, etc. of a user to find.
+**Arguments**
 
-**Channels:** Any
+&lt;user&gt;
+: string. An ID number, name, name with discriminator, etc. of a user to find.
 
-**Usable by:** Moderators only
 
-**Example:**
-* `.whois 1234567890` will find user 1234567890.
-* `.whois JaneDoe#0921` will find a user called JaneDoe with discriminator #0921.
-* `.whois JaneDoe` will find a user called JaneDoe. 
 
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
+* `.whois 123456789012345678` - Find a user with ID 123456789012345678.
+* `.whois JaneDoe#0921` - Find a user exactly matching @JaneDoe#0921.
+* `.whois JaneDoe` - Find a user whose name matches JaneDoe, or if not found, a user whose name or nickname contains JaneDoe.
 
 ## 5. wb
+{: #wb }
 
-Shows a "Please talk about worldbuilding" image.
-        
+Show a "Please talk about worldbuilding" image.
+
 For mod intervention, when discussions get off-topic.
 
-**Usage:** `.wb [index]`
-        
-**Arguments:**
-* index: Optional. If specified, the index of the image to show (starting at `0`). If not specified, a random image is shown.
+**Usage**: `.wb [index]`
 
-**Channels:** Any
+**Arguments**
 
-**Usable by:** Moderators only
+[index]
+: string. Optional. If specified, the index of the image to show (starting at `0`). If not specified, a random image is shown.
 
-**Examples:**
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+**Examples**
+
 * `.wb` - Show a random image.
-* `.wb 3` - Show image at index 3 (4th image).
+* `.wb 3` - Show image at index 3 (the 4th image).

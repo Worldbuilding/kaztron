@@ -1,9 +1,13 @@
 ---
-title: "Cogs: Welcome"
-last_updated: 4 February 2018
-summary: "The Welcome cog welcomes new users to the server publicly and allows moderators to more easily keep track of new users."
+title: "Welcome"
+last_updated: 05 August 2018
+summary: "Welcomes new users to the server and logs users joining/leaving."
 ---
 
-The Welcome cog welcomes new users to the server publicly (this avoids the terrible welcome messages that Discord's built-in feature uses), and logs these new users to #bot-output to be able to monitor for suspicious activity, such as impersonation or ban evasion. It also logs users leaving the server to similarly monitor for possible temp ban evasion.
+The Welcome cog welcomes new users to the server in the #general channel. This
+serves as a replacement to Discord's terrible built-in welcome messages.
+
+This cog also logs users joining and leaving the server to #bot_output, for
+moderation purposes, such as detecting raids, impersonation and ban evasion.
 
 It has no usable commands.

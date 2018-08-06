@@ -1,26 +1,34 @@
 ---
-title: "Cogs: WordFilter"
-last_updated: 21 February 2018
-summary: "The WordFilter cog watches for configurable words or expressions in user messages, and either warns moderators or auto-deletes the message when it detects a watched word."
+title: "WordFilter"
+last_updated: 05 August 2018
+summary: "Watch for words or expressions in user messages, and either warn moderators or auto-delete messages on detection."
 ---
 
-The **WordFilter** cog is intended to be used as a moderating tool to watch the server for the use of certain words, expressions or other strings. The bot has two separate lists of filter strings:
+The WordFilter cog is a moderation tool. It watches all messages on the server for the use
+of certain words, expressions or other strings. The bot has two separate lists of filter
+strings, both fully configurable using bot commands:
 
-* `delete` list: Any messages that match will be auto-deleted, and moderators are notified.
-* `warn` list: Moderators are notified of the matching message, but no further action is taken.
+* `del` list: Any messages that match will be auto-deleted. Moderators are notified.
+* `warn` list: Moderators are notified of the matching message.
 
-Moderator notifications are output to either #mods or #bot-output. The output can be changed between these two channels with the `.filter switch` command.
+Moderator notifications are output to either #bot_output or #mods; this
+can be switched using the <a href="./wordfilter.html#filter-switch">filter switch</a> command.
 
-## 1. Filter string syntax
+## Filter string syntax
 
-The special character `%` will match a word boundary (any non-letter character - this means punctuation is considered, so don't worry about that!). Consequently, each word/expression in the list can be matched in four different ways:
+The special character `%` will match a word boundary (any non-letter character).
+Each word/expression in the list can be matched in four  different ways:
 
-* `foo` : Matches any sub-string `foo`, even if inside a word; for example, the words `foobar`, `zoboomafoo`, and `afoot` inside a message will all be caught.
-* `%foo` : Matches any word that *starts* with `foo`. For example, `fooing` will match, but `zoboomafoo` will *not* match.
-* `foo%` : Matches any word that *ends* with `foo`. For example, `zoboomafoo` will match, but `foobar` will *not*.
+* `foo` : Matches any sub-string `foo`, even if inside a word; for example, the words
+  `foobar`, `zoboomafoo`, and `afoot` inside a message will all be caught.
+* `%foo` : Matches any word that *starts* with `foo`. For example, `fooing` will match, but
+  `zoboomafoo` will *not* match.
+* `foo%` : Matches any word that *ends* with `foo`. For example, `zoboomafoo` will match,
+  but *not* `foobar`.
 * `%foo%` : Matches whole words only.
 
-You can also refer to the table below to see examples of which method will catch which sub-strings.
+You can also refer to the table below to see examples of which method will catch which
+sub-strings.
 
 |           | foo | %foo | foo% | %foo% |
 |:----------|:---:|:----:|:----:|:-----:|
@@ -29,111 +37,196 @@ You can also refer to the table below to see examples of which method will catch
 | barfoo    |<i class="fas fa-check text-success"></i> | | <i class="fas fa-check text-success"></i> | |
 | barfoobar | <i class="fas fa-check text-success"></i> | | | |
 
-{% include tip.html content="Filters are always case insensitive." %}
+{% include tip.html content='Filters are always case insensitive.' %}
 
-## 2. filter
+## 1. filter
+{: #filter }
 
-For all sub-commands except `.filter switch`, you usually need to specify the filter type, either `del` (the auto-delete filter list) or `warn` (the warn-only filter list). You can also use the shorthand `w` or `d`.
+Command group to manages the filter lists.
 
-{% include tip.html content="For convenience, all sub-commands support a single-letter shorthand. Check each command's Usage section." %}
+For all sub-commands except <a href="./wordfilter.html#filter-switch">filter switch</a>, you need to specify the filter list,
+either `del` (auto-delete list) or `warn` (warn-only list). You can also use the
+shorthand `d` or `w`.
 
-## 2.1 list (shorthand: l)
+{% include tip.html content='For convenience, all sub-commands support a single-letter shorthand. Check each
+command&#x27;s Usage section.' %}
+
+**Usage**: `.filter`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+### 1.1. filter list (l)
+{: #filter-list }
 
 Lists the current filters.
 
 If `filter_type` is not given, lists all filters; otherwise, lists the specified filter.
 
-**Usage**:
-* `.filter list [filter_type]`
-* `.filter l [filter_type]`
+**Usage**: `.filter [list|l] [filter_type]`
 
-**Arguments**:
-* `filter_type`: Optional. One of [`warn`, `del`, `w`, `d`]
+**Arguments**
 
-**Users:** Moderators only
+[filter_type]
+: Optional. Filter list: `del` or `warn` (shorthand: `d` or `w`). Default: both
 
-**Channels:** Mod and bot channels only
 
-**Examples:**
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
 * `.filter list` - Shows both auto-warn and auto-delete lists.
 * `.filter list warn` - Shows warn filter list.
 * `.filter list del` - Shows auto-delete filter list.
-* `.filter l w` - Shows warn filter list (shorthand).
+* `.filter l w` - Shorthand version of `.filter list warn`.
 
-## 2.2 add (shorthand: a)
+### 1.2. filter add (a)
+{: #filter-add }
 
-Add a new filter word/expression.
+Adds a new filter word/expression.
 
-**Usage**:
-* `.filter add [filter_type] [word]`
-* `.filter a [filter_type] [word]`
+**Usage**: `.filter [add|a] <filter_type> <word>`
 
-**Arguments**:
-* `filter_type`: One of `warn`, `del`, `w`, `d`
-* `word`: The word or expression to filter. **If it has spaces, use quotation marks.** Use `%` at the beginning/end of the word to match word boundaries (otherwise substring matching is used).
+**Arguments**
 
-**Users:** Moderators only
+&lt;filter_type&gt;
+: Filter list: `del` or `warn` (shorthand: `d` or `w`).
 
-**Channels:** Mod and bot channels only
 
-**Examples:**
+&lt;word&gt;
+: string. The word or expression to filter. **If it has spaces, use quotation marks.** See
+  <a href="./wordfilter.html">WordFilter</a> (or `.help WordFilter` in-bot) for information on matching syntax.
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
 * `.filter add warn %word%` - Adds "word" (as an exact word match) to the auto-warning list.
 * `.filter add del "%pink flamingo%"` - Add "pink flamingo" (exact expression) to the auto-delete list.
-* `.filter a w %talk` - Shorthand. Add "%talk" to the warning list - this will match any words that start with "talk".
+* `filter a w %talk` - Shorthand. Add "%talk" to the warning list - this will match any words that start with "talk".
 
-## 3.3 rem (shorthand: r)
+### 1.3. filter rem (r, remove)
+{: #filter-rem }
 
 Remove a filter word/expression by word.
 
-**Usage**:
-* `.filter rem [filter_type] [word]`
-* `.filter r [filter_type] [word]`
-* `.filter remove [filter_type] [word]`
+**Usage**: `.filter [rem|r|remove] <filter_type> <word>`
 
-**Arguments**:
-* `filter_type`: One of `warn`, `del`, `w`, `d`
-* `word`: The word or expression to remove from the filter list. **If it has spaces, use quotation marks.**
+**Arguments**
 
-**Users:** Moderators only
+&lt;filter_type&gt;
+: Filter list: `del` or `warn` (shorthand: `d` or `w`).
 
-**Channels:** Mod and bot channels only
 
-**Examples:**
+&lt;word&gt;
+: string. The word or expression to remove. **If it has spaces, use quotation marks.**
+
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
 * `.filter rem warn %word%` - Remove "%word%" from the auto-warning list.
-* `.filter rem del "%pink flamingo%"` - Remove "%pink flamingo%" from the auto-delete list.
+* `.filter r d "%pink flamingo%"` - Shorthand. Remove "%pink flamingo%" from the auto-delete list.
 
-
-## 3.4 rnum
+### 1.4. filter rnum
+{: #filter-rnum }
 
 Remove a filter word/expression by list index.
 
-**Usage**:
-* `.filter rid [filter_type] [index]`
+**Usage**: `.filter rnum <filter_type> <index>`
 
-**Arguments**:
-* `filter_type`: One of `warn`, `del`, `w`, `d`
-* `index`: The index number of the filter to remove. You can get this index number using the `list` command.
+**Arguments**
 
-**Users:** Moderators only
+&lt;filter_type&gt;
+: Filter list: `del` or `warn` (shorthand: `d` or `w`).
 
-**Channels:** Mod and bot channels only
 
-**Examples:**
-* `.filter rem del 5` - Removes the 5th rule in the auto-delete filter.
-* `.filter r w 3` - Shorthand. Removes the 3rd rule in the warning-only filter.
+&lt;index&gt;
+: number. The index number of the filter to remove. You can get this index number using the
+  <a href="./wordfilter.html#filter-list">filter list</a> command.
 
-## 3.5 switch (shorthand: s)
 
-Change the bot output channel for wordfilter warnings.
 
-Switches between the configured filter warning channel and the general bot output channel (#mods and #bot-output at time of writing).
+**Details**
 
-**Usage:**
-* `.filter switch`
-* `.filter s`
+Members
+: Moderators, Administrators.
 
-**Arguments:** None
 
-**Users:** Moderators only
+Channels
+: Mod channels.
 
-**Channels:** Mod and bot channels only
+
+**Examples**
+
+* `.filter rnum del 5` - Removes the 5th rule in the auto-delete filter.
+* `.filter rnum w 3` - Shorthand. Removes the 3rd rule in the warning-only filter.
+
+### 1.5. filter switch (s, sw)
+{: #filter-switch }
+
+Change the bot output channel for WordFilter warnings.
+
+Switches between the #bot_output and #mods channels.
+
+**Usage**: `.filter [switch|s|sw]`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+## 2. switch
+{: #switch }
+
+DEPRECATED.
+
+**Usage**: `.switch`
+
+**Details**
+
+Members
+: Moderators, Administrators.

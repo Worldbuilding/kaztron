@@ -1,308 +1,366 @@
 ---
-title: "Cogs: Spotlight"
-last_updated: 15 May 2018
-summary: "The Spotlight cog provides functionality which manages the World Spotlight community feature on the /r/worldbuilding Discord server."
+title: "Spotlight"
+last_updated: 05 August 2018
+summary: "Management of the World Spotlight community feature: applications, upcoming, reminders and timing."
 ---
 
-The Spotlight cog provides functionality which manages the World Spotlight community feature on the /r/worldbuilding Discord server.
+The Spotlight cog provides functionality which manages the World Spotlight community
+feature. A number of functions are bundled in this cog:
 
-Two commands are public and can be used by all users. All other commands are mod-only, and are used to select, queue and announce spotlights.
+* Applications review and management (mod only)
+* Announcing a project in the World Spotlight channel (mod only)
+* Management of a queue of upcoming World Spotlight events (mod only)
+* Following or unfollowing World Spotlight notifications (everyone)
+* Starting a World Spotlight, timing and reminders (Spotlight Host only)
 
 ## 1. spotlight
+{: #spotlight }
 
-{% include tip.html content="For convenience, most sub-commands support a single-letter shorthand. Check each command's Usage section." %}
+World Spotlight commands group. See sub-commands.
 
-### 1.1. join
+{% include tip.html content='For convenience, most sub-commands support a single-letter shorthand. Check each
+command&#x27;s Usage section.' %}
 
-Join the Spotlight Audience. This allows users to be pinged by moderators or the Spotlight
-Host for news about the spotlight (like the start of a new spotlight, or a newly released
-schedule).
-
-To leave the Spotlight Audience, use `.spotlight leave`.
-
-**Usage:** `.spotlight join`
-
-**Arguments:** None
-
-**Channels:** Any
-
-**Usable by:** Anyone
+**Usage**: `.spotlight`
 
 
-### 1.2. leave
 
-Leave the Spotlight Audience.  See [1.1. join](#11-join) for more information.
+### 1.1. spotlight join
+{: #spotlight-join }
 
-To join the Spotlight Audience, use `.spotlight join` ([1.1](#11-join)).
+**Usage**: `.spotlight join`
 
-**Usage:** `.spotlight leave`
+<pre>Join the World Spotlight Audience. This allows you to be pinged by moderators or the Host for news like the start of a new World Spotlight or a newly released schedule.
 
-**Arguments:** None
+To leave the Audience, use `.spotlight leave`.</pre>
 
-**Channels:** Any
+### 1.2. spotlight leave
+{: #spotlight-leave }
 
-**Usable by:** Anyone
+**Usage**: `.spotlight leave`
 
+<pre>Leave the World Spotlight Audience. See `.help spotlight join` for more information.
 
-### 1.3. start
+To join the World Spotlight Audience, use `.spotlight join`.</pre>
 
-Start the spotlight.
+### 1.3. spotlight start
+{: #spotlight-start }
 
-The bot will announce the start of your spotlight. It will also remind you about remaining
-time periodically, and announce the end of the spotlight duration.
+Start the World Spotlight. For use by the Spotlight Host.
 
-**Usage:** `.spotlight start`
+KazTronTest will announce the start of your World Spotlight and start counting down
+your remaining time. You will get periodic reminders about the time remaining, as well
+as an announcement about the end of your World Spotlight.
 
-**Arguments:** None
+You can stop the World Spotlight early by calling <a href="./spotlight.html#spotlight-stop">spotlight stop</a>.
 
-**Channels:** #world-spotlight
+**Usage**: `.spotlight start`
 
-**Usable by:** Spotlight Host and mods
+**Details**
 
-
-### 1.4. stop
-
-Stop an ongoing spotlight started with `.spotlight start` ([1.3](#13-start)).
-
-**Usage:** `.spotlight stop`
-
-**Arguments:** None
-
-**Channels:** #world-spotlight
-
-**Usable by:** Spotlight Host and mods
+Members
+: Spotlight Host, Moderators, Administrators.
 
 
-### 1.5. time
-
-Check the remaining time in the spotlight.
-
-**Usage:** `.spotlight time`
-
-**Arguments:** None
-
-**Channels:** #world-spotlight, mod channels
-
-**Usable by:** Anyone
+Channels
+: #specific.
 
 
-### 1.6. list (shorthand: l)
+### 1.4. spotlight stop
+{: #spotlight-stop }
 
-List all the spotlight applications in summary form.
+Stop an ongoing World Spotlight previously started with <a href="./spotlight.html#spotlight-start">spotlight start</a>.
 
-**Usage:**
-* `.spotlight list`
-* `.spotlight l`
+**Usage**: `.spotlight stop`
 
-**Arguments:** None
+**Details**
 
-**Channels:** Any
-
-**Usable by:** Moderators only
+Members
+: Spotlight Host, Moderators, Administrators.
 
 
-### 1.7. current (shorthand: c)
+Channels
+: #specific.
+
+
+### 1.5. spotlight time
+{: #spotlight-time }
+
+Check the remaining time for the current World Spotlight.
+
+**Usage**: `.spotlight time`
+
+**Details**
+
+Channels
+: #specific.
+
+
+### 1.6. spotlight list (l)
+{: #spotlight-list }
+
+List all the World Spotlight applications in summary form.
+
+**Usage**: `.spotlight [list|l]`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+### 1.7. spotlight current (c)
+{: #spotlight-current }
 
 Show the currently selected application.
 
-**Usage:**
-* `.spotlight current`
-* `.spotlight c`
+The "current application" is selected by <a href="./spotlight.html#spotlight-roll">spotlight roll</a> or <a href="./spotlight.html#spotlight-select">spotlight select</a>,
+and is the application used by <a href="./spotlight.html#spotlight-showcase">spotlight showcase</a> and <a href="./spotlight.html#spotlight-queue-add">spotlight queue add</a>.
 
-**Arguments:** None
+**Usage**: `.spotlight [current|c]`
 
-**Channels:** Any
+**Details**
 
-**Usable by:** Moderators only
-
-
-### 1.8. roll (shorthand: r)
-
-Select a spotlight application at random, and set it as the currently selected application. Only applications that are marked 'ready for Spotlight' will be selected.
-
-**Usage:**
-* `.spotlight roll`
-* `.spotlight r`
-
-**Arguments:** None
-
-**Channels:** Any
-
-**Usable by:** Moderators only
+Members
+: Moderators, Administrators.
 
 
-### 1.9. select (shorthand: s)
+### 1.8. spotlight select (s)
+{: #spotlight-select }
 
-Select a specific spotlight application, show it and set it as the currently selected application.
+Set the currently selected application.
 
-**Usage:**
-* `.spotlight set <list_index>`
-* `.spotlight s <list_index>`
+**Usage**: `.spotlight [select|s] <list_index>`
 
-**Arguments:**
-* `<list_index>`: Required. The numerical index of a spotlight application, as shown with `.spotlight list` ([1.6](#16-list-shorthand-l)).
+**Arguments**
 
-**Channels:** Any
-
-**Usable by:** Moderators only
-
-**Example:**
-* `.spotlight set 5` - Set the currently selected application to entry #5, as shown in the list returned from `.spotlight list` ([1.6](#16-list-shorthand-l)).
+&lt;list_index&gt;
+: number. The numerical index of an application, as shown by <a href="./spotlight.html#spotlight-list">spotlight list</a>.
 
 
-### 1.10. showcase
-
-Publicly announce the currently selected application in the Spotlight channel, and switch the Spotlight Host role to the application's owner (if valid).
-
-**Usage:** `.spotlight showcase`
-
-**Arguments:** None
-
-**Channels:** Any
-
-**Usable by:** Moderators only
 
 
-### 1.11. queue (shorthand: q)
+**Details**
 
-The `.spotlight queue` sub-command contains sub-sub-commands that let moderators manage a queue of upcoming spotlights.
-
-
-#### 1.11.1 list (shorthand: l)
-
-Lists the current queue of upcoming spotlights.
-
-The queue is always ordered chronologically. If two queue items have the exact same date, the order between them is undefined.
-
-**Usage:**
-* `.spotlight queue list`
-* `.spotlight q l`
-
-**Arguments:** None
-
-**Channels:** Any
-
-**Usable by:** Moderators only
+Members
+: Moderators, Administrators.
 
 
-#### 1.11.2 showcase (shorthand: s)
+**Example**
 
-Lists a month's queue in the showcase format.
+* `.spotlight set 5` - Set the current application to entry
 
-Usage:
-* `.spotlight queue showcase [month]`
-* `.spotlight q s [month]`
+### 1.9. spotlight roll (r)
+{: #spotlight-roll }
 
-**Arguments:**
-* `[month]`: Optional. Specify the month to list applications for. Default: next month.
+Select a World Spotlight application at random, and set it as the currently selected
+application. Only applications that are marked 'ready for Spotlight' will be selected.
 
-**Channels:** Any
+**Usage**: `.spotlight [roll|r]`
 
-**Usable by:** Moderators only
+**Details**
 
-**Examples:**
+Members
+: Moderators, Administrators.
+
+
+### 1.10. spotlight showcase
+{: #spotlight-showcase }
+
+Announce the next World Spotlight from the currently selected application in the configured public World Spotlight channel. Also switches the Spotlight Host  role to the applicant (if a valid user).
+
+**Usage**: `.spotlight showcase`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+### 1.11. spotlight queue (q)
+{: #spotlight-queue }
+
+Command group containing subcommands that allow managing the queue of upcoming World Spotlight events. See sub-commands for more information.
+
+**Usage**: `.spotlight [queue|q]`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+#### 1.11.1. spotlight queue list (l)
+{: #spotlight-queue-list }
+
+Lists the current queue of upcoming World Spotlight events.
+
+The queue is always ordered chronologically. If two queue items have the exact same
+date, the order between them is undefined.
+
+**Usage**: `.spotlight queue [list|l]`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+#### 1.11.2. spotlight queue showcase (s)
+{: #spotlight-queue-showcase }
+
+Lists the queued World Spotlight events for a given month. This is sent as markdown
+in a code block, suitable for copy-pasting so that a mod can use it to prepare an
+announcement.
+
+**Usage**: `.spotlight queue [showcase|s] [month]`
+
+**Arguments**
+
+[month]
+: date. Optional. The month for which to list queued applications. Default: next month
+
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+**Examples**
+
 * `.spotlight q s 2018-03`
 * `.spotlight q s March 2018`
 
+#### 1.11.3. spotlight queue add (a)
+{: #spotlight-queue-add }
 
-#### 1.11.3 add (shorthand: a)
+Add a World Spotlight application scheduled for a given date range.
 
-Add a spotlight application scheduled for a given range.
-     
-The currently selected spotlight will be added. Use `.spotlight select` or `.spotlight roll`
-to change the currently selected spotlight.
+The currently selected application will be added. Use <a href="./spotlight.html#spotlight-select">spotlight select</a> or
+<a href="./spotlight.html#spotlight-roll">spotlight roll</a> to change the currently selected application.
 
-**Usage:**
-* `.spotlight queue add <datespec> [list_index]`
-* `.spotlight q a <datespec> [list_index]`
+**Usage**: `.spotlight queue [add|a] <daterange>`
 
-**Arguments:**
-* `<daterange>`: Required, string. A string in the form "date1 to date2". Each date can be in one of these formats:
-    * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
-    * A partial date: "April 23"
-    * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of the week ("next Tuesday").
-* `[list_index]`: Optional, int. The numerical index of a spotlight application, as shown with `.spotlight list` ([1.6](#16-list-shorthand-l)). If this is not provided, the currently selected application will be used (so you don't have to specify this argument if you're using `.spotlight roll`, `.spotlight select` or `.spotlight queue next`, for example).
+**Arguments**
 
-{% include note.html content="KazTron will not take any action on the scheduled date. It is purely informational, intended for the bot operator, as well as determining the order of the queue." %}
+&lt;daterange&gt;
+: string. A string in the form of `date1 to date2`. Each of the two dates can be in any
+  of these formats:
+  
+  * An exact date: `2017-12-25`, `25 December 2017`, `December 25, 2017`.
+  * A partial date: `April 23` (nearest future date)
+  * A time expression: `tomorrow`, `next week`, `in 5 days`. You **cannot** use
+  days of the week (e.g. "next Tuesday").
 
-{% include tip.html content="You can add the same Spotlight application to the queue multiple times (e.g. on different dates). To edit the date instead, use `.spotlight queue edit`." %}
 
-**Channels:** Any
 
-**Usable by:** Moderators only
+**Details**
 
-**Examples:**
+{% include note.html content='KazTronTest will not take any action on the scheduled date. The date is used to order
+the queue and as an informational tool to the moderators responsible for the
+World Spotlight.' %}
+
+{% include tip.html content='You can add the same World Spotlight application to the queue multiple times
+(e.g. on different dates). To edit the date instead, use <a href="./spotlight.html#spotlight-queue-edit">spotlight queue edit</a>.' %}
+
+Members
+: Moderators, Administrators.
+
+
+**Examples**
+
 * `.spotlight queue add 2018-01-25 to 2018-01-26`
 * `.spotlight queue add april 3 to april 5`
 
+#### 1.11.4. spotlight queue edit (e)
+{: #spotlight-queue-edit }
 
-#### 1.11.4 edit (shorthand: e)
+Change the scheduled date of a World Spotlight in the queue.
 
-Change the scheduled date of a spotlight application in the queue.
+{% include important.html content='This command takes a **queue index**, as shown by <a href="./spotlight.html#spotlight-queue-list">spotlight queue list</a>.' %}
 
-{% include important.html content="This command takes a **queue index**, not a spotlight application number. Check the index with `.spotlight queue list`." %}
+**Usage**: `.spotlight queue [edit|e] <queue_index> <daterange>`
 
-**Usage:**
-* `.spotlight queue edit <queue_index> <datespec>`
-* `.spotlight q e <queue_index> <datespec>`
+**Arguments**
 
-**Arguments:**
-* `<queue_index>`: Required, int. The numerical position in the queue, as shown with
-  `.spotlight queue list` ([1.11.1](#1111-list-shorthand-l)).
-* `<daterange>`: Required, string. A string in the form "date1 to date2". Each date can be
-  in one of these formats:
-    * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
-    * A partial date: "April 23"
-    * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
-      the week ("next Tuesday").
-
-Examples:
-    `.spotlight queue edit 3 april 3 to april 6`
-
-{% include note.html content="KazTron will not take any action on the scheduled date. It is purely informational, intended for the bot operator, as well as determining the order of the queue." %}
-
-**Channels:** Any
-
-**Usable by:** Moderators only
-
-**Examples:**
-* `.spotlight queue edit 3 2017-12-31` - Changes the date of the 3rd queued application to 31 December 2017.
+&lt;queue_index&gt;
+: number. The queue position to edit, as shown with <a href="./spotlight.html#spotlight-queue-list">spotlight queue list</a>.
 
 
-#### 1.11.5 next (shorthand: n)
-
-Set the next spotlight in the queue as the currently selected spotlight, and remove it from the queue. This is useful when a new spotlight is ready to start, as you can then immediately use `.spotlight showcase` ([1.10](#110-showcase)) to announce it publicly.
-
-**Usage:**
-* `.spotlight queue next`
-* `.spotlight q n`
-
-**Arguments:** None
-
-**Channels:** Any
-
-**Usable by:** Moderators only
+&lt;daterange&gt;
+: string. A daterange in the form `date1 to date2`. The same kind of dates are accepted as for <a href="./spotlight.html#spotlight-queue-add">spotlight queue add</a>.
 
 
-#### 1.11.6 rem (shorthand: r)
 
-Remove a spotlight application from the queue.
 
-If no queue index is passed, removes the last item in the queue.
+**Details**
 
-{% include important.html content="This command removes by **queue index**, not by spotlight application number. Check the index with `.spotlight queue list`." %}
+{% include note.html content='KazTronTest will not take any action on the scheduled date. The date is used to order
+the queue and as an informational tool to the moderators responsible for the
+World Spotlight.' %}
 
-**Usage:**
-* `.spotlight queue rem [queue_index]`
-* `.spotlight q r [queue_index]`
+Members
+: Moderators, Administrators.
 
-**Arguments:**
-* `[queue_index]`: Optional, int. The numerical position in the queue, as shown with `.spotlight queue list` ([1.11.1](#1111-list-shorthand-l)). If this is not provided, the last queue item will be removed.
 
-**Channels:** Any
+**Example**
 
-**Usable by:** Moderators only
+* `.spotlight queue edit 3 april 3 to april 6`
 
-**Examples:**
+#### 1.11.5. spotlight queue next (n)
+{: #spotlight-queue-next }
+
+Pop the next World Spotlight in the queue and set it as the currently selected
+application. This is a useful shortcut to announce the next World Spotlight in queue,
+and is usually followed by a call to <a href="./spotlight.html#spotlight-showcase">spotlight showcase</a>.
+
+**Usage**: `.spotlight queue [next|n]`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+#### 1.11.6. spotlight queue rem (r, remove)
+{: #spotlight-queue-rem }
+
+Remove a World Spotlight application from the queue.
+
+{% include important.html content='This command takes a **queue index**, as shown by <a href="./spotlight.html#spotlight-queue-list">spotlight queue list</a>.' %}
+
+**Usage**: `.spotlight queue [rem|r|remove] [queue_index]`
+
+**Arguments**
+
+[queue_index]
+: number. Optional. The queue position to remove, as shown with <a href="./spotlight.html#spotlight-queue-list">spotlight queue list</a>. If not specified, then the last item in the queue is removed.
+
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+**Examples**
+
 * `.spotlight queue rem` - Remove the last spotlight in the queue.
 * `.spotlight queue rem 3` - Remove the third spotlight in the queue.
+
+#### 1.11.7. spotlight queue insert (i)
+{: #spotlight-queue-insert }
+
+**Unsupported** as of v2.1.
+
+**Usage**: `.spotlight queue [insert|i]`
+
+**Details**
+
+Members
+: Moderators, Administrators.

@@ -1,300 +1,517 @@
 ---
-title: "Cogs: ModNotes"
-last_updated: 5 April 2018
-summary: "The ModNotes cog implements the storage of records for use by moderators in the course of their duty."
+title: "ModNotes"
+last_updated: 05 August 2018
+summary: "Store moderation notes about users."
 ---
 
-The **ModNotes** cog implements the storage of records for use by moderators in the course of their duty, and as a tool of communication between moderators. It allows arbitrary text records to be recorded, alongside with the author and timestamp, associated to various community users.
+The ModNotes cog implements the storage of records for use by moderators in the course
+of their duty, and as a tool of communication between moderators. It allows arbitrary text
+records to be recorded, alongside with the author and timestamp, associated to various
+community users.
 
-## 1. notes
+## 1. notes (note)
+{: #notes }
 
-Access moderation records by user.
+Access a user's moderation logs.
 
-10 notes are shown per page. This limitation is partially to limit the number of messages needed to show one page (typically 2 messages now) due to Discord message size limits. This, in turn, prevents it from hitting a rate limit too easily. It is unlikely to be increased.
+**Usage**: `.[notes|note] <user> [page]`
 
-**Usage:**
-* `.notes <user> [page]`
+**Arguments**
 
-**Arguments:**
-* `<user>`: Required. The user for whom to find moderation notes. This can be an `@mention`, a Discord ID (numerical only), or a KazTron ID (starts with `*`).
-* `[page]`: Optional. The page number to access, if there are more than 1 pages of notes. Default: last page.
+&lt;user&gt;
+: @user. The user for whom to retrieve moderation notes. This can be an `@mention`, a Discord ID (numerical only), or a KazTron ID (starts with `*`).
 
-**Channels:** Mod and bot channels
 
-**Usable by:** Moderators only
+[page]
+: number. Optional. The page number to show, if there are more than 1 page of notes. Default: last page (latest notes)
 
-**Example:**
+
+
+
+**Details**
+
+10 notes are shown per page. This is partly due to Discord message length limits, and
+partly to avoid too large a data dump in a single request.
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
 * `.notes @User#1234`
-* `.notes @User#1234 3`
+* `.notes 330178495568436157 3`
+
+### 1.1. notes finduser
+{: #notes-finduser }
+
+Find a user in the modnotes database.
+
+This command searches both the name and aliases fields.
+
+**Usage**: `.notes finduser <search_term> [page=1]`
+
+**Arguments**
+
+&lt;search_term&gt;
+: @user. Part of a user's name to find. Searches both the canonical name and aliases. If this contains spaces, use quotation marks.
 
 
-### 1.1. add (shorthand: a)
+[page]
+: number. Optional. The page number to show, if there are more than 1 page of notes. Default: 1
+
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Example**
+
+* `.notes finduser Indium` - This would match, for example, a user called "IndiumPhosphide".
+
+### 1.2. notes add (a)
+{: #notes-add }
 
 Add a new note.
 
-If the [modtools](modtools.html) module is active, `temp` notes will also be enforced by the bot (by applying the configured tempban role). An expiration time is highly recommended.
+**Usage**: `.notes [add|a] <user> <type_> <note_contents>`
 
-**Usage:**
-* `.notes add <user> <type> [OPTIONS] <note_contents>`
-* `.notes a <user> <type> [OPTIONS] <note_contents>`
+**Arguments**
 
-**Arguments:**
-* `<user>`: Required. The user to whom the note applies. See `.help notes`.
-* `<type>`: Required. The type of record. One of:
-    * `note`: Miscellaneous note.
-    * `good`: Noteworthy positive contributions
-    * `watch`: Moderative problems to monitor
-    * `int`: Moderator intervention
-    * `warn`: Formal warning
-    * `temp`: Temporary ban
-    * `perma`: Permanent ban
-    * `appeal`: Formal appeal or decision
-* `[OPTIONS]`: Optional. Options of the form:
-    * `timestamp="timespec"`: Sets the note's time (e.g. the time of an event).
-      Default is "now". Instead of `timestamp`, you can also use the synonyms `starts`,
-      `start`, `time`.
-    * `expires="timespec"`: Sets when a note expires. This is purely documentation. For
-      example, when a temp ban ends, or a permaban appeal is available, etc.
-      Default is no expiration. Instead of `expires`, you can also use the synonyms
-      `expire`, `ends` or `end`.
-    * The timespec is "smart". You can type a date and time (like "3 Dec 2017 5PM"), or
-      relative times in natural language ("10 minutes ago", "in 2 days", "now"). Just make
-      sure not to forget quotation marks. No days of the week.
-* `<note_contents>`: The remainder of the command message is stored as the note text.
-
-**Channels:** Mod and bot channels
-
-**Usable by:** Moderators only
-
-**Example:**
-* `.notes add @BlitheringIdiot#1234 perma Repeated plagiarism.` - This creates a record timestamped for right now, with no expiry date.
-* `.notes add @BlitheringIdiot#1234 temp expires="in 7 days" Insulting users, altercation with intervening mod.` - This creates a record timestamped for right now, that expires in 7 days.
-* `.notes add @CalmPerson#4187 good timestamp="2 hours ago" Cool-headed, helped keep the BlitheringIdiot plagiarism situation from exploding` - This creates a record for an event 2 hours ago.
-* `.notes a @BlitheringIdiot#1234 temp Drive-by advertising` - Uses the `a` shorthand for this command.
+&lt;user&gt;
+: @user. User. See <a href="./modnotes.html#notes">notes</a>.
 
 
-### 1.2. expires (shorthand: x; alias: expire)
+&lt;type_&gt;
+: string. Type of record. One of:
+  
+  * `note`: Miscellaneous note
+  * `good`: Positive contributions
+  * `watch`: Behaviours to monitor
+  * `int`: Moderator intervention
+  * `warn`: Formal warning
+  * `temp`: Temporary ban (enforced by bot)
+  * `perma`: Permanent ban (not auto-enforced)
+  * `appeal`: Formal appeal received, decisions, etc.
+
+&lt;note_contents&gt;
+: string. Complex field of the form: `[timestamp="timespec"] [expires="timespec"] <contents>`
+
+
+[timestamp|starts|start|time]
+: timespec. Optional. Set the note's time (e.g. of an incident). The timespec is "smart", and can accept a date/time (`3 Dec 2017 5PM` - default timezone is UTC), or relative times (`10 minutes ago`, `in 2 days`, `now`). Quotation marks required. Do not use days of the week (e.g. Monday). Default: now
+
+
+[expires|expire|ends|end]
+: timespec. Optional. Set when a note expires. Affects tempbans and the <a href="./modnotes.html#notes-watches">notes watches</a> function, otherwise is a remark for moderators. See above for timespec formats. Default: never
+
+
+&lt;contents&gt;
+: string. The note text to store.
+
+
+
+
+**Details**
+
+Attachments in the same message as the command are saved to the note.
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
+* `.notes add @BlitheringIdiot#1234 perma Repeated plagiarism.` - Create a permanent ban record with no expiry date.
+* `.notes add @BlitheringIdiot#1234 temp expires="in 7 days" Insulted @JaneDoe#0422` - Create a temp ban record that expires in 7 days.
+* `.notes add @CalmPerson#4187 good timestamp="2 hours ago" Helped keep an argument in check` - Create a record for an incident 2 hours ago.
+
+### 1.3. notes expires (x, expire)
+{: #notes-expires }
 
 Change the expiration time of an existing note.
 
-**Usage:**
-* `.notes expires <note_id> [timespec]`
-* `.notes x <note_id> [timespec]`
+**Usage**: `.notes [expires|x|expire] <note_id> [timespec=now]`
 
-Arguments:
-* `<note_id>`: Required. The ID of the note. See `.help notes`.
-* `[timespec]`: Optional. The time at which the ban will expire. Default is now. Format
-accepted is the same as [.notes add](#11-add-shorthand-a) (quotation marks not required).
+**Arguments**
 
-Example:
-* `.notes expires 122 tomorrow` - Change the expiration time of note #122 to tomorrow (24 hours from now).
-* `.notes expires 138 2018-01-24` - Change the expiration time of note #138 to 24 January 2018.
+&lt;note_id&gt;
+: number. The ID of the note to edit. See <a href="./modnotes.html#notes">notes</a>.
 
 
-### 1.3. rem (shorthand: r; alias: remove)
+[timespec]
+: timespec. Optional. The time that the note will expire. Format is the same as <a href="./modnotes.html#notes-add">notes add</a> (but quotation marks not required). Default: now
+
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Examples**
+
+* `.notes expires 122 tomorrow` - Change the expiration time of note
+* `.notes expires 138 2018-01-24` - Change the expiration time of note
+
+### 1.4. notes rem (r, remove)
+{: #notes-rem }
 
 Remove an existing note.
 
+**Usage**: `.notes [rem|r|remove] <note_id>`
+
+**Arguments**
+
+&lt;note_id&gt;
+: number. The ID of the note to remove. See <a href="./modnotes.html#notes">notes</a>.
+
+
+
+
+**Details**
+
 To prevent accidental data deletion, the removed note can be viewed and restored by admin users.
 
-**Usage:**
-* `.notes rem <note_id>`
-* `.notes r <note_id>`
+Members
+: Moderators, Administrators.
 
-**Arguments:**
-* `<note_id>`: Required. The ID of the note to remove. See [.notes](#1-notes) for how to list notes and IDs.
 
-**Channels:** Mod and bot channels
+Channels
+: Mod channels.
 
-**Usable by:** Moderators only
 
-**Example:**
-* `.notes rem 122` - Removes note ID 122.
-* `.notes r 124` - Removes note ID 124. Uses the `r` shorthand command.
+**Example**
 
+* `.notes rem 122` - Remove note number 122.
 
-### 1.4. watches
+### 1.5. notes watches (watch)
+{: #notes-watches }
 
-Show all watches currently in effect (i.e. non-expired watch, int, warn records).
+Show all watches currently in effect (i.e. all `watch`, `int` and `warn` records that are not expired).
 
-Arguments:
-* `page`: Optional[int]. The page number to access, if there are more than 1 pages of notes. Default: last page.
+**Usage**: `.notes [watches|watch] [page]`
 
-**Channels:** Mod and bot channels
+**Arguments**
 
-**Usable by:** Moderators only
+[page]
+: number. Optional. The page number to show, if there are more than 1 page of notes. Default: last page (latest notes)
 
 
-### 1.5. temps
 
-Show all tempbans currently in effect (i.e. non-expired temp records).
 
-Arguments:
-* `page`: Optional[int]. The page number to access, if there are more than 1 pages of notes. Default: last page.
+**Details**
 
-**Channels:** Mod and bot channels
+10 notes are shown per page. This is partly due to Discord message length limits, and
+partly to avoid too large a data dump in a single request.
 
-**Usable by:** Moderators only
+Members
+: Moderators, Administrators.
 
 
-### 1.6. removed
+Channels
+: Mod channels.
 
-Show all removed notes, optionally filtered by a user.
 
-**Usage:**
-* `.notes removed <user> [page]`
+### 1.6. notes temps (temp)
+{: #notes-temps }
 
-**Arguments:**
-* `<user>`: Required. The user to filter by, or `all`. See [.notes](#1-notes).
-* `[page]`: Optional[int]. The page number to access, if there are more than 1 pages of notes. Default: last page.
+Show all tempbans currently in effect (i.e. non-expired `temp` records).
 
-**Channels:** Admin channels
+**Usage**: `.notes [temps|temp] [page]`
 
-**Usable by:** Administrators only
+**Arguments**
 
+[page]
+: number. Optional. The page number to show, if there are more than 1 page of notes. Default: last page (latest notes)
 
-### 1.7. restore
 
-Restore a removed note.
 
-**Usage:**
-* `.notes restore <note_id>`
 
-**Arguments:**
-* `<note_id>`: Required. The ID of a previously removed note to restore. Use `.notes removed` to list removed notes.
+**Details**
 
-**Channels:** Mod and bot channels
+10 notes are shown per page. This is partly due to Discord message length limits, and
+partly to avoid too large a data dump in a single request.
 
-**Usable by:** Administrators only
+Members
+: Moderators, Administrators.
 
 
-### 1.8. purge
+Channels
+: Mod channels.
 
-Permanently destroy a removed note.
 
-**Usage:**
-* `.notes purge <note_id>`
+### 1.7. notes name
+{: #notes-name }
 
-**Arguments:**
-* `<note_id>`: Required. The ID of a previously removed note to purge. Use `.notes removed` to list removed notes.
+Set the primary name for a user. This replaces the old name; to add aliases, use <a href="./modnotes.html#notes-alias">notes alias</a>.
 
-**Channels:** Mod and bot channels
+**Usage**: `.notes name <user> <new_name>`
 
-**Usable by:** Administrators only
+**Arguments**
 
+&lt;user&gt;
+: @user. The user to modify. See <a href="./modnotes.html#notes">notes</a> for user format.
 
-### 1.9. finduser
 
-User search.
+&lt;new_name&gt;
+: string. The new primary name for the user. Max 32 characters, no newlines.
 
-This command searches the name and aliases fields. 20 results are shown per page.
 
-**Usage:**
-* `.notes finduser <search_term> [page]`
 
-**Arguments:**
-* `<search_term>`: Required. A substring to search for in the user database's name and aliases fields.
-* `[page]`: Optional. The page to show, if multiple pages of results. Default: 1.
 
-**Channels:** Mod and bot channels
+**Details**
 
-**Usable by:** Moderators only
+Members
+: Moderators, Administrators.
 
-**Example:**
-* `.notes finduser Indium` - This command could, for example, match a user called "IndiumPhosphide".
 
+Channels
+: Mod channels.
 
-### 1.10. name
 
-Set the canonical name by which a user is known. This replaces the previous name; to add aliases, see [.notes alias](#110alias).
+**Example**
 
-**Usage:**
-* `.notes name <user> <new_name>`
+* `.notes name @BlitheringIdiot#1234 Blathers`
 
-**Arguments:**
-* `<user>`: Required. The user to whom the note applies. See [.notes](#1-notes).
-* `<new_name>`: Required. The new canonical name to set for a user. Max 32 characters, no newlines.
+### 1.8. notes alias
+{: #notes-alias }
 
-**Channels:** Mod and bot channels
+Command group. Set or remove user's aliases.
 
-**Usable by:** Moderators only
+**Usage**: `.notes alias <addrem> <user> <alias>`
 
-**Example:**
-* `.notes name @FireAlchemist#1234 Roy Mustang`
+**Arguments**
 
+&lt;addrem&gt;
+: `add` or `rem`. Whether to add or remove an alias.
 
-### 1.11. alias
 
-Set or remove alternative names a user is known under.
+&lt;user&gt;
+: @user. The user to modify. See <a href="./modnotes.html#notes">notes</a> for user format.
 
-{% include tip.html content="Suggested usage: `/u/RedditUsername` for Reddit usernames, `R:Nickname` for IRC registered nicknames, `nick!username@hostname` masks for unregistered IRC users." %}"
 
-**Usage:**
-* `.notes alias <add|rem> <user> <alias>`
+&lt;alias&gt;
+: string. The alias to add or remove. Max 32 characters, no newlines.
 
-**Arguments:**
-* `<add|rem>`: Required. Whether to add or remove the indicated alias.
-* `<user>`: Required. The user to whom the note applies. See [.notes](#1-notes).
-* `<alias>`: Required. The alias to set for the user. Max 32 characters, no newlines.
 
-**Channels:** Mod and bot channels
 
-**Usable by:** Moderators only
 
-**Example:**
-* `.notes alias add @FireAlchemist#1234 The Flame Alchemist`
+**Details**
 
+Recommended usage:
 
-### 1.12. group
+* Reddit usernames: `/u/RedditUsername`
+* IRC NickServ accounts: `R:Nickname`
+* Unregistered IRC users: `nick!username@hostname` masks
+* Known previous names or nicknames the user's known by in the community.
 
-Group and ungroup users together.
+**For other Discord accounts**, use <a href="./modnotes.html#notes-group">notes group</a> instead to group the accounts and their
+modnotes together.
 
-An identity group identifies users which are all considered to be the same
-individual. The `.notes` command will show the user info and records for both simultaneously,
-if one of them is looked up. The users remain separate and can be removed from the group
-later.
+Members
+: Moderators, Administrators.
 
-#### 1.12.1. group add (shorthand: group a)
 
-Group users together.
-        
-If one user is not in a group, that user is added to the other user's group. If both users are in separate groups, both groups are merged. This is irreversible.
+Channels
+: Mod channels.
 
-See [.notes group](#112-group) for more information on grouping.
 
-{% include warning.html content="Be careful about grouping users already in separate groups! This will **irreversibly** merge both groups." %}
+**Example**
 
-**Usage:**
-* `.notes group add <user1> <user2>`
+* `.notes alias add @FireAlchemist#6543 The Flame Alchemist`
 
-**Arguments:**
-* `<user1>` and `<user2>`: Required. The two users to group together. See [.notes](#1-notes).
+### 1.9. notes group
+{: #notes-group }
 
-**Channels:** Mod and bot channels
+Command group. Group accounts belonging to the same user.
 
-**Usable by:** Moderators only
+A group identifiers different Discord accounts that are all considered to be the same
+individual. The <a href="./modnotes.html#notes">notes</a> command will show the user info and records for both
+simultaneously when either user account is looked up.
 
-**Example:**
+The users' notes remain separate and can be removed from the group later.
+
+**Usage**: `.notes group`
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+#### 1.9.1. notes group add (a)
+{: #notes-group-add }
+
+Group two users together.
+
+If one user is already in a group, the other user is added to that group.
+
+If both users are in separate groups, both groups are merged. This is irreversible.
+
+See <a href="./modnotes.html#notes-group">notes group</a> for more information on grouping.
+
+**Usage**: `.notes group [add|a] <user1> <user2>`
+
+**Arguments**
+
+&lt;user1, user2&gt;
+: @user. The users to group. See <a href="./modnotes.html#notes">notes</a> for user format.
+
+
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Example**
+
 * `.notes group add @FireAlchemist#1234 @TinyMiniskirtEnthusiast#4444`
 
-
-#### 1.12.2. group rem (shorthand: group r; alias: group remove)
+#### 1.9.2. notes group rem (r, remove)
+{: #notes-group-rem }
 
 Remove a user from the group.
 
-See [.notes group](#112-group) for more information on grouping.
+See <a href="./modnotes.html#notes-group">notes group</a> for more information on grouping.
 
-{% include tip.html content="This command takes only **one** user as argument, not two." %}
+{% include note.html content='You only need to specify 1 user, who will be disassociated from all other users
+in the group. The other users will remain grouped together.' %}
 
-**Usage:**
-* `.notes group rem <user>`
+**Usage**: `.notes group [rem|r|remove] <user>`
 
-**Arguments:**
-* `<user>`: Required. The user to unlink. See [.notes](#1-notes).
+**Arguments**
 
-**Channels:** Mod and bot channels
+&lt;user&gt;
+: @user. The user to modify. See <a href="./modnotes.html#notes">notes</a> for user format.
 
-**Usable by:** Moderators only
 
-**Example:**
-* `.notes group rem @FireAlchemist#1234`
+
+
+**Details**
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+**Example**
+
+* `.notes group rem`
+
+### 1.10. notes removed
+{: #notes-removed }
+
+Show all removed notes, optionally filtered by user.
+
+**Usage**: `.notes removed <user> [page]`
+
+**Arguments**
+
+&lt;user&gt;
+: @user. The user to filter by, or `all`. See <a href="./modnotes.html#notes">notes</a> for user format.
+
+
+[page]
+: number. Optional. The page number to show, if there are more than 1 page of notes. Default: last page (latest notes)
+
+
+
+
+**Details**
+
+Members
+: Administrators.
+
+
+Channels
+: Admin channels.
+
+
+### 1.11. notes restore
+{: #notes-restore }
+
+Restore a removed note.
+
+**Usage**: `.notes restore <note_id>`
+
+**Arguments**
+
+&lt;note_id&gt;
+: number. The ID of the note to remove. See <a href="./modnotes.html#notes">notes</a>.
+
+
+
+
+**Details**
+
+Members
+: Administrators.
+
+
+Channels
+: Mod channels.
+
+
+### 1.12. notes purge
+{: #notes-purge }
+
+Permanently destroy a removed now.
+
+{% include note.html content='This function intentionally does not include a mass purge, to prevent broad data
+loss, accidental or malicious.' %}
+
+**Usage**: `.notes purge <note_id>`
+
+**Arguments**
+
+&lt;note_id&gt;
+: number. The ID of the note to remove. See <a href="./modnotes.html#notes">notes</a>.
+
+
+
+
+**Details**
+
+Members
+: Administrators.
+
+
+Channels
+: Mod channels.

@@ -445,8 +445,19 @@ img.screenshotSmall {
 }
 
 
+dl {
+    margin-left: 40px;
+}
+
+
 dl dt p {
     margin-left:20px;
+}
+
+
+dl dt {
+    font-style: italic;
+    font-weight: normal;
 }
 
 

@@ -3,7 +3,7 @@
 entries:
 - title: sidebar
   product: KazTron
-  version: 2.2a1
+  version: 2.2a1dev3
   head_image: kaztron.png
   folders:
 
@@ -73,7 +73,7 @@ entries:
     folderitems:
 
     - title: Core
-      url: /dev/cogs/core.html
+      url: /dev/cogs/corecog.html
       output: web, pdf
 
     - title: Dice
@@ -117,7 +117,7 @@ entries:
       output: web, pdf
 
     - title: Role Manager
-      url: /dev/cogs/role_man.html
+      url: /dev/cogs/rolemanager.html
       output: web, pdf
 
     - title: User Statistics
