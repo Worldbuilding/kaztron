@@ -5,10 +5,9 @@
     "mod_channels": ["channel ID 1", "channel ID 2", "these are channels where mod/non-public commands are allowed"],
     "admin_channels": ["channel ID 1", "channel ID 2", "admin-only channels (not automatically considered mod channels)"],
     "playing": "status (playing ...) message here",
-    "bot_owner_id": "Bot master user ID",
     "token": "bot auth token",
     "channel_output": "channel ID for general bot messages (technical/audit mostly)",
-    "channel_test": "channel ID for general testing purposes (mostly unused, some commands are allowed here as well as their normal allowed channels)"
+    "channel_test": "channel ID for general bot usage or testing purposes (mostly unused, some commands are allowed here as well as their normal allowed channels)"
   },
   "core": {
     "name": "KazTronExampleBot",
@@ -38,25 +37,6 @@
       "websockets.protocol": "INFO",
       "discord": "INFO"
     }
-  },
-  "spotlight": {
-    "channel": "Channel ID",
-    "audience_role": "Spotlight Audience role name",
-    "host_role": "Spotlight Host role name",
-    "spreadsheet_id": "Google Spreadsheet ID",
-    "spreadsheet_range": "Google Spreadsheet range name",
-    "start_date_format": "%d",
-    "end_date_format": "%d %B"
-  },
-  "welcome": {
-    "channel_welcome": "channel ID for public welcome messages",
-    "channel_rules": "channel ID for users to read rules (linked to in welcome msg)"
-  },
-  "filter": {
-    "channel_warning": "channel ID for MODERATOR filter warning/delete notifications"
-  },
-  "dice": {
-    "channel_dice": "channel ID where dice are allowed"
   },
   "role_man": {
     "user_roles": {
@@ -93,6 +73,40 @@
       "role_name1 (same structure as user_roles)": {}
     }
   },
+  "blots": {
+    "check_in_weekday": 4,
+    "check_in_time": "5:00",
+    "check_in_channel": "channel ID here",
+    "milestone_map": {
+      "words": {
+        "role 1 name": 0,
+        "role 2 name": 10000,
+        "role 3 name": 25000,
+        "etc.": 50000
+      },
+      "script": {
+        "role 1 name": 0,
+        "role 2 name": 100,
+        "role 3 name": 250,
+        "etc.": 500
+      },
+      "visual": {
+        "role 1 name": 0,
+        "role 2 name": 50,
+        "role 3 name": 100,
+        "etc.": 200
+      }
+    }
+  },
+  "dice": {
+    "channel_dice": "channel ID where dice are allowed"
+  },
+  "filter": {
+    "channel_warning": "channel ID for MODERATOR filter warning/delete notifications"
+  },
+  "modnotes": {
+    "channel_log": "channel ID - for channel to log all new records to (read-only ideally?)"
+  },
   "modtools": {
     "tempban_role": "Role Name Here",
     "channel_mod": "ID of channel for mod notifications (like timed unbans)",
@@ -105,8 +119,34 @@
       ["url2", "artist name 2"]
     ]
   },
-  "modnotes": {
-    "channel_log": "channel ID - for channel to log all new records to (read-only ideally?)"
+  "projects": {
+    "project_channel": "channel ID",
+    "max_projects": 3,
+    "max_projects_map": {
+      "role name 1": 1,
+      "role name 2": 99
+    },
+    "timeout_confirm": 120,
+    "timeout_wizard": 1800
+  },
+  "quotedb": {
+    "grab_search_max": 100,
+    "datetime_format": "one of: seconds, datetime, date",
+    "show_channel": false
+  },
+  "spotlight": {
+    "name": "World Spotlight",
+    "channel": "Channel ID",
+    "audience_role": "Spotlight Audience role name",
+    "host_role": "Spotlight Host role name",
+    "mod_role": "Role name to inform moderators of spotlight start/end (or blank)",
+    "spreadsheet_id": "Google Spreadsheet ID",
+    "spreadsheet_range": "Google Spreadsheet range name",
+    "start_date_format": "%d",
+    "end_date_format": "%d %B",
+    "duration": 172800,
+    "reminders": [21600, 43200, 64800, 86400, 108000, 129600, 151200, 169200],
+    "queue_reminder_offset": 14400
   },
   "sprint": {
     "channel": "channel ID",
@@ -120,11 +160,6 @@
     "finalize_time": 300,
     "report_time": "time at which reports are generated weekly, default 17:00"
   },
-  "quotedb": {
-    "grab_search_max": 100,
-    "datetime_format": "one of: seconds, datetime, date",
-    "show_channel": false
-  },
   "userstats": {
     "ignore_users": ["user ID 1", "user ID 2", "etc"],
     "ignore_channels": ["channel ID 1", "channel ID 2", "etc"]
@@ -133,5 +168,11 @@
     "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
     "channel_text": "text channel ID to output voice status messages to",
     "role_voice": "Name of the role to assign while in voice channels"
+  },
+  "welcome": {
+    "channel_welcome": "channel ID for public welcome messages",
+    "channel_rules": "channel ID for users to read rules (linked to in welcome msg)",
+    "public_join": true,
+    "public_quit": true
   }
 }

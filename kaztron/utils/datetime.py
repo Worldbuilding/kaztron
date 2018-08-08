@@ -1,6 +1,6 @@
 from datetime import datetime, date, timedelta, timezone
 import dateparser
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import discord
 
@@ -14,7 +14,7 @@ DATEPARSER_SETTINGS = {
 }
 
 
-def parse(timespec: str, future=False, **kwargs):
+def parse(timespec: str, future=False, **kwargs) -> Optional[datetime]:
     """
     Datetime parser, using the `dateparse` package. By default, assumes the UTC timezone unless the
     datetime string specifies timezone.
@@ -182,6 +182,28 @@ def get_month_offset(dt_month: datetime, months: int) -> datetime:
     for _ in range(offset):
         new_dt = truncate(new_dt + delta, 'month')
     return new_dt
+
+
+def get_weekday(dt: datetime, weekday: int, future=True) -> datetime:
+    """
+    Get the nearest date corresponding to a weekday before or after the reference date. The time
+    of ``dt`` is NOT considered when calculating past/future, only the date.
+
+    The returned datetime will have the same time-of-day as ``dt``.
+    :param dt: The reference date.
+    :param weekday: The weekday to find (0 = Sunday, 6 = Saturday).
+    :param future: If True, find the nearest date in the future (including today). Otherwise, find
+    the nearest date in the past.
+    """
+    if not 0 <= weekday < 7:
+        raise ValueError("0 <= weekday < 7, got {}".format(weekday))
+
+    dt_future = dt + timedelta(days=(weekday - dt.weekday() + 7) % 7)
+
+    if future:
+        return dt_future
+    else:
+        return dt_future - timedelta(days=7)
 
 
 def parse_daterange(daterange: str, future=False) -> Tuple[datetime, datetime]:

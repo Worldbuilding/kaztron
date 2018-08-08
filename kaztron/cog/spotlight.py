@@ -2,7 +2,7 @@ import random
 import re
 import time
 import logging
-from typing import List, Union
+from typing import List, Union, Optional
 from collections import deque
 
 import discord
@@ -10,16 +10,16 @@ from discord.ext import commands
 
 from datetime import datetime, date, timedelta
 
-from kaztron import KazCog, theme
+from kaztron import KazCog, theme, task
 from kaztron.cog.role_man import RoleManager
 from kaztron.driver import gsheets
-from kaztron.utils.checks import mod_only
+from kaztron.utils.checks import mod_only, mod_or_has_role, in_channels_cfg
 from kaztron.utils.converter import NaturalDateConverter
 from kaztron.utils.datetime import utctimestamp, parse as dt_parse, parse_daterange, \
-    get_month_offset, truncate
+    get_month_offset, truncate, format_timedelta
 from kaztron.utils.decorators import error_handler
 from kaztron.utils.discord import get_named_role, Limits, remove_role_from_all, \
-    extract_user_id, user_mention, get_member, get_help_str
+    extract_user_id, user_mention, get_member, get_group_help, get_members_with_role
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
 from kaztron.utils.strings import format_list, natural_truncate, split_chunks_on
 
@@ -40,7 +40,7 @@ class SpotlightApp:
 
     @staticmethod
     def is_filled(str_property: str) -> bool:
-        return str_property and str_property.lower() != 'n/a'
+        return str_property and str_property.strip().lower() != 'n/a'
 
     @property
     @error_handler(ValueError, datetime.utcfromtimestamp(0))
@@ -95,67 +95,82 @@ class SpotlightApp:
     @property
     @error_handler(IndexError, "")
     def keywords(self) -> str:
-        return self._data[5]
+        return self._data[5].strip()
 
     @property
     @error_handler(IndexError, "")
     def favorite(self) -> str:
-        return self._data[6]
+        return self._data[6].strip()
 
     @property
     @error_handler(IndexError, "")
     def talking_point(self) -> str:
-        return self._data[7]
+        return self._data[7].strip()
 
     @property
     @error_handler(IndexError, "")
     def mature(self) -> str:
-        return self._data[8]
+        return self._data[8].strip()
 
     @property
     @error_handler(IndexError, "")
     def inspirations(self) -> str:
-        return self._data[9]
+        return self._data[9].strip()
 
     @property
     @error_handler(IndexError, "")
     def prompt(self) -> str:
-        return self._data[10]
+        return self._data[10].strip()
 
     @property
     @error_handler(IndexError, "")
     def pitch(self) -> str:
-        return self._data[11]
+        return self._data[11].strip()
 
     @property
     @error_handler(IndexError, False)
     def is_nsfw(self) -> bool:
-        return self._data[12].lower() == 'yes'
+        return self._data[12].strip().lower() == 'yes'
 
     @property
     @error_handler(IndexError, "")
     def nsfw_info(self) -> str:
-        return self._data[13]
+        return self._data[13].strip()
 
     @property
     @error_handler(IndexError, "")
     def art_url(self) -> str:
-        return self._data[14]
+        return self._data[14].strip()
 
     @property
     @error_handler(IndexError, "")
     def additional_info_url(self) -> str:
-        return self._data[15]
+        return self._data[15].strip()
 
     @property
     @error_handler(IndexError, False)
     def is_ready(self) -> bool:
-        return self._data[16].lower() == 'yes'
+        return self._data[16].strip().lower() == 'yes'
 
     @property
     @error_handler(IndexError, "")
     def unnamed(self) -> str:
-        return self._data[17]
+        return self._data[17].strip()
+
+    @property
+    @error_handler(IndexError, "")
+    def genre(self) -> str:
+        return self._data[27].strip()
+
+    @property
+    @error_handler(IndexError, "")
+    def project_type(self) -> str:
+        return self._data[28].strip()
+
+    @property
+    @error_handler(IndexError, "")
+    def language(self) -> str:
+        return self._data[29].strip()
 
     @property
     def is_valid(self) -> bool:
@@ -175,22 +190,57 @@ class SpotlightApp:
 
 
 class Spotlight(KazCog):
+    """!kazhelp
+
+    brief: |
+        Management of the {{spotlight_name}} community feature: applications, upcoming, reminders
+        and timing.
+    description: |
+        The Spotlight cog provides functionality which manages the {{spotlight_name}} community
+        feature. A number of functions are bundled in this cog:
+
+        * Applications review and management (mod only)
+        * Announcing a project in the {{spotlight_name}} channel (mod only)
+        * Management of a queue of upcoming {{spotlight_name}} events (mod only)
+        * Following or unfollowing {{spotlight_name}} notifications (everyone)
+        * Starting a {{spotlight_name}}, timing and reminders ({{spotlight_host_name}} only)
+    contents:
+        - spotlight:
+            - join
+            - leave
+            - start
+            - stop
+            - time
+            - list
+            - current
+            - select
+            - roll
+            - showcase
+            - queue:
+                - list
+                - showcase
+                - add
+                - edit
+                - next
+                - rem
+                - insert
+    """
     msg_join = \
-        "You are now a part of the World Spotlight audience. You can be pinged by the "\
-        "moderators or the host for spotlight-related news (like the start of a "\
-        "spotlight). You can use `.spotlight leave` to leave the audience."
+        "You are now a part of the {0} audience. You can be pinged by the "\
+        "moderators or the {1} for {0}-related news. " \
+        "You can use `.spotlight leave` to leave the audience."\
 
     msg_join_err = \
-        "Oops! You're already part of the World Spotlight audience. If you want to leave, " \
-        "please use `.spotlight leave`. (Note that this change happened for KazBot 1.3)."
+        "Oops! You're already part of the {} audience. If you want to leave, " \
+        "please use `.spotlight leave`."
 
     msg_leave = \
-        "You are no longer part of the World Spotlight audience. You will no longer be pinged "\
-        "for spotlight-related news. You can use `.spotlight join` to join the audience " \
+        "You are no longer part of the {0} audience. You will no longer be pinged "\
+        "for {0}-related news. You can use `.spotlight join` to join the audience " \
         "again."
 
     msg_leave_err = \
-        "Oops! You're not currently part of the World Spotlight audience. If you want to join, " \
+        "Oops! You're not currently part of the {} audience. If you want to join, " \
         "please use `.spotlight join`."
 
     APPLICATIONS_CACHE_EXPIRES_S = 60.0
@@ -203,28 +253,61 @@ class Spotlight(KazCog):
     QUEUE_ENTRY_FMT = '(#{id:d}) [{start}–{end}] {app}'
     QUEUE_CHANGED_FMT = '{msg}: {i:d}. ' + QUEUE_ENTRY_FMT
     QUEUE_SHOWCASE_FMT = '{app_obj.user_disp} with **{app_obj.project}** ({start}–{end})'
+    QUEUE_REMINDER = '{mention} **Upcoming {feature} Reminder** ' + QUEUE_ENTRY_FMT
 
     UNKNOWN_APP_STR = "Unknown - Index out of bounds"
 
+    #
+    # Config
+    #
+
+    # discord stuff
+    feature_name = KazCog.config.get('spotlight', 'name')
+    role_audience_name = KazCog.config.get('spotlight', 'audience_role')
+    role_host_name = KazCog.config.get('spotlight', 'host_role')
+    role_mods_name = KazCog.config.get('spotlight', 'mod_role')
+    ch_id_spotlight = KazCog.config.get('spotlight', 'channel')
+
     def __init__(self, bot):
         super().__init__(bot)
-        self.state.set_defaults('spotlight', current=-1, queue=[])
+        self.state.set_defaults('spotlight', current=-1, queue=[], start_time=None, reminders=[])
 
+        # discord stuff
         self.channel_spotlight = None
-        self.role_audience_name = self.config.get('spotlight', 'audience_role')
-        self.role_host_name = self.config.get('spotlight', 'host_role')
 
+        # settings
+        self.duration = self.config.get('spotlight', 'duration')
+        self.reminder_offsets = self.config.get('spotlight', 'reminders')
+        self.time_formats = (self.config.get('spotlight', 'start_date_format'),
+                             self.config.get('spotlight', 'end_date_format'))
+
+        # google sheet stuff
         self.user_agent = self.config.get("core", "name")
         self.gsheet_id = self.config.get("spotlight", "spreadsheet_id")
         self.gsheet_range = self.config.get("spotlight", "spreadsheet_range")
         self.applications = []
         self.applications_last_refresh = 0
 
+        # queues
         self.current_app_index = int(self.state.get('spotlight', 'current', -1))
+        # deque contains dicts with keys ('index', 'start', 'end')
         self.queue_data = deque(self.state.get('spotlight', 'queue', []))
+        self.queue_reminder_offset = timedelta(
+            seconds=self.config.get('spotlight', 'queue_reminder_offset')
+        )
 
-        self.time_formats = (self.config.get('spotlight', 'start_date_format'),
-                             self.config.get('spotlight', 'end_date_format'))
+        # reminders
+        st_unix = self.state.get('spotlight', 'start_time')
+        self.start_time = datetime.utcfromtimestamp(st_unix) if st_unix is not None else None
+
+        self.reminders = deque(datetime.utcfromtimestamp(t)
+                               for t in self.state.get('spotlight', 'reminders', []))
+
+    def export_kazhelp_vars(self):
+        return {
+            'spotlight_name': self.feature_name,
+            'spotlight_host_name': self.role_host_name
+        }
 
     def _load_applications(self):
         """ Load Spotlight applications from the Google spreadsheet. """
@@ -240,6 +323,10 @@ class Spotlight(KazCog):
         """ Write all data to the dynamic configuration file. """
         self.state.set('spotlight', 'current', self.current_app_index)
         self.state.set('spotlight', 'queue', list(self.queue_data))
+        self.state.set('spotlight', 'start_time',
+            utctimestamp(self.start_time) if self.start_time is not None else None)
+        self.state.set('spotlight', 'reminders',
+            [utctimestamp(t) for t in self.reminders])
         self.state.write()
 
     def _upgrade_queue_v21(self):
@@ -257,6 +344,13 @@ class Spotlight(KazCog):
                 cur_date += timedelta(days=2)
                 next_date += timedelta(days=2)
             self.queue_data = new_queue
+            self._write_db()
+
+    def _upgrade_queue_v22(self):
+        if self.queue_data and 'reminder_sent' not in self.queue_data[0]:
+            logger.info("Upgrading queue to version 2.2")
+            for queue_item in self.queue_data:
+                queue_item['reminder_sent'] = False
             self._write_db()
 
     async def _get_current(self) -> SpotlightApp:
@@ -346,11 +440,12 @@ class Spotlight(KazCog):
         if app.is_filled(app.mature):
             em.add_field(name="Mature & Controversial Issues",
                          value=natural_truncate(app.mature, Limits.EMBED_FIELD_VALUE),
-                         inline=False)
+                         inline=True)
 
-        em.add_field(name="Keywords",
-                     value=natural_truncate(app.keywords, Limits.EMBED_FIELD_VALUE) or "None",
-                     inline=False)
+        if app.is_filled(app.keywords):
+            em.add_field(name="Keywords",
+                         value=natural_truncate(app.keywords, Limits.EMBED_FIELD_VALUE),
+                         inline=False)
 
         if app.is_filled(app.art_url):
             em.add_field(name="Project Art",
@@ -361,6 +456,21 @@ class Spotlight(KazCog):
             em.add_field(name="Additional Content",
                          value=natural_truncate(app.additional_info_url, Limits.EMBED_FIELD_VALUE),
                          inline=True)
+
+        if app.is_filled(app.genre):
+            em.add_field(name="Genre",
+                value=natural_truncate(app.genre, Limits.EMBED_FIELD_VALUE),
+                inline=True)
+
+        if app.is_filled(app.project_type):
+            em.add_field(name="Type",
+                value=natural_truncate(app.project_type, Limits.EMBED_FIELD_VALUE),
+                inline=True)
+
+        if app.is_filled(app.language):
+            em.add_field(name="Language",
+                value=natural_truncate(app.language, Limits.EMBED_FIELD_VALUE),
+                inline=True)
 
         await self.bot.send_message(destination, embed=em)
         await self.bot.say("Spotlight ID #{:d}: {!s}".format(index, app))
@@ -402,8 +512,9 @@ class Spotlight(KazCog):
 
     async def on_ready(self):
         """ Load information from the server. """
-        id_spotlight = self.config.get('spotlight', 'channel')
-        self.channel_spotlight = self.validate_channel(id_spotlight)
+        await super().on_ready()
+
+        self.channel_spotlight = self.validate_channel(self.ch_id_spotlight)
 
         roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
         if roleman:
@@ -412,17 +523,19 @@ class Spotlight(KazCog):
                     role_name=self.role_audience_name,
                     join_name="join",
                     leave_name="leave",
-                    join_msg=self.msg_join,
-                    leave_msg=self.msg_leave,
-                    join_err=self.msg_join_err,
-                    leave_err=self.msg_leave_err,
-                    join_doc="Join the Spotlight Audience. This allows you to be pinged by "
-                             "moderators or the Spotlight Host for news about the spotlight (like "
-                             "the start of a new spotlight, or a newly released schedule).\n\n"
-                             "To leave the Spotlight Audience, use `.spotlight leave`.",
-                    leave_doc="Leave the Spotlight Audience. See `.help spotlight join` for more "
-                              "information.\n\n"
-                              "To join the Spotlight Audience, use `.spotlight join`.",
+                    join_msg=self.msg_join.format(self.feature_name, self.role_host_name),
+                    leave_msg=self.msg_leave.format(self.feature_name, self.role_host_name),
+                    join_err=self.msg_join_err.format(self.feature_name, self.role_host_name),
+                    leave_err=self.msg_leave_err.format(self.feature_name, self.role_host_name),
+                    join_doc=("Join the {0} Audience. This allows you to be pinged by "
+                              "moderators or the Host for news like "
+                              "the start of a new {0} or a newly released schedule.\n\n"
+                              "To leave the Audience, use `.spotlight leave`.")
+                    .format(self.feature_name, self.role_host_name),
+                    leave_doc=("Leave the {0} Audience. See `.help spotlight join` for more "
+                               "information.\n\n"
+                               "To join the {0} Audience, use `.spotlight join`.")
+                    .format(self.feature_name, self.role_host_name),
                     group=self.spotlight,
                     cog_instance=self,
                     ignore_extra=False
@@ -435,31 +548,47 @@ class Spotlight(KazCog):
             logger.error(err_msg)
             await self.send_output(err_msg)
 
-        # convert queue from v2.0 queue
+        for role_name in (self.role_host_name, self.role_audience_name):
+            get_named_role(self.server, role_name)  # raise error early if any don't exist
+
+        # role_mods_name is optional
+        try:
+            get_named_role(self.server, self.role_mods_name)
+        except ValueError:
+            msg = "Configuration spotlight.mod_role is not valid: role '{}' not found"\
+                .format(self.role_mods_name)
+            logger.warning(msg)
+            await self.send_output("[Warning] " + msg)
+
+        # convert queue from previous versions
         self._upgrade_queue_v21()
+        self._upgrade_queue_v22()
 
         # get spotlight applications - mostly to verify the connection
         self._load_applications()
 
-        await super().on_ready()
+        # start reminders tasks
+        self._schedule_reminders()
+        self._schedule_upcoming_reminder()
 
     @commands.group(invoke_without_command=True, pass_context=True)
     async def spotlight(self, ctx):
+        """!kazhelp
+        brief: "{{spotlight_name}} commands group. See sub-commands."
+        description: |
+            {{spotlight_name}} commands group. See sub-commands.
+
+            TIP: For convenience, most sub-commands support a single-letter shorthand. Check each
+            command's Usage section.
         """
-        Manages the World Spotlight event. Users: see `.help spotlight join`.
-        """
-        command_list = list(self.spotlight.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['l'])
     @mod_only()
     async def list(self, ctx):
+        """!kazhelp
+        description: List all the {{spotlight_name}} applications in summary form.
         """
-        [MOD ONLY] List all the spotlight applications in summary form.
-        """
-        logger.debug("list: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         logger.info("Listing all spotlight applications for {0.author!s} in {0.channel!s}"
             .format(ctx.message))
@@ -483,8 +612,13 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['c'])
     @mod_only()
     async def current(self, ctx):
-        """ [MOD ONLY] Show the currently selected application. """
-        logger.debug("current: {}".format(message_log_str(ctx.message)))
+        """!kazhelp
+        description: |
+            Show the currently selected application.
+
+            The "current application" is selected by {{!spotlight roll}} or {{!spotlight select}},
+            and is the application used by {{!spotlight showcase}} and {{!spotlight queue add}}.
+        """
         self._load_applications()
         try:
             app = await self._get_current()
@@ -496,11 +630,11 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['r'])
     @mod_only()
     async def roll(self, ctx):
+        """!kazhelp
+        description: |
+            Select a {{spotlight_name}} application at random, and set it as the currently selected
+            application. Only applications that are marked 'ready for Spotlight' will be selected.
         """
-        [MOD ONLY] Select a spotlight application at random, and set it as the currently selected
-        application. Only applications that are marked 'ready for Spotlight' will be selected.
-        """
-        logger.debug("roll: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         if not self.applications:
@@ -520,14 +654,17 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False, aliases=['s'])
     @mod_only()
     async def select(self, ctx, list_index: int):
+        """!kazhelp
+        description: Set the currently selected application.
+        parameters:
+            - name: list_index
+              optional: false
+              type: number
+              description: The numerical index of an application, as shown by {{!spotlight list}}.
+        examples:
+            - command: .spotlight set 5
+              description: Set the current application to entry #5.
         """
-        [MOD ONLY] Set a specific spotlight application as the currently selected application.
-
-        Arguments:
-        * list_index: Required. The numerical index of a spotlight application, as shown with
-         .spotlight list.
-        """
-        logger.debug("set: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         if not self.applications:
@@ -552,13 +689,15 @@ class Spotlight(KazCog):
     @spotlight.command(pass_context=True, ignore_extra=False)
     @mod_only()
     async def showcase(self, ctx):
-        """
-        [MOD ONLY] Publicly announce the currently selected application in the Spotlight channel,
-        and switch the Spotlight Host role to the application's owner (if valid).
+        """!kazhelp
+
+        brief: Announce the next {{spotlight_name}} from the currently selected application.
+        description: Announce the next {{spotlight_name}} from the currently selected application
+            in the configured public {{spotlight_name}} channel. Also switches the
+            {{spotlight_host_name}}  role to the applicant (if a valid user).
         """
 
         # Retrieve and showcase the app
-        logger.debug("showcase: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         try:
             current_app = await self._get_current()
@@ -572,11 +711,11 @@ class Spotlight(KazCog):
             role = None
 
         await self.bot.send_message(self.channel_spotlight,
-            "**WORLD SPOTLIGHT** {2}\n\n"
-            "Our next host is {0}, presenting their project, *{1}*!\n\n"
-            "Welcome, {0}!".format(
-                current_app.user_disp,
-                current_app.project,
+            "**{0}** {2}\n\n"
+            "Our next host is {1.user_disp}, presenting their project, *{1.project}*!\n\n"
+            "Welcome, {1.user_disp}!".format(
+                self.feature_name.upper(),
+                current_app,
                 role.mention if role else ""
             )
         )
@@ -607,14 +746,11 @@ class Spotlight(KazCog):
     @spotlight.group(pass_context=True, invoke_without_command=True, aliases=['q'])
     @mod_only()
     async def queue(self, ctx):
+        """!kazhelp
+        description: Command group containing subcommands that allow managing the queue of upcoming
+            {{spotlight_name}} events. See sub-commands for more information.
         """
-        [MOD ONLY] The `.spotlight queue` sub-command contains sub-sub-commands that let moderators
-        manage a queue of upcoming spotlights.
-        """
-        command_list = list(self.spotlight.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     def _get_queue_list(self, showcase=False):
         app_strings = []
@@ -649,10 +785,13 @@ class Spotlight(KazCog):
     @queue.command(name='list', ignore_extra=False, pass_context=True, aliases=['l'])
     @mod_only()
     async def queue_list(self, ctx):
+        """!kazhelp
+        description: |
+            Lists the current queue of upcoming {{spotlight_name}} events.
+
+            The queue is always ordered chronologically. If two queue items have the exact same
+            date, the order between them is undefined.
         """
-        [MOD ONLY] Lists the current queue of upcoming spotlights.
-        """
-        logger.debug("queue list: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         logger.info("Listing queue for {0.author!s} in {0.channel!s}".format(ctx.message))
 
@@ -666,17 +805,22 @@ class Spotlight(KazCog):
     @queue.command(name='showcase', ignore_extra=False, pass_context=True, aliases=['s'])
     @mod_only()
     async def queue_showcase(self, ctx, *, month: NaturalDateConverter=None):
+        """!kazhelp
+        brief: Lists the queued {{spotlight_name}} events for a given month.
+        description: |
+            Lists the queued {{spotlight_name}} events for a given month. This is sent as markdown
+            in a code block, suitable for copy-pasting so that a mod can use it to prepare an
+            announcement.
+        parameters:
+            - name: month
+              optional: true
+              type: date
+              default: next month
+              description: The month for which to list queued applications.
+        examples:
+            - command: .spotlight q s 2018-03
+            - command: .spotlight q s March 2018
         """
-        [MOD ONLY] Lists a month's queue in the showcase format.
-
-        Arguments:
-        * month: Optional. Specify the month to list applications for. Default: next month.
-
-        Examples:
-            .spotlight q s 2018-03
-            .spotlight q s March 2018
-        """
-        logger.debug("queue showcase: {}".format(message_log_str(ctx.message)))
         self._load_applications()
         logger.info("Listing showcase queue for {0.author!s} in {0.channel!s}".format(ctx.message))
         month = month  # type: datetime
@@ -706,31 +850,35 @@ class Spotlight(KazCog):
     @queue.command(name='add', ignore_extra=False, pass_context=True, aliases=['a'])
     @mod_only()
     async def queue_add(self, ctx, *, daterange: str):
+        """!kazhelp
+        description: |
+            Add a {{spotlight_name}} application scheduled for a given date range.
+
+            The currently selected application will be added. Use {{!spotlight select}} or
+            {{!spotlight roll}} to change the currently selected application.
+        details: |
+            NOTE: {{name}} will not take any action on the scheduled date. The date is used to order
+            the queue and as an informational tool to the moderators responsible for the
+            {{spotlight_name}}.
+
+            TIP: You can add the same {{spotlight_name}} application to the queue multiple times
+            (e.g. on different dates). To edit the date instead, use {{!spotlight queue edit}}.
+        parameters:
+            - name: daterange
+              optional: false
+              type: string
+              description: |
+                    A string in the form of `date1 to date2`. Each of the two dates can be in any
+                    of these formats:
+
+                    * An exact date: `2017-12-25`, `25 December 2017`, `December 25, 2017`.
+                    * A partial date: `April 23` (nearest future date)
+                    * A time expression: `tomorrow`, `next week`, `in 5 days`. You **cannot** use
+                      days of the week (e.g. "next Tuesday").
+        examples:
+            - command: .spotlight queue add 2018-01-25 to 2018-01-26
+            - command: .spotlight queue add april 3 to april 5
         """
-        [MOD ONLY] Add a spotlight application scheduled for a given date range.
-
-        The currently selected spotlight will be added. Use `.spotlight select` or `.spotlight roll`
-        to change the currently selected spotlight.
-
-        NOTE: KazTron will not take any action on the scheduled date. It is purely informational,
-        intended for the bot operator, as well as determining the order of the queue.
-
-        TIP: You can add the same Spotlight application to the queue multiple times (e.g. on
-        different dates). To edit the date instead, use `.spotlight queue edit`.
-
-        Arguments:
-        * `daterange`: Required, string. A string in the form "date1 to date2". Each date can be
-          in one of these formats:
-            * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
-            * A partial date: "April 23"
-            * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
-              the week ("next Tuesday").
-
-        Examples:
-        * `.spotlight queue add 2018-01-25 to 2018-01-26`
-        * `.spotlight queue add april 3 to april 5`
-        """
-        logger.debug("queue add: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         try:
@@ -746,7 +894,8 @@ class Spotlight(KazCog):
         queue_item = {
             'index': self.current_app_index,
             'start': utctimestamp(dates[0]),
-            'end': utctimestamp(dates[1])
+            'end': utctimestamp(dates[1]),
+            'reminder_sent': False
         }
         self.queue_data.append(queue_item)
         logger.info("queue add: added #{:d} from current select at {} to {}"
@@ -755,6 +904,7 @@ class Spotlight(KazCog):
         self.sort_queue()
         queue_index = self.queue_data.index(queue_item)  # find the new position now
         self._write_db()
+        self._schedule_upcoming_reminder()
         start, end = self.format_date_range(dates[0], dates[1])
         await self.bot.say(self.QUEUE_CHANGED_FMT.format(
             msg=self.QUEUE_ADD_HEADING,
@@ -768,18 +918,21 @@ class Spotlight(KazCog):
     @queue.command(name='insert', pass_context=True, hidden=True, aliases=['i'])
     @mod_only()
     async def queue_insert(self, ctx):
-        logger.debug("queue insert: {}".format(message_log_str(ctx.message)))
+        """!kazhelp
+        description: "**Unsupported** as of v2.1."
+        """
         await self.bot.say("**Error**: This command is no longer supported (>= 2.1).")
 
     @queue.command(name='next', ignore_extra=False, pass_context=True, aliases=['n'])
     @mod_only()
     async def queue_next(self, ctx):
+        """!kazhelp
+        brief: "Pop the next {{spotlight_name}} in the queue."
+        description: |
+            Pop the next {{spotlight_name}} in the queue and set it as the currently selected
+            application. This is a useful shortcut to announce the next {{spotlight_name}} in queue,
+            and is usually followed by a call to {{!spotlight showcase}}.
         """
-        [MOD ONLY] Set the next spotlight in the queue as the currently selected spotlight, and
-        remove it from the queue. This is useful when a new spotlight is ready to start, as you can
-        then immediately use `.spotlight showcase` to announce it publicly.
-        """
-        logger.debug("queue next: {}".format(message_log_str(ctx.message)))
         try:
             queue_item = self.queue_data.popleft()
         except IndexError:
@@ -809,33 +962,33 @@ class Spotlight(KazCog):
             await self.bot.say("**Scheduled for:** {} to {}".format(start_str, end_str))
             await self.send_validation_warnings(ctx, app)
             self._write_db()
+            self._schedule_upcoming_reminder()
 
     @queue.command(name='edit', ignore_extra=False, pass_context=True, aliases=['e'])
     @mod_only()
     async def queue_edit(self, ctx, queue_index: int, *, daterange: str):
+        """!kazhelp
+        description: |
+            Change the scheduled date of a {{spotlight_name}} in the queue.
+
+            IMPORTANT: This command takes a **queue index**, as shown by {{!spotlight queue list}}.
+        details: |
+            NOTE: {{name}} will not take any action on the scheduled date. The date is used to order
+            the queue and as an informational tool to the moderators responsible for the
+            {{spotlight_name}}.
+        parameters:
+            - name: queue_index
+              type: number
+              optional: false
+              description: The queue position to edit, as shown with {{!spotlight queue list}}.
+            - name: daterange
+              type: string
+              optional: false
+              description: A daterange in the form `date1 to date2`. The same kind of dates are
+                accepted as for {{!spotlight queue add}}.
+        examples:
+            - command: .spotlight queue edit 3 april 3 to april 6
         """
-        [MOD ONLY] Change the scheduled date of a spotlight application in the queue.
-
-        This command takes a QUEUE INDEX, not by spotlight number. Check the index with
-        `.spotlight queue list`.
-
-        Note: KazTron will not take any action on the scheduled date. It is purely informational,
-        intended for the bot operator, as well as determining the order of the queue.
-
-        Arguments:
-        * `<queue_index>`: Required, int. The numerical position in the queue, as shown with
-          `.spotlight queue list`.
-        * `<daterange>`: Required, string. A string in the form "date1 to date2". Each date can be
-          in one of these formats:
-            * An exact date: "2017-12-25", "25 December 2017", "December 25, 2017"
-            * A partial date: "April 23"
-            * A time expression: "tomorrow", "next week", "in 5 days". Does **not** accept days of
-              the week ("next Tuesday").
-
-        Examples:
-            `.spotlight queue edit 3 april 3 to april 6`
-        """
-        logger.debug("queue edit: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         # Retrieve the queue item
@@ -877,6 +1030,7 @@ class Spotlight(KazCog):
         logger.info("queue edit: changed item {:d} to dates {} to {}"
             .format(queue_index, dates[0].isoformat(' '), dates[1].isoformat(' ')))
         self._write_db()
+        self._schedule_upcoming_reminder()
         await self.bot.say(self.QUEUE_CHANGED_FMT.format(
             msg=self.QUEUE_EDIT_HEADING,
             i=new_queue_index,
@@ -889,21 +1043,23 @@ class Spotlight(KazCog):
     @queue.command(name='rem', ignore_extra=False, pass_context=True, aliases=['r', 'remove'])
     @mod_only()
     async def queue_rem(self, ctx, queue_index: int=None):
+        """!kazhelp
+        description: |
+            Remove a {{spotlight_name}} application from the queue.
+
+            IMPORTANT: This command takes a **queue index**, as shown by {{!spotlight queue list}}.
+        parameters:
+            - name: queue_index
+              optional: true
+              type: number
+              description: The queue position to remove, as shown with {{!spotlight queue list}}.
+                If not specified, then the last item in the queue is removed.
+        examples:
+            - command: .spotlight queue rem
+              description: Remove the last spotlight in the queue.
+            - command: .spotlight queue rem 3
+              description: Remove the third spotlight in the queue.
         """
-        [MOD ONLY] Remove a spotlight application from the queue.
-
-        Removes by QUEUE INDEX, not by spotlight number. If no queue index is passed, removes the
-        last item in the queue.
-
-        Arguments:
-        * queue_index: Optional, int. The numerical position in the queue, as shown with `.spotlight
-          queue list`. If this is not provided, the last queue item will be removed.
-
-        Examples:
-            `.spotlight queue rem` - Remove the last spotlight in the queue.
-            `.spotlight queue rem 3` - Remove the third spotlight in the queue.
-        """
-        logger.debug("queue rem: {}".format(message_log_str(ctx.message)))
         self._load_applications()
 
         if queue_index is not None:
@@ -935,6 +1091,7 @@ class Spotlight(KazCog):
 
         logger.info("queue rem: removed index {0:d}".format(queue_index))
         self._write_db()
+        self._schedule_upcoming_reminder()
         await self.bot.say(self.QUEUE_CHANGED_FMT.format(
             msg=self.QUEUE_REM_HEADING,
             i=queue_index, id=list_index, start=start, end=end, app=app_str
@@ -998,6 +1155,215 @@ class Spotlight(KazCog):
                 await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
         else:
             await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+
+    def _get_next_reminder(self):
+        for queue_item in self.queue_data:
+            if not queue_item['reminder_sent']:
+                return queue_item
+        else:  # no future item found
+            return None
+
+    def _schedule_upcoming_reminder(self):
+        self.scheduler.cancel_all(self.task_upcoming_reminder)
+        queue_item = self._get_next_reminder()
+        if queue_item is not None:
+            start_time = datetime.utcfromtimestamp(queue_item['start'])
+            reminder_time = start_time - self.queue_reminder_offset
+            self.scheduler.schedule_task_at(self.task_upcoming_reminder, reminder_time)
+
+    @task(is_unique=True)
+    async def task_upcoming_reminder(self):
+        queue_item = self._get_next_reminder()
+        if not queue_item:
+            logger.warning("task_upcoming_reminder: no future queue items to remind")
+            await self.send_output("**Spotlight queue reminder failed**: no future queue items!")
+            return
+
+        array_index = queue_item['index']
+        list_index = array_index + 1  # user-facing
+
+        # Prepare the output
+        self._load_applications()
+        try:
+            # don't use _get_app - don't want errmsgs
+            app_str = self.applications[array_index].discord_str()
+        except IndexError:
+            app_str = self.UNKNOWN_APP_STR
+        start_str, end_str = self.format_date_range(
+            date.fromtimestamp(queue_item['start']),
+            date.fromtimestamp(queue_item['end'])
+        )
+        mod_mention = get_named_role(self.server, self.role_mods_name).mention \
+            if self.role_mods_name else ""
+
+        await self.send_output(self.QUEUE_REMINDER.format(
+            feature=self.feature_name, mention=mod_mention, id=list_index,
+            start=start_str, end=end_str, app=app_str
+        ))
+
+        queue_item['reminder_sent'] = True
+        self._write_db()
+        self._schedule_upcoming_reminder()
+
+    def get_host(self) -> Optional[discord.Member]:
+        host_role = get_named_role(self.server, self.role_host_name)
+        try:
+            return get_members_with_role(self.server, host_role)[0]
+        except IndexError:
+            logger.warning("reminder: Cannot find user with host role!")
+            return None
+
+    @spotlight.command(ignore_extra=False, pass_context=True)
+    @in_channels_cfg('spotlight', 'channel')
+    @mod_or_has_role(role_host_name)
+    async def start(self, ctx: commands.Context):
+        """!kazhelp
+        description: |
+            Start the {{spotlight_name}}. For use by the {{spotlight_host_name}}.
+
+            {{name}} will announce the start of your {{spotlight_name}} and start counting down
+            your remaining time. You will get periodic reminders about the time remaining, as well
+            as an announcement about the end of your {{spotlight_name}}.
+
+            You can stop the {{spotlight_name}} early by calling {{!spotlight stop}}.
+        """
+        if self.start_time is not None:
+            raise commands.UserInputError("The spotlight has already started! "
+                                          "Use `.spotlight stop` to end it early.")
+
+        host = self.get_host()
+        host_mention = host.mention if host else "<Error: Cannot find host>"
+        audience_mention = get_named_role(self.server, self.role_audience_name).mention
+        mod_mention = get_named_role(self.server, self.role_mods_name).mention \
+            if self.role_mods_name else ""
+        duration_s = format_timedelta(timedelta(seconds=self.duration), timespec="minutes")
+
+        msg = ("**{1}'s {0} is now starting!** It will last {3}. " 
+               "The host can use `.spotlight stop` to end it early. {2}").format(
+            self.feature_name, host_mention, audience_mention, duration_s
+        )
+        await self.bot.send_message(self.channel_spotlight, msg)
+        await self.send_output("{3} **{1}'s {0} has started.**"
+            .format(self.feature_name, host_mention, audience_mention, mod_mention))
+
+        self._start_spotlight()
+
+        try:
+            await self.bot.delete_message(ctx.message)
+        except discord.Forbidden:
+            logger.warning("Cannot delete invoking message: Forbidden")
+
+    @spotlight.command(ignore_extra=False, pass_context=True)
+    @in_channels_cfg('spotlight', 'channel')
+    @mod_or_has_role(role_host_name)
+    async def stop(self, ctx: commands.Context):
+        """!kazhelp
+        description: Stop an ongoing {{spotlight_name}} previously started with
+            {{!spotlight start}}.
+        """
+        if self.start_time is None:
+            raise commands.UserInputError("The spotlight has not yet started! "
+                                          "Use `.spotlight start` to start it.")
+
+        await self._send_end(stop=True)
+        self._stop_spotlight()
+
+        try:
+            await self.bot.delete_message(ctx.message)
+        except discord.Forbidden:
+            logger.warning("Cannot delete invoking message: Forbidden")
+
+    @spotlight.command(ignore_extra=False, pass_context=True)
+    @in_channels_cfg('spotlight', 'channel')
+    async def time(self, ctx: commands.Context):
+        """!kazhelp
+        description: Check the remaining time for the current {{spotlight_name}}.
+        """
+        host = self.get_host()
+        host_name = host.nick if host.nick else host.name
+
+        if self.start_time is None:
+            msg = "{1}'s {0} hasn't started yet!".format(self.feature_name, host_name)
+        else:
+            elapsed = datetime.utcnow() - self.start_time
+            remaining = timedelta(seconds=self.duration) - elapsed
+            elapsed_s = format_timedelta(elapsed, timespec="minutes")
+            rem_s = format_timedelta(remaining, timespec="minutes")
+
+            msg = "{2} have passed for {1}'s {0}! {3} remain." \
+                .format(self.feature_name, host_name, elapsed_s, rem_s)
+
+        await self.bot.send_message(ctx.message.channel, msg)
+
+    @task(is_unique=False)
+    async def task_send_reminder(self):
+        host = self.get_host()
+        host_mention = host.mention if host else "<Error: Cannot find host>"
+        elapsed = self.reminders.popleft() - self.start_time
+        remaining = timedelta(seconds=self.duration) - elapsed
+        elapsed_s = format_timedelta(elapsed, timespec="minutes")
+        rem_s = format_timedelta(remaining, timespec="minutes")
+
+        logger.info("Sending reminder: {:.3f} elapsed".format(elapsed.total_seconds()))
+        msg = "**{0} Reminder**: {2} have passed for {1}'s {0}! {3} remain." \
+            .format(self.feature_name, host_mention, elapsed_s, rem_s)
+        await self.bot.send_message(self.channel_spotlight, msg)
+
+        self._write_db()
+
+    @task(is_unique=True)
+    async def task_end_spotlight(self):
+        logger.info("Spotlight has ended. Sending notification and cleaning up.")
+        await self._send_end()
+        self._stop_spotlight()
+
+    def _start_spotlight(self):
+        self.start_time = datetime.utcnow()
+        self.reminders = deque(self.start_time + timedelta(seconds=offset)
+                               for offset in self.reminder_offsets)
+        self._schedule_reminders()
+
+    def _schedule_reminders(self):
+        """
+        Schedule reminders in ``self.reminders`` as well as the end of the sprint. If the current
+        sprint has not been started, does nothing.
+        """
+        scheduled_tasks = self.scheduler.get_instances(self.task_send_reminder) +\
+                          self.scheduler.get_instances(self.task_end_spotlight)
+        if self.start_time is not None and not scheduled_tasks:
+            for r_dt in self.reminders:
+                self.scheduler.schedule_task_at(self.task_send_reminder, r_dt)
+            end_time = self.start_time + timedelta(seconds=self.duration)
+            self.scheduler.schedule_task_at(self.task_end_spotlight, end_time)
+
+    def _stop_spotlight(self):
+        self.start_time = None
+        self.reminders = deque()
+        self.scheduler.cancel_all(self.task_send_reminder)
+        self.scheduler.cancel_all(self.task_end_spotlight)
+        self._write_db()
+
+    async def _send_end(self, stop=False):
+        host = self.get_host()
+        host_mention = host.mention if host else "<Error: Cannot find host>"
+        audience_mention = get_named_role(self.server, self.role_audience_name).mention
+        mod_mention = get_named_role(self.server, self.role_mods_name).mention \
+            if self.role_mods_name else ""
+
+        if not stop:
+            msg = ("**{1}'s {0} is now ending!** "
+                   "Please finish any last questions and wrap up the {0}. {2}") \
+                .format(self.feature_name, host_mention, audience_mention)
+            log_msg = "{3} **{1}'s {0} has ended.**" \
+                .format(self.feature_name, host_mention, audience_mention, mod_mention)
+        else:
+            msg = "**{1}'s {0} has been stopped!** {2}" \
+                .format(self.feature_name, host_mention, audience_mention)
+            log_msg = "{3} **{1}'s {0} has ended (stop command).**" \
+                .format(self.feature_name, host_mention, audience_mention, mod_mention)
+
+        await self.bot.send_message(self.channel_spotlight, msg)
+        await self.send_output(log_msg)
 
 
 def setup(bot):

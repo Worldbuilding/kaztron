@@ -1,7 +1,6 @@
 # Project-specific files
 config.json
 config-*.json
-dict.json
 state.json
 state-*.json
 client_secret.json
@@ -73,7 +72,6 @@ fabric.properties
 # ======
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
 *$py.class
 
 # C extensions

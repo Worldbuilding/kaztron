@@ -7,11 +7,13 @@ import time
 from types import MethodType
 
 from discord.ext import commands
+from discord.ext.commands import HelpFormatter
 
 import kaztron
 from kaztron import KazCog
-from kaztron.config import get_kaztron_config, KaztronConfig
-from kaztron.logging import get_logging_info
+from kaztron.config import get_kaztron_config, KaztronConfig, get_runtime_config
+from kaztron.help_formatter import CoreHelpParser, DiscordHelpFormatter
+from kaztron.scheduler import Scheduler
 
 logger = logging.getLogger("kaztron.bootstrap")
 
@@ -60,15 +62,59 @@ def patch_smart_quotes_hack(client: commands.Bot):
     client.process_commands = MethodType(new_process_commands, client)
 
 
+def patch_command_logging_hack():
+    """
+    Patch to consistently log command invocations prior to running.
+
+    We chose to use this instead of the "on_command" event because said event would be added to the
+    event loop and consistently executed after the command itself has started or even completed,
+    making the command log line rather less useful.
+    """
+    try:  # if already patched, return
+        # noinspection PyProtectedMember
+        _ = commands.Command._kt_command_logging_hack
+        return
+    except AttributeError:
+        pass  # not already patched, carry on
+
+    from kaztron.utils.logging import message_log_str
+
+    cmd_logger = logging.getLogger("kaztron.commands")
+    commands.Command._kt_old_invoke = commands.Command.invoke
+
+    async def new_invoke(self, ctx):
+        cmd_logger.info("{!s}: {}".format(self, message_log_str(ctx.message)))
+        await self._kt_old_invoke(ctx)
+
+    commands.Command.invoke = new_invoke
+    commands.Command._kt_command_logging_hack = True
+
+
 def run(loop: asyncio.AbstractEventLoop):
     """
     Run the bot once.
     """
     config = get_kaztron_config()
-    client = commands.Bot(command_prefix='.',
+    state = get_runtime_config()
+    kaztron.KazCog.static_init(config, state)
+
+    # custom help formatters
+    kaz_help_parser = CoreHelpParser({
+        'name': config.core.get('name')
+    })
+
+    # create bot instance (+ some custom hacks)
+    client = commands.Bot(
+        command_prefix='.',
+        formatter=DiscordHelpFormatter(kaz_help_parser, show_check_failure=True),
         description='This an automated bot for the /r/worldbuilding discord server',
         pm_help=True)
     patch_smart_quotes_hack(client)
+    patch_command_logging_hack()
+
+    # KazTron-specific extension classes
+    client.scheduler = Scheduler(client)
+    client.kaz_help_parser = kaz_help_parser
 
     # Load extensions
     startup_extensions = config.get("core", "extensions")
@@ -111,7 +157,7 @@ def run(loop: asyncio.AbstractEventLoop):
         #
         # Original code Copyright (c) 2015-2016 Rapptz. MIT licence.
         pending = asyncio.Task.all_tasks(loop=loop)
-        gathered = asyncio.gather(*pending, loop=loop)
+        gathered = asyncio.gather(*pending, loop=loop, return_exceptions=True)
         # noinspection PyBroadException
         try:
             gathered.cancel()
@@ -120,7 +166,7 @@ def run(loop: asyncio.AbstractEventLoop):
         except Exception:
             pass
         # END CONTRIB
-        KazCog._state.write()
+        KazCog.state.write()
 
 
 def run_reboot_loop(loop: asyncio.AbstractEventLoop):
@@ -167,6 +213,7 @@ def get_daemon_context(config: KaztronConfig):
     import grp
     from pathlib import Path
 
+    # noinspection PyPackageRequirements
     from daemon import DaemonContext, pidfile
 
     bot_dir = Path(sys.modules['__main__'].__file__).resolve().parent

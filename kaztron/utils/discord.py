@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 import discord
 from discord.ext import commands
@@ -16,7 +17,9 @@ class Limits:
     MESSAGE = MSG_MAX_LEN
     EMBED_TOTAL = 6000
     EMBED_TITLE = 256
+    EMBED_AUTHOR = 256
     EMBED_DESC = 2048
+    EMBED_FOOTER = 2048
     EMBED_FIELD_NAME = 256
     EMBED_FIELD_VALUE = 1024
     EMBED_FIELD_NUM = 25
@@ -89,6 +92,16 @@ async def remove_role_from_all(client: discord.Client, server: discord.Server, r
             await client.remove_roles(u, role)
 
 
+def get_members_with_role(server: discord.Server, role: discord.Role) -> List[discord.Member]:
+    """
+    Find a list of users with a particular role.
+    :param server: Server to search users on
+    :param role: Role to find
+    :return: List of users matching role
+    """
+    return [u for u in server.members if role in u.roles]
+
+
 def user_mention(user_id: str) -> str:
     """
     Return a mention of a user that can be sent over a Discord message. This is a convenience
@@ -119,6 +132,7 @@ def channel_mention(channel_id: str) -> str:
 
 
 _re_user_id = re.compile(r'(?:(?:\\)?<@|@)?!?([0-9]{15,23})>?')
+_re_role_id = re.compile(r'(?:(?:\\)?<@&|@&|&)?([0-9]{15,23})>?')
 
 
 def extract_user_id(input_id: str) -> str:
@@ -148,10 +162,32 @@ def extract_user_id(input_id: str) -> str:
     :return: The extracted user ID (numerical string).
     :raise discord.InvalidArgument: id is not a recognised user ID format
     """
+    if 15 <= len(input_id) <= 23 and input_id.isnumeric():
+        return input_id
+
     try:
         return _re_user_id.fullmatch(input_id).group(1)
     except AttributeError:  # no match - fullmatch() returned None
         raise discord.InvalidArgument('Invalid user ID format {!r}'.format(input_id))
+
+
+def extract_role_id(input_id: str) -> str:
+    """
+    Similar to :func:`~.extract_user_id` for roles.
+
+    Role mentions are of the form <@&123456789012345678>.
+
+    :param input_id: The raw input ID.
+    :return: The extracted user ID (numerical string).
+    :raise discord.InvalidArgument: id is not a recognised user ID format
+    """
+    if 15 <= len(input_id) <= 23 and input_id.isnumeric():
+        return input_id
+
+    try:
+        return _re_role_id.fullmatch(input_id).group(1)
+    except AttributeError:
+        raise discord.InvalidArgument('Invalid role ID format {!r}'.format(input_id))
 
 
 def get_member(ctx: commands.Context, user: str) -> discord.Member:
@@ -279,7 +315,9 @@ def get_usage_str(ctx: commands.Context) -> str:
 
 
 def get_group_help(ctx: commands.Context):
-    command_list = list(ctx.command.commands.keys())
-    return ('Invalid sub-command. Valid sub-commands are {0!s}. '
+    subcommands = sorted(list(set(ctx.command.commands.values())), key=lambda c: c.name)
+    subcommand_strs = ['|'.join([c.name] + list(c.aliases)) for c in subcommands]
+    subcommand_list = ', '.join(subcommand_strs)
+    return ('Invalid sub-command. Valid subcommands are `{0!s}`. '
             'Use `{1}` or `{1} <subcommand>` for instructions.') \
-        .format(command_list, get_help_str(ctx))
+        .format(subcommand_list, get_help_str(ctx))
