@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 import logging
 import os
@@ -186,7 +187,13 @@ class UserStats(KazCog):
 
     def schedule_monthly_task(self):
         next_monthly_task = utils.datetime.get_month_offset(self.last_report_dt, 2)
-        self.scheduler.schedule_task_at(self.do_monthly_tasks, next_monthly_task)
+        try:
+            self.scheduler.schedule_task_at(self.do_monthly_tasks, next_monthly_task)
+        except asyncio.InvalidStateError as e:
+            if 'unique' in e.args[0]:
+                logger.debug("Monthly task already scheduled: not rescheduling")
+            else:
+                raise
 
     def unload_kazcog(self):
         logger.info("Unloading: stopping all ongoing timed events")

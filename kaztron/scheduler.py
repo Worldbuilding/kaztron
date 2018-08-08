@@ -382,7 +382,7 @@ class Scheduler:
             raise asyncio.InvalidStateError("Task {!s} does not exist, is finished or cancelled"
                 .format(instance))
         except TypeError:
-            raise asyncio.InvalidStateError("Task was not started (??? should not happen?"
+            raise asyncio.InvalidStateError("Task was not started (??? should not happen?)"
                 .format(instance))
 
     def cancel_all(self, task: Task=None):

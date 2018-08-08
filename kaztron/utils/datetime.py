@@ -186,11 +186,14 @@ def get_month_offset(dt_month: datetime, months: int) -> datetime:
 
 def get_weekday(dt: datetime, weekday: int, future=True) -> datetime:
     """
-    Get the nearest date corresponding to a weekday before or after the reference date.
+    Get the nearest date corresponding to a weekday before or after the reference date. The time
+    of ``dt`` is NOT considered when calculating past/future, only the date.
+
+    The returned datetime will have the same time-of-day as ``dt``.
     :param dt: The reference date.
     :param weekday: The weekday to find (0 = Sunday, 6 = Saturday).
-    :param future: If True, find the nearest date in the future. Otherwise, find the nearest date
-    in the past.
+    :param future: If True, find the nearest date in the future (including today). Otherwise, find
+    the nearest date in the past.
     """
     if not 0 <= weekday < 7:
         raise ValueError("0 <= weekday < 7, got {}".format(weekday))

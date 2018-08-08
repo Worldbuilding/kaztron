@@ -508,9 +508,17 @@ class WritingSprint(KazCog):
     def _schedule_report(self):
         today_report_time = datetime.combine(datetime.utcnow().date(), self.report_time)
         next_report_time = get_weekday(today_report_time, weekday=6, future=True)
-        self.report_task = self.scheduler.schedule_task_at(
-            self.weekly_report, next_report_time, every=timedelta(days=7)
-        )
+        if next_report_time < datetime.utcnow():  # if today, check if we've passed the report time
+            next_report_time += timedelta(days=7)
+        try:
+            self.report_task = self.scheduler.schedule_task_at(
+                self.weekly_report, next_report_time, every=timedelta(days=7)
+            )
+        except asyncio.InvalidStateError as e:
+            if 'unique' in e.args[0]:
+                logger.debug("Report task already scheduled: not rescheduling")
+            else:
+                raise
 
     def unload_kazcog(self):
         self.report_task.cancel()
