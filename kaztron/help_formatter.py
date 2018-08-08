@@ -15,6 +15,7 @@ from discord.ext import commands
 
 from kaztron.utils.checks import CheckId
 from kaztron.utils.discord import get_named_role, get_command_prefix
+from kaztron.utils.logging import exc_log_str
 from .kazcog import KazCog
 
 logger = logging.getLogger(__name__)
@@ -158,7 +159,8 @@ class CoreHelpParser:
                     )
                 else:
                     name = "cog {}".format(type(command).__name__)
-                raise ValueError("Error parsing !kazhelp YAML for {}".format(name)) from e
+                raise ValueError("Error parsing !kazhelp YAML for `{}`: {}"
+                    .format(name, exc_log_str(e))) from e
             if isinstance(command, commands.Command):
                 self._process_checks(doc_data, command, bot)
             command.kaz_structured_help = copy.deepcopy(doc_data)

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Optional
@@ -11,7 +12,7 @@ from kaztron.cog.sprint.model import *
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.theme import solarized
 from kaztron.utils.checks import in_channels_cfg
-from kaztron.utils.converter import NaturalDateConverter
+from kaztron.utils.converter import NaturalDateConverter, NaturalInteger
 from kaztron.utils.datetime import format_date, format_timedelta, parse as dt_parse, \
     get_weekday
 from kaztron.utils.discord import check_mod, get_named_role, remove_role_from_all, \
@@ -39,10 +40,23 @@ def format_seconds(seconds: float, timespec='seconds'):
 
 
 class WritingSprint(KazCog):
-    """
-    Welcome to writing sprints, where everything's made up and the words don't matter!
-
-    For help with this feature, please type `.help sprint`.
+    """!kazhelp
+    brief: Hold writing sprints, where a group of writers get together to work on their writing
+        projects for a fixed amount of time and compete on word count.
+    contents:
+        - sprint:
+            - status
+            - start
+            - stop
+            - join
+            - leave
+            - wordcount
+            - final
+            - follow
+            - unfollow
+            - leader
+            - stats
+            - statreset
     """
 
     INLINE = True  # makes DISP_EMBEDS prettier
@@ -506,29 +520,33 @@ class WritingSprint(KazCog):
         aliases=['w'])
     @in_channels_cfg('sprint', 'channel')
     async def sprint(self, ctx: commands.Context):
-        """
-        Welcome to writing sprints, where everything's made up and the words don't matter!
+        """!kazhelp
+        brief: Command group for writing sprints.
+        description: |
+            Welcome to writing sprints, where everything's made up and the words don't matter!
 
-        In writing sprints (a.k.a. word wars), you get together with a group of other server members
-        and write for a fixed amount of time, usually 15 or 30 minutes, on whatever project you
-        choose.
+            In writing sprints (a.k.a. word wars), you get together with a group of other writers,
+            agree on a time limit, and then write together!
 
-        At the end of the sprint, you report your word count, and whoever wrote the most wins!
-        Not that they matter. Because you got some writing done. So you're always a winner.
+            At the end of the sprint, you report your word count, and whoever wrote the most wins!
+            Not that it matters. Because you got some writing done, so you're always a winner!
 
-        Writing sprints are a great way of getting you to focus on your writing with a group of
-        other people. And, y'know, not just chatting with them the entire time when you told
-        yourself you'd get some writing done this evening.
+            Writing sprints are a great way of getting you to focus on your writing and get some
+            words down on your page. And, y'know, not just chatting with them the entire time when
+            you told yourself you'd make some progress tonight.
 
-        Get writing!
+            Get writing!
+
+            TIP: Most sub-commands support a single-letter shorthand for convenience. Check each
+            command's Usage section for more information.
         """
         await self.bot.say(get_group_help(ctx))
 
     @sprint.command(pass_context=True, ignore_extra=False, aliases=['?'])
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
     async def status(self, ctx: commands.Context):
-        """
-        Get the current status of the sprint.
+        """!kazhelp
+        description: Get the current status of the sprint.
         """
         em_data = copy.deepcopy(self.DISP_EMBEDS['status'])
         state = self.get_state()
@@ -577,22 +595,31 @@ class WritingSprint(KazCog):
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['s'])
     @in_channels_cfg('sprint', 'channel')
     async def start(self, ctx: commands.Context, duration: float=None, delay: float=None):
-        """
-        Start a new sprint.
+        """!kazhelp
+        description: |
+            Start a new sprint.
 
-        After starting the sprint, you need to join the sprint with .w join in order to specify your
-        initial wordcount.
+            You will also need to join the sprint with `.w j` ({{!sprint join}}), in order to set
+            your starting wordcount.
 
-        Arguments:
-        * duration: Optional. The amount of time, in minutes, for the sprint to last.
-          Default: 25 minutes.
-        * delay: Optional. The amount of time, in minutes, to wait before starting the sprint.
-          Default: 5 minutes.
-
-        Examples:
-            .w start - Create a 25 minute sprint, starting in 5 minutes.
-            .w start 15 - Create a 15-minute sprint, starting in 5 minutes.
-            .w start 25 1 - Create a 25-minute sprint, starting in 1 minute.
+            TIP: Only one sprint can happen at once. If a sprint is currently running, join the
+            ongoing sprint or wait until it's over.
+        parameters:
+            - name: duration
+              type: number in minutes
+              default: 25
+              description: The amount of time the sprint will last.
+            - name: delay
+              type: number in minutes
+              default: 5
+              description: The amount of time to wait before starting the sprint.
+        examples:
+            - command: .w start
+              description: Create a 25 minute sprint, starting in 5 minutes.
+            - command: .w start 15
+              description: Create a 15-minute sprint, starting in 5 minutes.
+            - command: .w start 25 1
+              description: Create a 25-minute sprint, starting in 1 minute.
         """
         state = self.get_state()
         if state is not SprintState.IDLE:
@@ -651,11 +678,11 @@ class WritingSprint(KazCog):
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['x', 'cancel'])
     @in_channels_cfg('sprint', 'channel')
     async def stop(self, ctx: commands.Context):
-        """
-        Cancel the current sprint.
+        """!kazhelp
+        description:
+            Cancel the current sprint.
 
-        This can only be done by the creator of the sprint or moderators, and only if a sprint is
-        ongoing or is about to start.
+            This can only be done by the creator of the sprint or moderators.
         """
         state = self.get_state()
         if state is SprintState.IDLE:
@@ -695,23 +722,29 @@ class WritingSprint(KazCog):
 
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['j'])
     @in_channels_cfg('sprint', 'channel')
-    async def join(self, ctx: commands.Context, wordcount: int):
+    async def join(self, ctx: commands.Context, wordcount: NaturalInteger):
+        """!kazhelp
+        description: |
+            Join the current sprint and set your starting wordcount.
+
+            You can also use this command to edit your starting wordcount, e.g. if you made a
+            mistake.
+
+            If no sprint is running, first start one with `.w s` ({{!sprint start}}).
+
+            TIP: You can join a sprint even if it has started.
+        parameters:
+            - name: wordcount
+              optional: true
+              type: number in words
+              description: Your starting wordcount, before the start of the sprint. When you later
+                report your wordcount at the end of the sprint, your total words written during the
+                sprint will automatically be calculated.
+        examples:
+            - command: .w j 12044
+              description: Join the sprint with an initial wordcount of 12,044 words.
         """
-        Join a sprint and set your initial wordcount.
-
-        You can also use this command to fix your initial wordcount, if you made a mistake when
-        initially joining the sprint.
-
-        This will only work if a sprint is ongoing or has been created with .w start.
-
-        Arguments:
-        * <wordcount>: Required. Your initial wordcount, before the start of the sprint. When you
-          report your wordcount at the end of the sprint, your total words written during the sprint
-          will automatically be calculated.
-
-        Example:
-            .w join 12044 - Join the sprint with an initial wordcount of 12,044 words.
-        """
+        wordcount = wordcount  # type: int
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
@@ -743,11 +776,13 @@ class WritingSprint(KazCog):
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['l'])
     @in_channels_cfg('sprint', 'channel')
     async def leave(self, ctx: commands.Context):
-        """
-        Leave a sprint you previously joined.
+        """!kazhelp
+        description: |
+            Leave a sprint you previously joined.
 
-        You should normally only need to use this if you realise you can't stay for the entire
-        sprint, or otherwise can't participate in the sprint.
+            Note that, if you can't stay for the entire sprint, you can also use `.w wc`
+            ({{!sprint wordcount}}) and `.w final` ({{!sprint final}}) to enter your current
+            wordcount during the sprint.
         """
         state = self.get_state()
         if state is SprintState.IDLE:
@@ -783,22 +818,18 @@ class WritingSprint(KazCog):
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['wc', 'c'])
     @in_channels_cfg('sprint', 'channel')
     async def wordcount(self, ctx, count: int):
-        """
-        Report your wordcount.
-
-        If used before a sprint starts, this changes your starting wordcount. During or after a
-        sprint, it sets your current wordcount and calculates how much you've written during the
-        sprint.
-
-        If you're setting your final wordcount for the end of the sprint, make sure to use the
-        `.w final` command.
-
-        Arguments:
-        * <wordcount>: Required. Your final wordcount at the end of the sprint. The bot will
-          automatically calculate your total words written during the sprint.
-
-        Example:
-            .w c 12888 - Report that your wordcount is 12888.
+        """!kazhelp
+        description:
+            Report your wordcount at the end of a sprint.
+        parameters:
+            - name: wordcount
+              optional: true
+              type: number in words
+              description: Your final total wordcount. Your total words written during the sprint
+                will automatically be calculated from your starting and final wordcount.
+        examples:
+            - command: .w wc 13012
+              description: Report that your total wordcount at the end of the sprint was 13,012.
         """
         state = self.get_state()
         if state is SprintState.IDLE:
@@ -819,9 +850,9 @@ class WritingSprint(KazCog):
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
     async def final(self, ctx: commands.Context):
-        """
-        Finalize your wordcount. Use this when you're sure you're done and your wordcount is
-        correct.
+        """!kazhelp
+        description: Finalize your wordcount. Use this when you're sure you're done and that you've
+            correctly entered your wordcount.
         """
         state = self.get_state()
         if state is SprintState.IDLE or state is SprintState.PREPARE:
@@ -860,17 +891,24 @@ class WritingSprint(KazCog):
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
     async def leader(self, ctx, *, date: NaturalDateConverter=None):
-        """
-        Show the leaderboards.
+        """!kazhelp
+        description: |
+            Show the leaderboards, either all-time or weekly.
 
-        Arguments:
-        * [date]: Optional. Various date formats are accepted like 2018-03-14, 14 Mar 2018,
-          yesterday. If not given, shows leaderboard for all time; if specified, shows leaderboard
-          for the week that includes the given date.
-
-        Examples:
-            .w leader - All-time leaderboard.
-            .w leader 2018-03-14 - Leaderboard for the week that contains 14 March 2018.
+            If no date is specified, shows leaderboard for all time. If a date is specified, shows
+            the leaderboard for the week that contains that date.
+        parameters:
+            - name: date
+              type: date
+              optional: true
+              default: None (all time)
+              description: Specifies the leaderboard week to show. Various date formats are
+                accepted like 2018-03-14, 14 Mar 2018, three days ago, etc.
+        examples:
+            - command: .w leader
+              description: All-time leaderboard.
+            - command: .w leader 2018-03-14
+              description: Leaderboard for the week that contains 14 March 2018.
         """
         date = date  # type: datetime
         await self._leader_inner(ctx.message.channel, date)
@@ -908,19 +946,29 @@ class WritingSprint(KazCog):
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
     async def stats(self, ctx, user: str, *, date: NaturalDateConverter=None):
-        """
-        Show stats, either global or per-user.
+        """!kazhelp
+        description: |
+            Show stats, either global or per-user and either all-time or weekly.
 
-        Arguments:
-        * <user>: An @mention of the user to look up, or "all" for global stats.
-        * [date]: Optional. Various date formats are accepted like 2018-03-14, 14 Mar 2018,
-          yesterday. If not given, shows stats for all time; if specified, shows stats
-          for the week that includes the given date.
-
-        Examples:
-            .w stats all - Global stats for all time.
-            .w stats @JaneDoe - Stats for JaneDoe for all time.
-            .w stats all 2018-03-14 - Global stats for the week including 14 March.
+            If no date is specified, shows stats for all time. If a date is specified, shows stats
+            for the week that contains that date.
+        parameters:
+            - name: user
+              type: '@user or "all"'
+              description: An @mention of the user to look up, or "all" for global stats.
+            - name: date
+              type: date
+              optional: true
+              default: None (all time)
+              description: Specifies the stats week to show. Various date formats are
+                accepted like 2018-03-14, 14 Mar 2018, three days ago, etc.
+        examples:
+            - command: .w stats all
+              description: Global stats for all time.
+            - command: .w stats @JaneDoe#0921
+              description: Stats for JaneDoe for all time.
+            - command: .w stats all 2018-03-14
+              description: Global stats for the week including 14 March.
         """
         date = date  # type: datetime
         member = get_member(ctx, user) if user != 'all' else None
@@ -968,21 +1016,26 @@ class WritingSprint(KazCog):
     @sprint.command(name="statreset", pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)
     async def stats_reset(self, ctx, user: str=None):
-        """
-        Reset your own stats (or any user's stats, for mods).
+        """!kazhelp
+        description: |
+            Reset your own stats. Mods can reset any stats.
 
-        THIS CANNOT BE UNDONE.
+            Resetting your own stats will not change your contribution to the global stats.
 
-        Resetting one user's stats will not affect global stats.
-
-        Arguments:
-        * [user]: Optional, for mods only. Reset another user's stats. Can be an @mention of another
-          user, "global" or "all".
-
-        Examples:
-            .w stats_reset - Reset your own stats.
-            .w stats_reset @JaneDoe - Reset Jane Doe's stats (mods only).
-            .w statsreset global - Reset global stats only (user stats are preserved).
+            IMPORTANT: This cannot be undone.
+        parameters:
+            - name: user
+              type: '@user, "global" or "all"'
+              description: Mods only. An @mention of the user whose stats are to be deleted.
+                "global" deletes the global stats, but does not touch individual user stats.
+                "all" deletes global stats and all user stats.
+        examples:
+            - command: .w statreset
+              description: Reset your own stats.
+            - command: .w statreset @JaneDoe#0921
+              description: Reset Jane Doe's stats. Mods only.
+            - command: .w statreset global
+              description: Reset global stats only (user stats are preserved). Mods only.
         """
         if user == 'global' or user == 'all':
             member = user

@@ -20,9 +20,20 @@ logger = logging.getLogger(__name__)
 
 
 class QuoteCog(KazCog):
-    """
-    The Quotes Database helps you capture the best moments on the server! Store your fellow members'
-    funniest moments so that you can revisit them time and time again.
+    """!kazhelp
+    brief: Capture the best moments on the server!
+    description: |
+        The Quotes Database helps you capture the best moments on the server! Store your fellow
+        members' funniest moments so that you can revisit them time and time again.
+    contents:
+        - quote:
+            - find
+            - list
+            - add
+            - grab
+            - rem
+            - undo
+            - del
     """
     QUOTES_PER_PAGE = 15
     EMBED_COLOR = solarized.blue
@@ -35,6 +46,11 @@ class QuoteCog(KazCog):
         if self.date_format not in ('seconds', 'datetime', 'date'):
             raise ValueError("quotedb:date_format value invalid (seconds, datetime, date): {}"
                 .format(self.date_format))
+
+    def export_kazhelp_vars(self):
+        return {
+            'grab_search_max': "{:d}".format(self.grab_max)
+        }
 
     def make_single_embed(self, quote: Quote,
                           index: int=None, total: int=None, title: str=None):
@@ -114,22 +130,29 @@ class QuoteCog(KazCog):
     @commands.group(aliases=['quotes'], pass_context=True, invoke_without_command=True,
                     ignore_extra=False)
     async def quote(self, ctx: commands.Context, user: str, number: int=None):
-        """
-        Retrieve a quote.
+        """!kazhelp
+        description: |
+            Retrieve a quote.
 
-        If a quote number isn't given, find a random quote.
+            If a quote number isn't given, picks a random quote.
 
-        Arguments:
-        * user: Required. The user to find a quote for. Example formats:
-            * @mention of the user (make sure it actually links them)
-            * User's name + discriminator: JaneDoe#0921
-            * Discord ID number: 123456789012345678
-        * number: Optional. The ID number of the quote to delete (starting from 1), as shown by
-            the `.quote` or `.quote list` commands.
-
-        Examples:
-            .quote @JaneDoe - Find a random quote by JaneDoe.
-            .quote @JaneDoe 4 - Find the 4th quote by JaneDoe.
+            TIP: To search for a quote by keyword, use {{!quote find}}.
+        parameters:
+            - name: user
+              type: "@user"
+              description: >
+                The user to find a quote for. Should be an @mention or a discord ID.
+            - name: number
+              type: number
+              optional: true
+              description: >
+                The ID number of the quote to find (starting from 1), as shown by the {{!quote}},
+                {{!quote find}} and {{!quote list}} commands.
+        examples:
+            - command: .quote @JaneDoe#0921
+              description: Find a random quote by JaneDoe.
+            - command: .quote @JaneDoe#0921 4
+              description: Find the 4th quote by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
         db_records = c.query_author_quotes(db_user)
@@ -152,18 +175,28 @@ class QuoteCog(KazCog):
 
     @quote.command(name='find', pass_context=True)
     async def quote_find(self, ctx: commands.Context, user: str, *, search: str=None):
-        """
-        Find the most recent quote matching a user and/or text search.
-
-        Arguments:
-        * user: Required. The user to find a quote for, or part of their name or nickname to search,
-            or "all". For exact user matches, see `.help quote` for valid formats.
-        * search: Optional. Text to search in the quote.
-
-        Examples:
-            .quote find Jane - Find a quote for a user whose user/nickname contains "Jane".
-            .quote find @JaneDoe flamingo - Find a quote containing "flamingo" by JaneDoe.
-            .quote find Jane flamingo - Find a quote matching user "Jane" and containing "flamingo".
+        """!kazhelp
+        description: >
+            Find the most recent quote matching a user and/or text search.
+        parameters:
+            - name: user
+              type: "@user or string or \\"all\\""
+              description: >
+                The user to find a quote for. This can be an @mention, user ID, part
+                of their name or nickname to search, or the special string "all" to find any user
+                (i.e. search only by keyword).
+            - name: search
+              type: string
+              optional: true
+              description: The text to search.
+        examples:
+            - command: .quote find Jane
+              description: Find the latest quote from any user whose name/nickname contains "Jane".
+            - command: .quote find @JaneDoe#0921 flamingo
+              description: Find the latest quote by JaneDoe containing "flamingo".
+            - command: .quote find Jane flamingo
+              description: Find the latest quote both matching user "Jane" and containing
+                "flamingo".
         """
         try:
             db_user = c.query_user(self.server, user)
@@ -179,17 +212,23 @@ class QuoteCog(KazCog):
 
     @quote.command(name='list', pass_context=True, ignore_extra=False)
     async def quote_list(self, ctx: commands.Context, user: str, page: int=None):
-        """
-        Retrieve a list of quotes. Reply is always PMed.
-
-        Arguments:
-        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
-        * page: Optional. The page number to access, if there are more than 1 pages of notes.
-          Default: last page.
-
-        Examples:
-            .quote list @JaneDoe - List all quotes by JaneDoe (page 1 if multiple pages)..
-            .quote list @JaneDoe 4 - List the 4th page of quotes by JaneDoe.
+        """!kazhelp
+        description: Retrieve a list of quotes. Always PMed.
+        parameters:
+            - name: user
+              type: "@user"
+              description: >
+                The user to find a quote for. Should be an @mention or a discord ID.
+            - name: page
+              type: number
+              optional: true
+              default: last page (most recent)
+              description: The page number to show, if there are more than 1 page of quotes.
+        examples:
+            - command: .quote list @JaneDoe#0921
+              description: List all quotes by JaneDoe.
+            - command: .quote list @JaneDoe#0921 4
+              description: List the 4th page of quotes by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
         db_records = c.query_author_quotes(db_user)
@@ -200,17 +239,21 @@ class QuoteCog(KazCog):
 
     @quote.command(name='add', pass_context=True, no_pm=True)
     async def quote_add(self, ctx: commands.Context, user: str, *, message: str):
-        """
-        Add a new quote manually.
+        """!kazhelp
+        description: |
+            Add a new quote manually.
 
-        You can use `.quote grab` instead to automatically grab a recent message.
-
-        Arguments:
-        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
-        * message: Required. The quote text to add.
-
-        Examples:
-            .quote add @JaneDoe Ready for the mosh pit, shaka brah.
+            TIP: To automatically find and add a recent message, use {{!quote grab}}.
+        parameters:
+            - name: user
+              type: "@user"
+              description: >
+                The user being quoted. Should be an @mention or a discord ID.
+            - name: message
+              type: string
+              description: The quote text to add.
+        examples:
+            - command: .quote add @JaneDoe#0921 Ready for the mosh pit, shaka brah.
         """
         if len(message) > Quote.MAX_MESSAGE_LEN:
             raise ValueError("That quote is too long! Maximum length {:d} characters."
@@ -230,23 +273,29 @@ class QuoteCog(KazCog):
 
     @quote.command(name='grab', pass_context=True, no_pm=True)
     async def quote_grab(self, ctx: commands.Context, user: discord.Member, *, search: str=None):
-        """
-        Find the most recent matching message and add it as a quote.
+        """!kazhelp
+        description: |
+            Find the most recent matching message and add it as a quote.
 
-        This command searches the most recent messages (default 100 messages). The most recent
-        message matching both the user and (if specified) search text is added as a quote.
+            This command searches the {{grab_search_max}} most recent messages in the channel. The
+            most recent message matching both the user and (if specified) search text is added as a
+            quote.
 
-        You can use `.quote add` instead to manually add the quote.
-
-        Arguments:
-        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
-        * search: Optional. The quote text to find among the user's recent messages.
-
-        Examples:
-            .quote grab @JaneDoe
-                Quote the most recent message from @JaneDoe.
-            .quote grab @JaneDoe mosh pit
-                Finds the most recent message from @JaneDoe containing "mosh pit".
+            TIP: To manually add a quote, use {{!quote add}}.
+        parameters:
+            - name: user
+              type: "@user"
+              description: >
+                The user being quoted. Should be an @mention or a discord ID.
+            - name: search
+              type: string
+              optional: true
+              description: The quote text to find.
+        examples:
+            - command: .quote grab @JaneDoe#0921
+              description: Quote the most recent message from JaneDoe.
+            - command: .quote grab @JaneDoe#0921 mosh pit
+              description: Finds the most recent message from @JaneDoe containing "mosh pit".
         """
         async for message in self.bot.logs_from(ctx.message.channel, self.grab_max): \
                 # type: discord.Message
@@ -291,20 +340,26 @@ class QuoteCog(KazCog):
     @quote.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()
     async def quote_remove(self, ctx: commands.Context, number: int):
-        """
-        Remove one of your own quotes.
+        """!kazhelp
+        description: |
+            Remove one of your own quotes.
 
-        THIS COMMAND CANNOT BE UNDONE.
+            WARNING: This command cannot be undone!
 
-        This command is limited to quotes attributed to you. For any other situations, please
-        contact the moderators to delete quotes.
+            IMPORTANT: If you are being harassed via quotes, or quote are otherwise being abused,
+            please report this to the mods.
 
-        Arguments:
-        * number: Optional. The ID number of the quote to delete (starting from 1), as shown by
-            the `.quote` or `.quote list` commands.
-
-        Examples:
-            .quote del 4 - Delete the 4th quote attributed to you.
+            TIP: To delete a quote you quoted (instead of a quote attributed to you), use
+            {{!quote undo}} to remove the most recent one. For any other situation, contact the
+            mods.
+        parameters:
+            - name: number
+              type: number
+              description: The ID number of the quote to delete (starting from 1), as shown by the
+                {{!quote}}, {{!quote find}} and {{!quote list}} commands.
+        examples:
+            - command: .quote del 4
+              description: Delete the 4th quote attributed to you.
         """
         db_user = c.query_user(self.server, ctx.message.author.id)
         db_records = c.query_author_quotes(db_user)
@@ -325,13 +380,16 @@ class QuoteCog(KazCog):
 
     @quote.command(name='undo', pass_context=True, ignore_extra=False)
     async def quote_undo(self, ctx: commands.Context):
-        """
-        Remove the last quote you added.
+        """!kazhelp
+        description: |
+            Remove the last quote you added.
 
-        THIS COMMAND CANNOT BE UNDONE.
+            WARNING: This command cannot be undone!
 
-        This command only undoes `.quote add` or `.quote grab` actions. It does NOT undo
-        `.quote rem` actions.
+            TIP: This command only undoes your own calls to {{!quote add}} or {{!quote grab}}. It
+            does **not** undo {{!quote rem}}, and does not undo quote commands by other users.
+
+            TIP: To delete quotes attributed to you, use {{!quote rem}}.
         """
         db_user = c.query_user(self.server, ctx.message.author.id)
         db_records = c.query_saved_quotes(db_user)
@@ -346,16 +404,21 @@ class QuoteCog(KazCog):
     @quote.command(name='del', pass_context=True, ignore_extra=False)
     @mod_only()
     async def quote_delete(self, ctx: commands.Context, user: str, number):
-        """
-        [MOD ONLY] Delete one or all quotes attributed to a user.
-
-        Arguments:
-        * user: Required. The user to find a quote for. See `.help quote` for valid formats.
-        * number: Required. The ID number of the quote to delete (starting from 1), or "all".
-
-        Examples:
-            .quote rem @JaneDoe 4 - Delete the 4th quote by JaneDoe.
-            .quote rem @JaneDoe all - Remove all quotes by JaneDoe.
+        """!kazhelp
+        description: Delete one or all quotes attributed to a user. This is a moderative command;
+            regular users should use {{!quote undo}} or {{!quote rem}}.
+        parameters:
+            - name: user
+              type: "@user"
+              description: The user whose quote to delete. Can be an @mention or discord ID.
+            - name: number
+              type: number or "all"
+              description: The ID number of the quote to delete (starting from 1), or "all".
+        examples:
+            - command: .quote rem @JaneDoe#0921 4
+              description: Delete the 4th quote by JaneDoe.
+            - command: .quote rem @JaneDoe#0921 all
+              description: Remove all quotes by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
         db_records = c.query_author_quotes(db_user)
