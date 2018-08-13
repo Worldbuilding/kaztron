@@ -106,13 +106,14 @@ class ProjectsManager(KazCog):
             - aboutme
             - cancel
             - delete
-            - title
-            - genre
-            - subgenre
-            - type
-            - pitch
-            - url
-            - description
+            - set:
+                - title
+                - genre
+                - subgenre
+                - type
+                - pitch
+                - url
+                - description
             - admin:
                 - genre:
                     - add
@@ -208,7 +209,7 @@ class ProjectsManager(KazCog):
                     'pass_context': True,
                     'ignore_extra': False
                 }
-                cmd = self.project.command(**command_params)(setter)
+                cmd = self.set.command(**command_params)(setter)
                 cmd.instance = self
                 self.project_setters[attr_name] = cmd
             except discord.ClientException as e:
@@ -459,8 +460,7 @@ class ProjectsManager(KazCog):
             Select a project to mark as your 'active' project.
 
             This project will be shown by default when someone looks you up. This is also the
-            project that will be modified by project-editing commands like {{!project wizard}},
-            {{!project title}}, etc.
+            project that will be modified by the {{!project set}} series of commands.
         parameters:
             - name: name
               type: string
@@ -618,8 +618,7 @@ class ProjectsManager(KazCog):
             project command will automatically be cancelled.
 
             TIP: You can specify more information about your project, like a URL and extended
-            description, using {{!project title}}, {{!project genre}}, {{!project subgenre}},
-            {{!project type}}, {{!project pitch}}, {{!project url}}, {{!project description}}.
+            description, using the {{!project set}} series of commands.
         examples:
             - command: .project new
         """
@@ -652,8 +651,7 @@ class ProjectsManager(KazCog):
             project command will automatically be cancelled.
 
             TIP: You can specify more information about your project, like a URL and extended
-            description, using ({{!project title}}, {{!project genre}}, {{!project subgenre}},
-            {{!project type}}, {{!project pitch}}, {{!project url}}, {{!project description}}).
+            description, using the {{!project set}} series of commands.
         examples:
             - command: .project wizard
         """
@@ -852,6 +850,14 @@ class ProjectsManager(KazCog):
                     await update_user_roles(self.bot, self.server, [project.user])
 
         self.cog_state.wizards = self.wizard_manager
+
+    @project.group(pass_context=True, ignore_extra=True, invoke_without_command=True)
+    async def set(self, ctx: commands.Context):
+        """!kazhelp
+        description: Command group for project set commands. See also {{!project new}} and
+            {{!project edit}}.
+        """
+        await self.bot.say("{}".format(get_group_help(ctx)))
 
     @project.group(pass_context=True, ignore_extra=True, invoke_without_command=True)
     @mod_only()
