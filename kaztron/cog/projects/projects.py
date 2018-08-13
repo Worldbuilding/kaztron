@@ -853,7 +853,7 @@ class ProjectsManager(KazCog):
 
         self.cog_state.wizards = self.wizard_manager
 
-    @project.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
+    @project.group(pass_context=True, ignore_extra=True, invoke_without_command=True)
     @mod_only()
     async def admin(self, ctx: commands.Context):
         """!kazhelp
@@ -861,9 +861,17 @@ class ProjectsManager(KazCog):
         """
         await self.bot.say("{}".format(get_group_help(ctx)))
 
-    @admin.group(name='genre', pass_context=True, ignore_extra=False, invoke_without_command=True)
+    @admin.group(name='genre', pass_context=True, ignore_extra=True, invoke_without_command=True)
     @mod_only()
     async def admin_genre(self, ctx: commands.Context):
+        """!kazhelp
+        description: Command group for genre management.
+        """
+        await self.bot.say("{}".format(get_group_help(ctx)))
+
+    @admin_genre.command(name='list', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_genre_list(self, ctx: commands.Context):
         """!kazhelp
         description: List all genres.
         """
@@ -989,9 +997,17 @@ class ProjectsManager(KazCog):
         await self.bot.say("Genre deleted: {}".format(name))
         await self.send_output("[Projects] Genre deleted: {}".format(name))
 
-    @admin.group(name='type', pass_context=True, ignore_extra=False, invoke_without_command=True)
+    @admin.group(name='type', pass_context=True, ignore_extra=True, invoke_without_command=True)
     @mod_only()
     async def admin_type(self, ctx: commands.Context):
+        """!kazhelp
+        description: Command group for project type management.
+        """
+        await self.bot.say("{}".format(get_group_help(ctx)))
+
+    @admin_type.command(name='list', pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def admin_type_list(self, ctx: commands.Context):
         """!kazhelp
         description: List all project types.
         """
