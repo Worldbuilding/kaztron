@@ -267,28 +267,42 @@ class CheckInManager(KazCog):
             await self.bot.say("No check-ins for {}.".format(week_str))
             return
 
-        users_checked_in = ["{0} ({1})".format(m.mention, format_datetime(c.timestamp))
-                            for m, c in report.items() if c]
-        users_not_checked_in = []
-        if None in report.values():
-            latest_check_ins = self.c.query_latest_check_ins()
-            for m, c in report.items():
-                if c is None:
-                    try:
-                        last_check_in = latest_check_ins[m]
-                        date_str = format_date(last_check_in.timestamp)
-                    except KeyError:
-                        date_str = 'Never'
-                    users_not_checked_in.append("{0} (last: {1})".format(m.mention, date_str))
+        # split into checked-in and not checked in during the reporting week
+        checked_in_users = [u for u, c in report.items() if c is not None]
+        non_checked_in_users = [u for u, c in report.items() if c is None]
 
-        checked_in_str = "**CHECKED IN**\n{}"\
-            .format('\n'.join(users_checked_in))
+        # get the latest checkins of users who did not check in during the reporting week
+        try:
+            latest_check_ins = self.c.query_latest_check_ins(members=non_checked_in_users)
+        except orm.exc.NoResultFound:
+            latest_check_ins = {}
+
+        # sort the two lists (checked in by name, non-checked-in by last checkin date (all time))
+        checked_in_users.sort(key=lambda u: u.nick if u.nick else u.name)
+        non_checked_in_users.sort(key=lambda u:
+            latest_check_ins[u].timestamp if u in latest_check_ins else datetime(1970, 1, 1),
+            reverse=True
+        )
+
+        # format strings for display
+        checked_in_strings = [
+            "{0} ({1})".format(u.mention, format_datetime(report[u].timestamp))
+            for u in checked_in_users
+        ]
+        not_checked_in_strings = [
+            "{0} (last: {1})".format(
+                u.mention,
+                format_date(latest_check_ins[u].timestamp) if u in latest_check_ins else 'Never'
+            ) for u in non_checked_in_users
+        ]
+
+        checked_in_str = "**CHECKED IN**\n{}".format('\n'.join(checked_in_strings))
         if len(checked_in_str) > Limits.MESSAGE:  # if too long for one message, summarize
             checked_in_str = "**CHECKED IN**\n{:d} users (list too long)"\
-                .format(len(users_checked_in))
+                .format(len(checked_in_strings))
 
         no_check_in_str = "**DID NOT CHECK IN**\n{}" \
-            .format('\n'.join(users_not_checked_in))  # don't summarize: may need action
+            .format('\n'.join(not_checked_in_strings))  # don't summarize: may need action
 
         await self.bot.say("**Check-In Report for {}**".format(week_str))
         for msg in split_chunks_on(checked_in_str, Limits.MESSAGE):

@@ -157,11 +157,17 @@ class CheckInController(BlotsController):
             .format(len(results), ' and '.join(log_conds)))
         return results
 
-    def query_latest_check_ins(self) -> Dict[discord.Member, CheckIn]:
-        results = self.session \
-            .query(CheckIn, db.func.max(CheckIn.timestamp).label('timestamp_max')) \
-            .group_by(CheckIn.user_id) \
-            .all()
+    def query_latest_check_ins(self, members: List[discord.Member]=None)\
+            -> Dict[discord.Member, CheckIn]:
+        """
+        :param members: List of members to query for. Default: all members.
+        :return:
+        """
+        query = self.session \
+            .query(CheckIn, db.func.max(CheckIn.timestamp).label('timestamp_max'))
+        if members:
+            query = query.filter(User.discord_id.in_(tuple(m.id for m in members)))
+        results = query.group_by(CheckIn.user_id).all()
         logger.info("query_latest_check_ins: Found {:d} records".format(len(results)))
         return {self.server.get_member(check_in.user.discord_id): check_in
                 for check_in, _ in results}
@@ -171,12 +177,13 @@ class CheckInController(BlotsController):
         """
         Get a report of all server users and their check-ins in a given report week.
 
-        Note that the user list is the CURRENT list. This report does not account for users who
-        were not members at the time of the check-in.
+        Note that this function checks all CURRENT users. The report does not account for users who
+        had not joined during the requested report week, or who left after that week.
 
         :param included_date: The check-in week to report for must include this date.
-        :return: Tuple. First element is a map of users and their latest check-in. Second element
-            is a list of users who did not check in.
+        :return: Map of users to their last checkin in the checkin period. If the user did not
+            check in during the checkin period, the mapped value is None. This map is guaranteed
+            to contain keys for all users currently on the server.
         """
         logger.info("get_check_in_report: Generating report (included_date={})"
             .format(included_date.isoformat(' ')))
@@ -187,11 +194,13 @@ class CheckInController(BlotsController):
         for c in check_ins:
             member_check_in_map[self.server.get_member(c.user.discord_id)] = c
 
+        # Delete users who are no longer on the server - will all be filed under the None key
         try:
-            del member_check_in_map[None]  # for any users who are no longer on the server
+            del member_check_in_map[None]
         except KeyError:
             pass
 
+        # Remove exempt users
         for user in self.session.query(User).filter_by(is_exempt=True).all():
             try:
                 del member_check_in_map[self.server.get_member(user.discord_id)]
