@@ -120,6 +120,9 @@ class CheckInController(BlotsController):
         """
         Get the start and end times for a check-in week that includes the passed date.
         """
+        if not included_date:
+            included_date = datetime.utcnow()
+
         end_date = get_weekday(included_date, self.checkin_weekdays[1], future=True).date()
         start_date = end_date - timedelta(days=7)
 
@@ -137,6 +140,9 @@ class CheckInController(BlotsController):
         Get the start and end times for the current or future check-in window relative to the
         passed date.
         """
+        if not included_date:
+            included_date = datetime.utcnow()
+
         end_date = get_weekday(included_date, self.checkin_weekdays[1], future=True).date()
         start_date = get_weekday(included_date, self.checkin_weekdays[0], future=True).date()
 
@@ -145,6 +151,10 @@ class CheckInController(BlotsController):
 
         end_dt = datetime.combine(end_date, self.checkin_time)
         start_dt = datetime.combine(start_date, self.checkin_time)
+
+        if included_date > end_dt:  # for the day-of, check if the time has already passed
+            end_dt += timedelta(days=7)
+            start_dt += timedelta(days=7)
 
         return start_dt, end_dt
 

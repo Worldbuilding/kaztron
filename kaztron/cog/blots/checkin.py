@@ -88,13 +88,13 @@ class CheckInManager(KazCog):
     async def announce_start(self):
         logger.info("Announcing start of check-in window")
         await self.bot.send_message(self.check_in_channel,
-            "\n" + ("^" * 32) + "\n**Check-ins for this week are now OPEN!**")
+            "~\n" + ("^" * 32) + "\n**Check-ins for this week are now OPEN!**")
 
     @task(is_unique=True)
     async def announce_end(self):
         logger.info("Announcing end of check-in window")
         await self.bot.send_message(self.check_in_channel,
-            "\n**Check-ins for this week are now CLOSED!**\n" + ("$" * 32))
+            "~\n**Check-ins for this week are now CLOSED!**\n" + ("=" * 32))
 
     async def send_check_in_list(self,
                                dest: discord.Channel,
