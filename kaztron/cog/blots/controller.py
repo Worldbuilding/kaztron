@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 from sqlalchemy import orm
 
-from kaztron.config import KaztronConfig
+from kaztron.config import KaztronConfig, SectionView
 # noinspection PyUnresolvedReferences
 from kaztron.driver import database as db
 from kaztron.cog.blots.model import *
@@ -35,6 +35,14 @@ def init_db():
 on_error_rollback = make_error_handler_decorator(lambda *args, **kwargs: args[0].session, logger)
 
 
+class BlotsConfig(SectionView):
+    check_in_channel: str
+    check_in_period_weekdays: List[int]
+    check_in_period_time: str
+    check_in_window_exempt_roles: List[str]
+    milestone_map: Dict[str, Dict[str, int]]
+
+
 class MilestoneInfo:
     MULTIPLE_ROLES = discord.Object(id=0)
 
@@ -54,7 +62,7 @@ class MilestoneInfo:
 
 
 class BlotsController:
-    def __init__(self, server: discord.Server, config: KaztronConfig):
+    def __init__(self, server: discord.Server, config: BlotsConfig):
         self.server = server
         self.config = config
         self.session = session
@@ -86,11 +94,11 @@ class CheckInController(BlotsController):
     :param milestone_map: Role mappings for each project type. The role mappings map the
         {MINIMUM wordcount value: corresponding role}.
     """
-    def __init__(self, server: discord.Server, config: KaztronConfig,
+    def __init__(self, server: discord.Server, config: BlotsConfig,
                  milestone_map: Dict[ProjectType, Dict[discord.Role, int]]):
         super().__init__(server, config)
-        self.checkin_weekday = self.config.get('blots', 'check_in_weekday')
-        self.checkin_time = dt_parse(self.config.get('blots', 'check_in_time')).time()
+        self.checkin_weekdays = self.config.check_in_period_weekdays
+        self.checkin_time = dt_parse(self.config.check_in_period_time).time()
 
         self.milestone_map = {}  # type: Dict[ProjectType, Dict[discord.Role, int]]
 
@@ -112,7 +120,7 @@ class CheckInController(BlotsController):
         """
         Get the start and end times for a check-in week that includes the passed date.
         """
-        end_date = get_weekday(included_date, self.checkin_weekday, future=True).date()
+        end_date = get_weekday(included_date, self.checkin_weekdays[1], future=True).date()
         start_date = end_date - timedelta(days=7)
 
         end_dt = datetime.combine(end_date, self.checkin_time)
@@ -121,6 +129,22 @@ class CheckInController(BlotsController):
         if included_date > end_dt:  # for the day-of, check if the time has already passed
             end_dt += timedelta(days=7)
             start_dt += timedelta(days=7)
+
+        return start_dt, end_dt
+
+    def get_check_in_window(self, included_date: datetime=None) -> Tuple[datetime, datetime]:
+        """
+        Get the start and end times for the current or future check-in window relative to the
+        passed date.
+        """
+        end_date = get_weekday(included_date, self.checkin_weekdays[1], future=True).date()
+        start_date = get_weekday(included_date, self.checkin_weekdays[0], future=True).date()
+
+        if start_date > end_date:
+            start_date -= timedelta(days=7)
+
+        end_dt = datetime.combine(end_date, self.checkin_time)
+        start_dt = datetime.combine(start_date, self.checkin_time)
 
         return start_dt, end_dt
 

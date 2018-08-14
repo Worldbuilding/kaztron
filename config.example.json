@@ -74,8 +74,9 @@
     }
   },
   "blots": {
-    "check_in_weekday": 4,
-    "check_in_time": "5:00",
+    "check_in_period_weekdays": [2, 3],
+    "check_in_period_time": "5:00",
+    "check_in_window_exempt_roles": ["role name", "another role name"],
     "check_in_channel": "channel ID here",
     "milestone_map": {
       "words": {

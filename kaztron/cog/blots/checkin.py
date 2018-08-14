@@ -1,23 +1,24 @@
 import logging
-from typing import Sequence
+from typing import Sequence, Dict
 
 import discord
 from discord.ext import commands
+from discord.ext.commands import UserInputError
 from sqlalchemy import orm
 from datetime import datetime, timedelta
 
-from kaztron import KazCog
+from kaztron import KazCog, task
 from kaztron.driver.pagination import Pagination
 from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only, mod_channels, in_channels
 from kaztron.utils.converter import MemberConverter2, NaturalDateConverter, BooleanConverter, \
     NaturalInteger
-from kaztron.utils.discord import Limits, get_group_help, user_mention, get_named_role
+from kaztron.utils.discord import Limits, get_group_help, user_mention, get_named_role, check_mod
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.datetime import format_datetime, format_date
 
 from kaztron.cog.blots import model
-from kaztron.cog.blots.controller import CheckInController, MilestoneInfo
+from kaztron.cog.blots.controller import CheckInController, MilestoneInfo, BlotsConfig
 from kaztron.utils.strings import split_chunks_on
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,8 @@ class CheckInManager(KazCog):
             - report
             - update
     """
+    cog_config: BlotsConfig
+
     ITEMS_PER_PAGE = 12
     EMBED_COLOR = solarized.yellow
     PROJECT_UNIT_MAP = {
@@ -48,20 +51,50 @@ class CheckInManager(KazCog):
         model.ProjectType.words: "words"
     }
 
-    check_in_channel_id = KazCog.config.get('blots', 'check_in_channel')
-    test_channel_id = KazCog.config.get('discord', 'channel_test')
+    check_in_channel_id = KazCog.config.blots.check_in_channel
+    test_channel_id = KazCog.config.discord.channel_test
 
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'blots', BlotsConfig)
+        self.cog_config.set_defaults(milestone_map={})
         self.c = None  # type: CheckInController
+        self.checkin_anytime_roles = []
+        self.check_in_channel = None
+        self.announce_tasks = []
 
     async def on_ready(self):
         await super().on_ready()
+        self.check_in_channel = self.validate_channel(self.check_in_channel_id)
+        self.checkin_anytime_roles = tuple(get_named_role(self.server, n)
+                                           for n in self.cog_config.check_in_window_exempt_roles)
         milestone_map = {}
-        for pt, ms_map in self.config.get('blots', 'milestone_map').items():
+        for pt, ms_map in self.cog_config.milestone_map.items():
             milestone_map[model.ProjectType[pt]] = {get_named_role(self.server, r): v
                                                     for r, v in ms_map.items()}
-        self.c = CheckInController(self.server, self.config, milestone_map)
+        self.c = CheckInController(self.server, self.cog_config, milestone_map)
+        await self.schedule_checkin_announcements()
+
+    async def schedule_checkin_announcements(self):
+        if not self.announce_tasks:
+            window = self.c.get_check_in_window(datetime.utcnow())
+            self.announce_tasks.append(self.scheduler.schedule_task_at(
+                self.announce_start, window[0], every=timedelta(days=7)
+            ))
+            self.announce_tasks.append(self.scheduler.schedule_task_at(
+                self.announce_end, window[1], every=timedelta(days=7)
+            ))
+
+    @task(is_unique=True)
+    async def announce_start(self):
+        logger.info("Announcing start of check-in window")
+        await self.bot.send_message(self.check_in_channel,
+            "\n" + ("^" * 32) + "\n**Check-ins for this week are now OPEN!**")
+
+    @task(is_unique=True)
+    async def announce_end(self):
+        logger.info("Announcing end of check-in window")
+        await self.bot.send_message(self.check_in_channel,
+            "\n**Check-ins for this week are now CLOSED!**\n" + ("$" * 32))
 
     async def send_check_in_list(self,
                                dest: discord.Channel,
@@ -114,12 +147,33 @@ class CheckInManager(KazCog):
             - command: ".checkin 304882 Finished chapter 82 and developed some of the social and
                 economic fallout of the Potato Battle of 1912."
         """
+
+        # check if allowed to checkin at the current time
+        msg_time = ctx.message.timestamp
+        window = self.c.get_check_in_window(msg_time)
+        is_in_window = window[0] <= msg_time <= window[1]
+        is_anytime = set(ctx.message.author.roles) & set(self.checkin_anytime_roles)
+
+        if not check_mod(ctx) and not is_in_window and not is_anytime:
+            import calendar
+            window_name = "from {0} {2} to {1} {2}".format(
+                calendar.day_name[window[0].weekday()],
+                calendar.day_name[window[1].weekday()],
+                self.c.checkin_time.strftime('%H:%M') + ' UTC'
+            )
+            raise UserInputError(
+                "**You cannot check-in right now!** Check-ins are {}. Need help? Ask us in #meta!"
+                .format(window_name)
+            )
+
+        # validate argument
         word_count = word_count  # type: int  # for IDE type checking
         if word_count < 0:
             raise commands.BadArgument("word_count must be greater than 0.")
         if not message:
             raise commands.BadArgument("Check-in message is required.")
 
+        # store the checkin
         check_in = self.c.save_check_in(
             member=ctx.message.author,
             word_count=word_count,
