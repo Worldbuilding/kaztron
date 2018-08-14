@@ -30,6 +30,10 @@ class CheckInManager(KazCog):
     description: |
         This module allows {{name}} to manage user check-ins for Inkblood's BLOTS programme, and
         provides tools to help moderators oversee this programme.
+
+        Check-ins are **only** allowed from {{checkin_window_start}} to {{checkin_window_end}},
+        unless you are a mod or a member of the following roles: {{checkin_anytime_roles}}. The
+        start and end of the checkin window are announced in the channel.
     contents:
         - checkin:
             - type
@@ -61,6 +65,21 @@ class CheckInManager(KazCog):
         self.checkin_anytime_roles = []
         self.check_in_channel = None
         self.announce_tasks = []
+
+    def export_kazhelp_vars(self):
+        import calendar
+        window = self.c.get_check_in_window(datetime.utcnow())
+        return {
+            'checkin_window_start': "{} {}".format(
+                calendar.day_name[window[0].weekday()],
+                self.c.checkin_time.strftime('%H:%M') + ' UTC'
+            ),
+            'checkin_window_end': "{} {}".format(
+                calendar.day_name[window[1].weekday()],
+                self.c.checkin_time.strftime('%H:%M') + ' UTC'
+            ),
+            'checkin_anytime_roles': ', '.join(r.name for r in self.checkin_anytime_roles)
+        }
 
     async def on_ready(self):
         await super().on_ready()
@@ -135,6 +154,10 @@ class CheckInManager(KazCog):
             If your project type is "words", enter your word_count in words (total). If your project
             type is "visual" or "script", enter your total number of pages instead. See also
             {{!checkin type}}.
+
+            Check-ins are **only** allowed from {{checkin_window_start}} to {{checkin_window_end}},
+            unless you are a mod or a member of the following roles: {{checkin_anytime_roles}}. The
+            start and end of the checkin window are announced in the channel.
         parameters:
             - name: word_count
               type: number
