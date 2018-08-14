@@ -1211,11 +1211,20 @@ class WritingSprint(KazCog):
         self.sprint_data = SprintData()
         self._save_sprint()
 
+    @task_on_sprint_results.cancel
+    async def task_results_cancel(self):
+        # should only happen when 'fast-forwarding' the results, after all participants finalise
+        # so reverting is enough: no need to resched the results
+        logger.info("Sprint results task cancelled: reverting state.")
+        self.state.read()
+        self._load_sprint()
+
     @start.error
     @stop.error
     @join.error
     @leave.error
     @wordcount.error
+    @final.error
     async def sprint_on_error(self, exc, ctx: commands.Context):
         cmd_string = message_log_str(ctx.message)
         state = self.get_state()
