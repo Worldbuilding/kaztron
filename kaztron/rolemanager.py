@@ -148,7 +148,7 @@ class RoleManager(KazCog):
 
         ```python
         try:
-            roleman.add_managed_role(
+            self.rolemanager.add_managed_role(
                 role_name="Sprinters",
                 join_name="follow",
                 leave_name="unfollow",
@@ -178,8 +178,8 @@ class RoleManager(KazCog):
         * `role_name`: The role to manage.
         * `join_name`: The join command name. If `group` is passed, this command is a subcommand of
             that group.
-        * `leave_name`: The leave command name. If `group` is passed, this command is a subcommand of
-            that group.
+        * `leave_name`: The leave command name. If `group` is passed, this command is a subcommand
+            of that group.
         * `join_aliases`: Optional. A sequence of join command aliases.
         * `leave_aliases`: Optional. An sequence of leave command aliases.
         * `join_msg`: Message to send when the user successfully joins the role.
@@ -206,7 +206,8 @@ class RoleManager(KazCog):
         of the structure, and refer to section above for documentation on the parameters.
     """
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'rolemanager')
+        self.cog_config.set_defaults(user_roles={}, mod_roles={})
         self.managed_roles = {}
 
     async def on_ready(self):
@@ -291,11 +292,11 @@ class RoleManager(KazCog):
 
     def setup_all_config_roles(self):
         logger.info("Setting up managed roles from configuration")
-        user_role_map = self.config.get('role_man', 'user_roles', {})
+        user_role_map = self.cog_config.user_roles
         for name, args in user_role_map.items():
             self.setup_config_role(name, args)
 
-        mod_role_map = self.config.get('role_man', 'mod_roles', {})
+        mod_role_map = self.cog_config.mod_roles
         for name, args in mod_role_map.items():
             self.setup_config_role(name, args, [mod_only()])
 
@@ -339,7 +340,3 @@ class RoleManager(KazCog):
         current_group = parent.group(
             name=name, invoke_without_command=True, pass_context=True)(anonymous_group)
         current_group.instance = self
-
-
-def setup(bot):
-    bot.add_cog(RoleManager(bot))

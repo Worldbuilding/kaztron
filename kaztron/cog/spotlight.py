@@ -11,7 +11,6 @@ from discord.ext import commands
 from datetime import datetime, date, timedelta
 
 from kaztron import KazCog, theme, task
-from kaztron.cog.role_man import RoleManager
 from kaztron.driver import gsheets
 from kaztron.utils.checks import mod_only, mod_or_has_role, in_channels_cfg
 from kaztron.utils.converter import NaturalDateConverter
@@ -516,37 +515,31 @@ class Spotlight(KazCog):
 
         self.channel_spotlight = self.validate_channel(self.ch_id_spotlight)
 
-        roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
-        if roleman:
-            try:
-                roleman.add_managed_role(
-                    role_name=self.role_audience_name,
-                    join_name="join",
-                    leave_name="leave",
-                    join_msg=self.msg_join.format(self.feature_name, self.role_host_name),
-                    leave_msg=self.msg_leave.format(self.feature_name, self.role_host_name),
-                    join_err=self.msg_join_err.format(self.feature_name, self.role_host_name),
-                    leave_err=self.msg_leave_err.format(self.feature_name, self.role_host_name),
-                    join_doc=("Join the {0} Audience. This allows you to be pinged by "
-                              "moderators or the Host for news like "
-                              "the start of a new {0} or a newly released schedule.\n\n"
-                              "To leave the Audience, use `.spotlight leave`.")
-                    .format(self.feature_name, self.role_host_name),
-                    leave_doc=("Leave the {0} Audience. See `.help spotlight join` for more "
-                               "information.\n\n"
-                               "To join the {0} Audience, use `.spotlight join`.")
-                    .format(self.feature_name, self.role_host_name),
-                    group=self.spotlight,
-                    cog_instance=self,
-                    ignore_extra=False
-                )
-            except discord.ClientException:
-                logger.warning("`sprint follow` command already defined - "
-                               "this is OK if client reconnected")
-        else:
-            err_msg = "Cannot find RoleManager - is it enabled in config?"
-            logger.error(err_msg)
-            await self.send_output(err_msg)
+        try:
+            self.rolemanager.add_managed_role(
+                role_name=self.role_audience_name,
+                join_name="join",
+                leave_name="leave",
+                join_msg=self.msg_join.format(self.feature_name, self.role_host_name),
+                leave_msg=self.msg_leave.format(self.feature_name, self.role_host_name),
+                join_err=self.msg_join_err.format(self.feature_name, self.role_host_name),
+                leave_err=self.msg_leave_err.format(self.feature_name, self.role_host_name),
+                join_doc=("Join the {0} Audience. This allows you to be pinged by "
+                          "moderators or the Host for news like "
+                          "the start of a new {0} or a newly released schedule.\n\n"
+                          "To leave the Audience, use `.spotlight leave`.")
+                .format(self.feature_name, self.role_host_name),
+                leave_doc=("Leave the {0} Audience. See `.help spotlight join` for more "
+                           "information.\n\n"
+                           "To join the {0} Audience, use `.spotlight join`.")
+                .format(self.feature_name, self.role_host_name),
+                group=self.spotlight,
+                cog_instance=self,
+                ignore_extra=False
+            )
+        except discord.ClientException:
+            logger.warning("`sprint follow` command already defined - "
+                           "this is OK if client reconnected")
 
         for role_name in (self.role_host_name, self.role_audience_name):
             get_named_role(self.server, role_name)  # raise error early if any don't exist

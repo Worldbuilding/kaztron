@@ -1,13 +1,10 @@
 import asyncio
-import logging
 from datetime import timedelta
 from typing import Optional
 
-import discord
 from discord.ext import commands
 
 from kaztron import KazCog, task, TaskInstance
-from kaztron.cog.role_man import RoleManager
 from kaztron.cog.sprint.model import *
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.theme import solarized
@@ -413,39 +410,30 @@ class WritingSprint(KazCog):
         logger.debug("Validating sprint channel...")
         self.channel = self.validate_channel(self.channel_id)
 
-        roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
-        if roleman:
-            try:
-                roleman.add_managed_role(
-                    role_name=self.role_follow_name,
-                    join_name="follow",
-                    leave_name="unfollow",
-                    join_msg="You will now receive notifications when others start a sprint. You "
-                             "can stop getting notifications by using the `.w unfollow` command.",
-                    leave_msg="You will no longer receive notifications when others start a "
-                              "sprint. "
-                              "You can get notifications again by using the `.w follow` command.",
-                    join_err="Oops! You're already receiving notifications for sprints. "
-                             "Use the `.w unfollow` command to stop getting notifications.",
-                    leave_err="Oops! You're not currently getting notifications for sprints. Use "
-                              "the `.w follow` command if you want to start getting notifications.",
-                    join_doc="Get notified when sprints are happening.",
-                    leave_doc="Stop getting notifications about sprints.\n\n"
-                              "You will still get notifications for sprints you have joined.",
-                    group=self.sprint,
-                    cog_instance=self,
-                    ignore_extra=False
-                )
-            except discord.ClientException:
-                logger.warning("`sprint follow` command already defined - "
-                               "this is OK if client reconnected")
-        else:
-            err_msg = "Cannot find RoleManager - is it enabled in config?"
-            logger.warning(err_msg)
-            try:
-                await self.send_output(err_msg)
-            except discord.HTTPException:
-                logger.exception("Error sending error to output ch")
+        try:
+            self.rolemanager.add_managed_role(
+                role_name=self.role_follow_name,
+                join_name="follow",
+                leave_name="unfollow",
+                join_msg="You will now receive notifications when others start a sprint. You "
+                         "can stop getting notifications by using the `.w unfollow` command.",
+                leave_msg="You will no longer receive notifications when others start a "
+                          "sprint. "
+                          "You can get notifications again by using the `.w follow` command.",
+                join_err="Oops! You're already receiving notifications for sprints. "
+                         "Use the `.w unfollow` command to stop getting notifications.",
+                leave_err="Oops! You're not currently getting notifications for sprints. Use "
+                          "the `.w follow` command if you want to start getting notifications.",
+                join_doc="Get notified when sprints are happening.",
+                leave_doc="Stop getting notifications about sprints.\n\n"
+                          "You will still get notifications for sprints you have joined.",
+                group=self.sprint,
+                cog_instance=self,
+                ignore_extra=False
+            )
+        except discord.ClientException:
+            logger.warning("`sprint follow` command already defined - "
+                           "this is OK if client reconnected")
 
         state = self.get_state()
         if state is not SprintState.IDLE:

@@ -10,11 +10,11 @@ import kaztron
 from kaztron.config import SectionView
 from kaztron.errors import *
 from kaztron.help_formatter import DiscordHelpFormatter, JekyllHelpFormatter
+from kaztron.rolemanager import RoleManager
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str, exc_msg_str
-from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str, \
-    Limits
+from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str
 from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
@@ -494,3 +494,4 @@ class CoreCog(kaztron.KazCog):
 
 def setup(bot):
     bot.add_cog(CoreCog(bot))
+    bot.add_cog(RoleManager(bot))

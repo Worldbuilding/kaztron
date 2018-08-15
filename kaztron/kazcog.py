@@ -50,6 +50,7 @@ class KazCog:
     _custom_states = []
 
     _core_cache = None
+    _roleman_cache = None
 
     _ch_out_id = None
     _ch_test_id = None
@@ -202,10 +203,17 @@ class KazCog:
     @property
     def core(self):
         # cached since we need this when handling disconnect, after cog potentially unloaded...
-        from kaztron.cog.core import CoreCog
+        from kaztron.core import CoreCog
         if not self._core_cache:
             self._core_cache = self.bot.get_cog('CoreCog')
         return self._core_cache  # type: CoreCog
+
+    @property
+    def rolemanager(self):
+        from kaztron.rolemanager import RoleManager
+        if not self._roleman_cache:
+            self._roleman_cache = self.bot.get_cog('RoleManager')
+        return self._roleman_cache  # type: RoleManager
 
     @property
     def is_ready(self):

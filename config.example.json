@@ -11,7 +11,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
     "channel_request": "channel ID for requests",
     "info_links": {
       "link name 1": "http://potato.example/url/to/something",
@@ -38,7 +38,7 @@
       "discord": "INFO"
     }
   },
-  "role_man": {
+  "rolemanager": {
     "user_roles": {
       "role_name1": {
         "join_name": "join command name",
