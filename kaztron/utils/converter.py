@@ -50,8 +50,11 @@ class BooleanConverter(commands.Converter):
 
 class NaturalInteger(commands.Converter):
     """
-    Integer converter that is tolerant of various natural number input conventions (e.g. commas as
-    digit grouping separators).
+    Integer converter that is tolerant of various natural number input conventions:
+
+    * Commas or periods as digit grouping separators
+    * Period or comma as decimal point (identified as an error -> not an integer)
+    * '#' prepended to an integer, for ordinals, IDs and list items.
 
     This converter is tolerant of three common locale conventions, along with normal Python integer
     literals, and attempts a best guess at conversion:
@@ -79,7 +82,7 @@ class NaturalInteger(commands.Converter):
         as floating-point.
     """
     def convert(self):
-        n_str = self.argument.rstrip(',.')
+        n_str = self.argument.rstrip(',.').strip('#')
         try:
             return int(n_str)
         except ValueError:
