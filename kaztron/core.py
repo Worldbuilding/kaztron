@@ -244,6 +244,18 @@ class CoreCog(kaztron.KazCog):
             if isinstance(root_exc, KeyboardInterrupt):
                 logger.warning("Interrupted by user (SIGINT)")
                 raise root_exc
+            elif isinstance(root_exc, discord.Forbidden) \
+                    and root_exc.code == DiscordErrorCodes.CANNOT_PM_USER:
+                author: discord.Member = ctx.message.author
+                err_msg = "Can't PM user (FORBIDDEN): {0} {1}".format(
+                    author.nick or author.name, author.id)
+                logger.warning(err_msg)
+                logger.debug(tb_log_str(root_exc))
+                await self.bot.send_message(ctx.message.channel,
+                    ("{} You seem to have PMs from this server disabled or you've blocked me. "
+                     "I need to be able to PM you for this command.").format(author.mention))
+                await self.send_output("[WARNING] " + err_msg, auto_split=False)
+                return  # we don't want the generic "an error occurred!"
             elif isinstance(root_exc, discord.HTTPException):  # API errors
                 err_msg = 'While executing {c}\n\nDiscord API error {e!s}' \
                     .format(c=cmd_string, e=root_exc)

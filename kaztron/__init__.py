@@ -3,7 +3,7 @@ from collections import OrderedDict
 from .kazcog import KazCog
 from .scheduler import Scheduler, TaskInstance, task
 
-__version__ = "2.2a1"
+__version__ = "2.2a1.dev1"
 
 bot_info = {
     "version": __version__,

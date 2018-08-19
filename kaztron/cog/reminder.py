@@ -9,9 +9,11 @@ import discord
 from discord.ext import commands
 
 from kaztron import KazCog, TaskInstance, task
+from kaztron.config import SectionView
+from kaztron.errors import DiscordErrorCodes
 from kaztron.utils.datetime import utctimestamp, format_datetime, format_timedelta, \
     parse as dt_parse
-from kaztron.utils.discord import Limits
+from kaztron.utils.discord import Limits, user_mention
 from kaztron.utils.logging import exc_log_str
 from kaztron.utils.strings import format_list
 
@@ -32,7 +34,6 @@ class ReminderData:
         self.timestamp = timestamp
         self.remind_time = remind_time
         self.message = msg[:self.MSG_LIMIT]
-        self.task_inst = None  # type: TaskInstance
         self.retries = 0
 
     def to_dict(self):
@@ -58,6 +59,10 @@ class ReminderData:
         )
 
 
+class ReminderState(SectionView):
+    reminders: List[ReminderData]
+
+
 class Reminders(KazCog):
     """!kazhelp
 
@@ -73,36 +78,37 @@ class Reminders(KazCog):
             - list
             - clear
     """
-    CFG_SECTION = 'reminder'
+    cog_state: ReminderState
+
     MAX_PER_USER = 10
     MAX_RETRIES = 10
     RETRY_INTERVAL = 90
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.state.set_defaults(
-            self.CFG_SECTION,
-            reminders=[]
+        super().__init__(bot, 'reminders', state_section_view=ReminderState)
+        self.cog_state.set_defaults(reminders=[])
+        self.cog_state.set_converters('reminders',
+            lambda l: [ReminderData.from_dict(r) for r in l],
+            lambda l: [r.to_dict() for r in l]
         )
         self.reminders = []  # type: List[ReminderData]
 
     def _load_reminders(self):
         logger.info("Loading reminders from persisted state...")
-        for reminder in self.reminders:
-            try:
-                reminder.task_inst.cancel()
-            except asyncio.InvalidStateError:
-                pass
+        try:
+            self.scheduler.cancel_all(self.task_reminder_expired)
+        except asyncio.InvalidStateError:
+            pass
         self.reminders.clear()
-        for reminder_data in self.state.get(self.CFG_SECTION, 'reminders'):
-            self.add_reminder(ReminderData.from_dict(reminder_data))
+        for reminder in self.cog_state.reminders:
+            self.add_reminder(reminder)
 
     def _save_reminders(self):
         if not self.is_ready:
             logger.debug("_save_reminders: not ready, skipping")
             return
         logger.debug("_save_reminders")
-        self.state.set(self.CFG_SECTION, 'reminders', [r.to_dict() for r in self.reminders])
+        self.cog_state.reminders = self.reminders
         self.state.write()
 
     async def on_ready(self):
@@ -172,23 +178,9 @@ class Reminders(KazCog):
         ))
 
     def add_reminder(self, r: ReminderData):
-        @task()
-        async def reminder_expired():
-            await self.on_reminder_expired(r)
-
-        @reminder_expired.error
-        async def error(e: Exception):
-            r.retries += 1
-            logger.error("Error sending reminder: {}".format(exc_log_str(e)))
-            if r.retries > self.MAX_RETRIES:
-                logger.error("Reminders: max retries reached; giving up: {!r}".format(r))
-                r.task_inst.cancel()
-                self.reminders.remove(r)
-                await self.send_output("Giving up on reminder: {!r}. Too many retries".format(r))
-
         self.reminders.append(r)
-        r.task_inst = self.scheduler.schedule_task_at(
-            reminder_expired, r.remind_time, every=self.RETRY_INTERVAL)
+        self.scheduler.schedule_task_at(self.task_reminder_expired, r.remind_time, args=(r,),
+            every=self.RETRY_INTERVAL)
         self._save_reminders()
         logger.info("Set reminder: {!r}".format(r))
 
@@ -213,7 +205,8 @@ class Reminders(KazCog):
             core_cog = self.bot.get_cog("CoreCog")
             await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
-    async def on_reminder_expired(self, reminder: ReminderData):
+    @task(is_unique=False)
+    async def task_reminder_expired(self, reminder: ReminderData):
         logger.info("Reminder has expired: {!r}".format(reminder))
         # because send_message assumes discord.Object is a channel, not user
         user = discord.utils.get(self.bot.get_all_members(), id=reminder.user_id)
@@ -227,16 +220,50 @@ class Reminders(KazCog):
 
         # stop scheduled retries and remove the reminder
         try:
-            reminder.task_inst.cancel()
+            for instance in self.scheduler.get_instances(self.task_reminder_expired):
+                if instance.args[0] is reminder:
+                    instance.cancel()
+                    break
         except asyncio.InvalidStateError:
             pass
 
         try:
             self.reminders.remove(reminder)
         except ValueError:
-            logger.warning("on_reminder_expired: Reminder not in list of reminders - "
+            logger.warning("task_reminder_expired: Reminder not in list of reminders - "
                            "already removed? {!r}".format(reminder))
         self._save_reminders()
+
+    @task_reminder_expired.error
+    async def on_reminder_expired_error(self, e: Exception, t: TaskInstance):
+        r = t.args[0]
+        r.retries += 1
+        retry = True
+        logger.error("Error sending reminder: {}".format(exc_log_str(e)))
+        if not isinstance(e, discord.HTTPException):
+            logger.error("Reminders: non-HTTP error; giving up: {!r}".format(r))
+            await self.send_output("Giving up on reminder: {!r}. Non-HTTP error occurred".format(r))
+            retry = False
+        elif isinstance(e, discord.Forbidden) and e.code == DiscordErrorCodes.CANNOT_PM_USER:
+            logger.error("Reminders: can't send PM to user; giving up: {!r}".format(r))
+            await self.send_public(
+                ("{} You seem to have PMs from this server disabled or you've blocked me. "
+                 "I need to be able to PM you to send you reminders. (reminder missed)")
+                .format(user_mention(r.user_id))
+            )
+            await self.send_output("Giving up on reminder: {!r}. User has PMs disabled.".format(r))
+            retry = False
+        elif r.retries > self.MAX_RETRIES:
+            logger.error("Reminders: max retries reached; giving up: {!r}".format(r))
+            await self.send_output("Giving up on reminder: {!r}. Too many retries".format(r))
+            retry = False
+        else:
+            logger.debug("Will retry reminder: {!r}".format(r))
+
+        if not retry:
+            t.cancel()
+            self.reminders.remove(r)
+            self._save_reminders()
 
     @reminder.command(ignore_extra=False, pass_context=True)
     async def list(self, ctx: commands.Context):
@@ -256,10 +283,8 @@ class Reminders(KazCog):
                 format_timedelta(reminder.remind_time - datetime.utcnow()),
                 reminder.message
             ))
-        if items:
-            reminder_list = format_list(items)
-        else:
-            reminder_list = 'None'
+        reminder_list = format_list(items) if items else 'None'
+
         await self.bot.send_message(ctx.message.author, "**Your reminders**\n" + reminder_list)
         try:
             await self.bot.delete_message(ctx.message)
@@ -276,15 +301,14 @@ class Reminders(KazCog):
             WARNING: This command cannot be undone.
         """
         reminders_to_keep = []
-        for reminder in self.reminders:  # type: ReminderData
-            if reminder.user_id == ctx.message.author.id:
+
+        for inst in self.scheduler.get_instances(self.task_reminder_expired):  # type: TaskInstance
+            if inst.args[0].user_id == ctx.message.author.id:
                 try:
-                    reminder.task_inst.cancel()
+                    inst.cancel()
                 except asyncio.InvalidStateError:
                     pass
-            else:
-                reminders_to_keep.append(reminder)
-        self.reminders = reminders_to_keep
+                self.reminders.remove(inst.args[0])
         self._save_reminders()
         await self.bot.say("All your reminders have been cleared.")
 

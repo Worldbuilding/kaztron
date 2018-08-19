@@ -1138,7 +1138,7 @@ class WritingSprint(KazCog):
     @task_on_sprint_start.error
     @task_on_sprint_warning.error
     @task_on_sprint_end.error
-    async def task_error(self, e: Exception):
+    async def task_error(self, e: Exception, i: TaskInstance):
         logger.exception("Error while executing sprint event task")
         self._save_sprint()
 
@@ -1192,7 +1192,7 @@ class WritingSprint(KazCog):
         self._save_sprint()  # also calls self.state.write() - OK for stats too
 
     @task_on_sprint_results.error
-    async def task_results_error(self, e: Exception):
+    async def task_results_error(self, e: Exception, i: TaskInstance):
         logger.exception("Error while executing sprint event task")
         logger.debug("Resetting sprint state...")
         self.set_state(SprintState.IDLE)
@@ -1200,7 +1200,7 @@ class WritingSprint(KazCog):
         self._save_sprint()
 
     @task_on_sprint_results.cancel
-    async def task_results_cancel(self):
+    async def task_results_cancel(self, i: TaskInstance):
         # should only happen when 'fast-forwarding' the results, after all participants finalise
         # so reverting is enough: no need to resched the results
         logger.info("Sprint results task cancelled: reverting state.")

@@ -7,6 +7,7 @@
     "playing": "status (playing ...) message here",
     "token": "bot auth token",
     "channel_output": "channel ID for general bot messages (technical/audit mostly)",
+    "channel_public": "channel ID for public bot usage and some status/notification messages to users",
     "channel_test": "channel ID for general bot usage or testing purposes (mostly unused, some commands are allowed here as well as their normal allowed channels)"
   },
   "core": {

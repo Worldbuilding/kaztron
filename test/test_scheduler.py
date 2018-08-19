@@ -26,12 +26,12 @@ class MockTaskFunction:
 
     @my_task.error
     @err_task.error
-    async def eh(self, e):
+    async def eh(self, e, i):
         self.err = (e, self.loop.time())
 
     @my_task.cancel
     @err_task.cancel
-    async def ch(self):
+    async def ch(self, i):
         self.cancelled_at = self.loop.time()
 
 
@@ -126,6 +126,22 @@ def test_error(scheduler):
     assert len(mock_task.calls) == 1
     assert isinstance(mock_task.err[0], ValueError) and mock_task.err[0].args[0] == 'blah'
     assert (delay - 0.05) <= mock_task.err[1] - start <= (delay + 0.05)
+
+
+# noinspection PyShadowingNames
+def test_error_recurring(scheduler):
+    mock_task = MockTaskFunction(scheduler.loop)
+    delay = 0.4
+    every = 0.8
+    times = 2
+    last_call_time = delay + every*(times-1)
+    start = mock_task.loop.time()
+    scheduler.schedule_task_in(mock_task.err_task, delay, every=every, times=times)
+    scheduler.loop.run_until_complete(asyncio.sleep(1.5))
+    assert scheduler.bot.dispatched is not None
+    assert len(mock_task.calls) == 2
+    assert isinstance(mock_task.err[0], ValueError) and mock_task.err[0].args[0] == 'blah'
+    assert (last_call_time - 0.05) <= mock_task.err[1] - start <= (last_call_time + 0.05)
 
 
 # noinspection PyShadowingNames

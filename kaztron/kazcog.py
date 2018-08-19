@@ -72,6 +72,7 @@ class KazCog:
         setattr(self, '_{0.__class__.__name__}__unload'.format(self), self.unload)
         self._ch_out = discord.Object(self._ch_out_id)  # type: discord.Channel
         self._ch_test = discord.Object(self._ch_test_id)  # type: discord.Channel
+        self._ch_pub = discord.Object(self._ch_pub_id)  # type: discord.Channel
 
         # Detect success/error in cog's on_ready w/o boilerplate from the child class
         def on_ready_wrapper(f):
@@ -116,6 +117,7 @@ class KazCog:
         cls.config = cls._config = config
         cls._ch_out_id = cls.config.discord.channel_output
         cls._ch_test_id = cls.config.discord.channel_test
+        cls._ch_pub_id = cls.config.discord.channel_public
         cls.state = cls._state = state
 
     async def on_ready(self):
@@ -124,6 +126,7 @@ class KazCog:
         """
         self._ch_out = self.validate_channel(self._ch_out_id)
         self._ch_test = self.validate_channel(self._ch_test_id)
+        self._ch_pub = self.validate_channel(self._ch_pub_id)
 
     # noinspection PyBroadException
     def unload(self):
@@ -265,6 +268,18 @@ class KazCog:
         await self.send_message(self.channel_out, contents, tts=tts, embed=embed,
             auto_split=auto_split, split=split)
 
+    async def send_public(self, contents, *,
+                          tts=False, embed: Union[discord.Embed, EmbedSplitter]=None,
+                          auto_split=True, split='word'):
+        """
+        Send a message to the bot public output channel.
+
+        Convenience function equivalent to ``self.send_message(self.channel_public, ...)``. See also
+        :meth:`.send_message`.
+        """
+        await self.send_message(self.channel_public, contents, tts=tts, embed=embed,
+            auto_split=auto_split, split=split)
+
     @property
     def core(self):
         # cached since we need this when handling disconnect, after cog potentially unloaded...
@@ -300,6 +315,14 @@ class KazCog:
         :meth:`discord.Client.send_message` and similar.
         """
         return self._ch_out
+
+    @property
+    def channel_public(self) -> discord.Channel:
+        """
+        Configured public output channel. Before on_ready, returns a discord Object only usable in
+        :meth:`discord.Client.send_message` and similar.
+        """
+        return self._ch_pub
 
     @property
     def channel_test(self) -> discord.Channel:
