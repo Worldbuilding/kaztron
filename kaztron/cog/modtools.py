@@ -389,7 +389,7 @@ class ModTools(KazCog):
             auto_truncate=True
         )
         es.add_field_no_break(name="Sender", value=ctx.message.author.mention, inline=True)
-        es.add_field(name="Report Message", value=text)
+        es.add_field(name="Report Message", value=text, inline=False)
         try:
             notif_role = get_named_role(self.server, self.cog_config.notif_role)
             notif_role_mention = notif_role.mention
