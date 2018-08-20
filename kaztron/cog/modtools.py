@@ -1,6 +1,6 @@
 import logging
 import random
-from typing import List
+from typing import List, Dict
 
 import discord
 from discord.ext import commands
@@ -9,14 +9,36 @@ from kaztron import KazCog, task
 from kaztron.cog.modnotes.model import RecordType
 from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller as c, model
+from kaztron.config import SectionView
 from kaztron.kazcog import ready_only
-from kaztron.utils.checks import mod_only, mod_channels
+from kaztron.theme import solarized
+from kaztron.utils.checks import mod_only, mod_channels, pm_only
 from kaztron.utils.converter import MemberConverter2
-from kaztron.utils.discord import get_named_role, Limits
+from kaztron.utils.discord import get_named_role, Limits, role_mention
+from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import parse_keyword_args, split_chunks_on
 
 logger = logging.getLogger(__name__)
+
+
+class ModToolsConfig(SectionView):
+    """
+    :ivar distinguish_map: A mapping of user roles. The key is the user's regular role name, and
+        the value is the corresponding role to give the user to distinguish them when they use
+        `.up` (and to remove when they use `.down`).
+    :ivar tempban_role: The name of a role used to tempban (usually mute, deny channel access, etc.)
+        a user.
+    :ivar notif_role: The name of the rule used to send notifications to all mods
+    :ivar channel_mod: ID of a channel used for mod messages (e.g. timed unbans)
+    :ivar wb_images: List of images used for the `.wb` command. Each list item should be a two-
+        element list ["url", "artist name/attribution"].
+    """
+    distinguish_map: Dict[str, str]
+    tempban_role: str
+    notif_role: str
+    channel_mod: str
+    wb_images: List[List[str]]
 
 
 class ModTools(KazCog):
@@ -37,16 +59,26 @@ class ModTools(KazCog):
         - whois
         - wb
     """
+    cog_config: ModToolsConfig
+
     def __init__(self, bot):
-        super().__init__(bot)
-        self.distinguish_map = self.config.get("modtools", "distinguish_map", {})
-        self.wb_images = self.config.get("modtools", "wb_images", [])
-        self.ch_mod = discord.Object(self.config.get("modtools", "channel_mod"))
-        self.role_name = self.config.get("modtools", "tempban_role")
-        self.cog_modnotes = None  # type: ModNotes
+        super().__init__(bot, 'modtools', ModToolsConfig)
+        self.cog_config.set_defaults(distinguish_map={}, wb_images=tuple())
+        self.ch_mod = discord.Object(self.cog_config.channel_mod)
+        self.cog_modnotes: ModNotes = None
+        self.tempban_role: discord.Role = None
 
     async def on_ready(self):
         await super().on_ready()
+        self.check_for_modnotes()
+        self.tempban_role = get_named_role(self.server, self.cog_config.tempban_role)
+        self.ch_mod = self.validate_channel(self.ch_mod.id)
+
+        # schedule tempban update tick (unless already done i.e. reconnects)
+        if not self.scheduler.get_instances(self.task_update_tempbans):
+            self.scheduler.schedule_task_in(self.task_update_tempbans, 0, every=3600)
+
+    def check_for_modnotes(self):
         logger.debug("Getting modnotes cog")
         self.cog_modnotes = self.bot.get_cog("ModNotes")
         if self.cog_modnotes is None:
@@ -56,10 +88,6 @@ class ModTools(KazCog):
                 "management will not work."
             )
             raise RuntimeError("Can't find ModNotes cog")
-        self.ch_mod = self.validate_channel(self.ch_mod.id)
-
-        if not self.scheduler.get_instances(self.task_update_tempbans):
-            self.scheduler.schedule_task_in(self.task_update_tempbans, 0, every=3600)
 
     def unload_kazcog(self):
         self.scheduler.cancel_all(self.task_update_tempbans)
@@ -78,7 +106,7 @@ class ModTools(KazCog):
             allows moderators to clearly show when they are speaking in an official capacity as
             moderators.
         """
-        for status_role_name, distinguish_role_name in self.distinguish_map.items():
+        for status_role_name, distinguish_role_name in self.cog_config.distinguish_map.items():
             status_role = discord.utils.get(ctx.message.server.roles, name=status_role_name)
             if status_role and status_role in ctx.message.author.roles:
                 distinguish_role = get_named_role(ctx.message.server, distinguish_role_name)
@@ -102,7 +130,7 @@ class ModTools(KazCog):
 
             This command undoes the {{!up}} command.
         """
-        for status_role_name, distinguish_role_name in self.distinguish_map.items():
+        for status_role_name, distinguish_role_name in self.cog_config.distinguish_map.items():
             status_role = discord.utils.get(ctx.message.server.roles, name=status_role_name)
             if status_role and status_role in ctx.message.author.roles:
                 distinguish_role = get_named_role(ctx.message.server, distinguish_role_name)
@@ -124,8 +152,7 @@ class ModTools(KazCog):
         return [m for m in members_raw if m is not None]
 
     def _get_tempbanned_members_server(self, server: discord.Server) -> List[discord.Member]:
-        tempban_role = get_named_role(server, self.role_name)
-        return [m for m in server.members if tempban_role in m.roles]
+        return [m for m in server.members if self.tempban_role in m.roles]
 
     @task(is_unique=True)
     async def task_update_tempbans(self):
@@ -144,7 +171,6 @@ class ModTools(KazCog):
             await self.send_output("**ERROR**: update_tempbans: can't find mod channel")
             return
 
-        tempban_role = get_named_role(server, self.role_name)
         bans_db = self._get_tempbanned_members_db(server)
         bans_server = self._get_tempbanned_members_server(server)
 
@@ -152,20 +178,20 @@ class ModTools(KazCog):
         for member in bans_db:
             if member not in bans_server:
                 logger.info("Applying tempban role '{role}' to {user!s}...".format(
-                    role=tempban_role.name,
+                    role=self.tempban_role.name,
                     user=member
                 ))
-                await self.bot.add_roles(member, tempban_role)
+                await self.bot.add_roles(member, self.tempban_role)
                 await self.bot.send_message(self.ch_mod, "Tempbanned {.mention}".format(member))
 
         # check if any members who need to be unbanned
         for member in bans_server:
             if member not in bans_db:
                 logger.info("Removing tempban role '{role}' to {user!s}...".format(
-                    role=tempban_role.name,
+                    role=self.tempban_role.name,
                     user=member
                 ))
-                await self.bot.remove_roles(member, tempban_role)
+                await self.bot.remove_roles(member, self.tempban_role)
                 await self.bot.send_message(self.ch_mod, "Unbanned {.mention}".format(member))
 
     @commands.command(pass_context=True)
@@ -309,15 +335,15 @@ class ModTools(KazCog):
               description: Show image at index 3 (the 4th image).
         """
         if index is None:
-            index = random.randint(0, len(self.wb_images) - 1)
+            index = random.randint(0, len(self.cog_config.wb_images) - 1)
             logger.debug("wb: random image = {:d}".format(index))
 
         try:
-            image_data = self.wb_images[index]
+            image_data = self.cog_config.wb_images[index]
         except IndexError:
             logger.warning("wb: Invalid index: {}. {}".format(index, message_log_str(ctx.message)))
             await self.bot.say("{} (wb) That image doesn't exist! Valid index range: 0-{:d}"
-                .format(ctx.message.author.mention, len(self.wb_images) - 1))
+                .format(ctx.message.author.mention, len(self.cog_config.wb_images) - 1))
         else:
             if len(image_data) != 2:
                 err_msg = "Configuration error: invalid entry at index {:d}".format(index)
@@ -331,6 +357,53 @@ class ModTools(KazCog):
             await self.bot.say(image_url)
             await self.bot.say("_Artist: {}_ (Image #{})".format(author.replace('_', '\_'), index))
             await self.bot.delete_message(ctx.message)
+
+    @commands.command(pass_context=True, ignore_extra=False)
+    @commands.cooldown(rate=3, per=120)
+    @pm_only()
+    async def report(self, ctx: commands.Context, *, text: str):
+        """!kazhelp
+        description: |
+            Report an incident to the moderators confidentially.
+
+            Please remember to mention **who** is involved and **where** it's happening (i.e. the
+            channel). Your name and the time at which you sent your report are automatically
+            recorded.
+
+            IMPORTANT: This will send notifications to mods. Please use only for incidents that need
+            to be handled in a time-sensitive manner. For non-time-sensitive situations, ask in the
+            #meta channel (or ask there for an available mod to PM, if it's confidential).
+        parameters:
+            - name: text
+              type: string
+              description: The text you want to send the mod team. Make sure to mention the **who**
+                and **where** (channel).
+        examples:
+            - command: ".report There's a heated discussion about politics in #worldbuilding, mostly
+                between BlitheringIdiot and AggressiveDebater, that might need a mod to intervene."
+        """
+        es = EmbedSplitter(
+            title="User Report",
+            timestamp=ctx.message.timestamp,
+            colour=solarized.magenta,
+            auto_truncate=True
+        )
+        es.add_field_no_break(name="Sender", value=ctx.message.author.mention, inline=True)
+        es.add_field(name="Report Message", value=text)
+        try:
+            notif_role = get_named_role(self.server, self.cog_config.notif_role)
+            notif_role_mention = notif_role.mention
+        except ValueError:
+            notif_role_mention = ''
+            logger.warning("Notification role not found: {}".format(self.cog_config.notif_role))
+            await self.send_output('[WARNING] Notif role not found: {}'
+                .format(self.cog_config.notif_role))
+        await self.send_message(self.ch_mod, notif_role_mention, embed=es)
+        await self.send_message(
+            ctx.message.channel,
+            "Thank you. I've forwarded your report to the mods, who will handle it shortly. You "
+            "may be contacted by PM or in #meta if we need more information."
+        )
 
 
 def setup(bot):

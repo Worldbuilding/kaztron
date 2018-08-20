@@ -3,7 +3,7 @@ from datetime import datetime
 import logging
 import os
 import time
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 
 import discord
 from discord.ext import commands
@@ -12,12 +12,22 @@ from discord.ext.commands import ChannelConverter
 from kaztron import KazCog, utils, theme, task
 from kaztron.cog.userstats import core, reports
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
+from kaztron.config import SectionView
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.datetime import utctimestamp, format_date, parse_daterange
 from kaztron.utils.logging import message_log_str
 
 logger = logging.getLogger(__name__)
+
+
+class UserStatsConfig(SectionView):
+    """
+    :ivar ignore_users: List of Discord user IDs to ignore
+    :ivar ignore_channels: List of Discord channel IDs to ignore
+    """
+    ignore_users: List[str]
+    ignore_channels: List[str]
 
 
 class UserStats(KazCog):
@@ -38,26 +48,27 @@ class UserStats(KazCog):
 
         This module counts various events like messages, voice time, server
         join/parts, etc. This information is aggregated by anonymous user hash (see below),
-        channel, and hour, in order to allow obtaining statistics like number of unique users per channel,
-        most active hours of the day, etc.
+        channel, and hour, in order to allow obtaining statistics like number of unique users per
+        channel, most active hours of the day, etc.
 
-        Unique users are recorded on a month-by-month basis, using a cryptographic hash algorithm and a salt
-        in order to ensure this data cannot be traced backwards to a specific user during the collection
-        period.
+        Unique users are recorded on a month-by-month basis, using a cryptographic hash algorithm
+        and a salt in order to ensure this data cannot be traced backwards to a specific user during
+        the collection  period.
 
         At the end of each month, all user hashes are replaced with random tokens generated from a
-        cryptographically strong pseudorandom algorithm, ensuring that no connection to the original user
-        (even cryptographically obfuscated) can be made. Furthermore, the salt is regenerated for the next
-        month's data collection, ensuring that a user cannot be tracked month-to-month even if data is
-        accessed prior to the end of the month. The salt is never made available to moderators or users,
-        and automatically destroyed once it is no longer needed.
+        cryptographically strong pseudorandom algorithm, ensuring that no connection to the original
+        user (even cryptographically obfuscated) can be made. Furthermore, the salt is regenerated
+        for the next month's data collection, ensuring that a user cannot be tracked month-to-month
+        even if data is accessed prior to the end of the month. The salt is never made available to
+        moderators or users, and automatically destroyed once it is no longer needed.
 
 
         ## File format
 
         ### userstats
 
-        Raw user data is provided as a file attachment in a gzip-compressed Excel-compatible CSV format, containing the following columns:
+        Raw user data is provided as a file attachment in a gzip-compressed Excel-compatible CSV
+        format, containing the following columns:
 
         |  # | Column name | Type               | Description |
         |---:| ----------- |:------------------:| ----------- |
@@ -69,11 +80,14 @@ class UserStats(KazCog):
 
         ### reports
 
-        Full reports are provided as a a Discord embed, as shown below. The data contained is the same as the CSV columns, as shown in the table below.
+        Full reports are provided as a a Discord embed, as shown below. The data contained is the
+        same as the CSV columns, as shown in the table below.
 
-        {% include image.html file="kaztron/report.png" alt="Full report example" caption="Full report." %}
+        {% include image.html file="kaztron/report.png" alt="Full report example"
+        caption="Full report." %}
 
-        Weekday and hourly reports are provided as a file attachment in a gzip-compressed Excel-compatible CSV format, containing the columns described in the following table.
+        Weekday and hourly reports are provided as a file attachment in a gzip-compressed
+        Excel-compatible CSV format, containing the columns described in the following table.
 
         |  # | Column name      | Type               | Description |
         |---:| ---------------- |:------------------:| ----------- |
@@ -90,8 +104,8 @@ class UserStats(KazCog):
         | 11 | Voice hours/user | float (hours)      | Time spent, in hours, per user in voice channels. |
         | 12 | (stdev)          | float (hours)      | Standard deviation for column 11. |
     contents:
-        - userstats
-        - report
+        - userstats:
+            - report
     """
     ACCUMULATOR_SETTINGS = {
         'hash_name': 'sha256',
@@ -103,7 +117,7 @@ class UserStats(KazCog):
     SAVE_TIMEOUT = 15
 
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'userstats')
         self.setup_custom_state('userstats')
         self.ignore_user_ids = self.config.get('userstats', 'ignore_users', [])
         self.ignore_channel_ids = self.config.get('userstats', 'ignore_channels', [])
@@ -362,7 +376,7 @@ class UserStats(KazCog):
         start = utils.datetime.get_month_offset(end, -1)
         return start, end
 
-    @commands.command(pass_context=True, ignore_extra=False)
+    @commands.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     @mod_channels()
     async def userstats(self, ctx: commands.Context, *, daterange: str=None):
@@ -402,8 +416,6 @@ class UserStats(KazCog):
             - command: .userstats 3 days ago to yesterday
             - command: .userstats 2018-01-01 to 7 days ago
         """
-        logger.debug("userstats: {}".format(message_log_str(ctx.message)))
-
         if daterange:
             dates = parse_daterange(daterange)
         else:
@@ -426,7 +438,7 @@ class UserStats(KazCog):
             self.bot.say("**WARNING:** Data not yet anonymised - "
                          "hashes on an unexpired salt are in use. Do not distribute.")
 
-    @commands.command(pass_context=True, ignore_extra=False)
+    @userstats.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
     async def report(self, ctx: commands.Context, type_: str, channel: str,
@@ -469,8 +481,6 @@ class UserStats(KazCog):
             - command: .report weekday all 3 days ago to yesterday
             - command: .report hourly #worldbuilding 2018-01-01 to 7 days ago
         """
-        logger.debug("report: {}".format(message_log_str(ctx.message)))
-
         type_ = type_.lower()
         types = ["full", "weekday", "hourly"]
         if type_ not in types:

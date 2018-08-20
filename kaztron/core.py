@@ -107,6 +107,7 @@ class CoreCog(kaztron.KazCog):
         try:
             self.bot.kaz_help_parser.variables['output_channel'] = '#' + self.channel_out.name
             self.bot.kaz_help_parser.variables['test_channel'] = '#' + self.channel_test.name
+            self.bot.kaz_help_parser.variables['public_channel'] = '#' + self.channel_public.name
         except AttributeError:
             logger.warning("Help parser not found in bot")
 
@@ -424,7 +425,7 @@ class CoreCog(kaztron.KazCog):
         await self.bot.say(embed=em)
 
     @commands.command(pass_context=True, aliases=['bug', 'issue'])
-    @commands.cooldown(rate=5, per=60)
+    @commands.cooldown(rate=3, per=120)
     async def request(self, ctx, *, content: str):
         """!kazhelp
 

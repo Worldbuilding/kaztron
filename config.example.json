@@ -111,6 +111,7 @@
   },
   "modtools": {
     "tempban_role": "Role Name Here",
+    "notif_role": "Name of role used to send notifications to all mods",
     "channel_mod": "ID of channel for mod notifications (like timed unbans)",
     "distinguish_map": {
       "mod-role1": "distinguish-role1",

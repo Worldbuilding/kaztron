@@ -25,6 +25,7 @@ class CheckId(Enum):
     C_LIST = 10
     C_MOD = 11
     C_ADMIN = 12
+    C_PM_ONLY = 13
 
 
 def has_role(role_names: Union[str, Iterable[str]]):
@@ -163,3 +164,20 @@ def admin_channels(delete_on_fail=False):
     """
     return in_channels_cfg('discord', 'admin_channels', allow_pm=True,
         delete_on_fail=delete_on_fail, check_id=CheckId.C_ADMIN)
+
+
+def pm_only(delete_on_fail=False):
+    """
+    Command check decorator. Only allow this command in PMs.
+    """
+    def predicate(ctx: commands.Context):
+        if ctx.message.channel.is_private:
+            return True
+        else:
+            if not delete_on_fail:
+                raise UnauthorizedChannelError("Command only allowed in PMs.", ctx)
+            else:
+                raise DeleteMessage(UnauthorizedChannelError("Command only allowed in PMs.", ctx))
+    predicate.kaz_check_id = CheckId.C_PM_ONLY
+    predicate.kaz_check_data = tuple()
+    return commands.check(predicate)
