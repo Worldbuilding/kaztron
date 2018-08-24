@@ -779,7 +779,7 @@ class ModNotes(KazCog):
             await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
                 (" Invalid argument(s). Did you mean `.notes add`?"
                  "\n\n**Usage:** `{}`\n\nUse `{}` for help.")
-                    .format(get_command_str(ctx), usage_str, get_help_str(ctx)))
+                    .format(usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
 
         elif isinstance(exc, commands.TooManyArguments):
