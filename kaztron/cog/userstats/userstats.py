@@ -13,6 +13,7 @@ from kaztron.cog.userstats import core, reports
 from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
+from kaztron.utils.converter import FutureDateRange, DateRange
 from kaztron.utils.datetime import utctimestamp, format_date, parse_daterange
 from kaztron.utils.logging import message_log_str
 
@@ -287,7 +288,7 @@ class UserStats(KazCog):
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def userstats(self, ctx: commands.Context, *, daterange: str=None):
+    async def userstats(self, ctx: commands.Context, *, daterange: DateRange=None):
         """
         [MOD ONLY] Retrieve a CSV dump of stats for a date or range of dates.
 
@@ -321,10 +322,7 @@ class UserStats(KazCog):
         """
         logger.debug("userstats: {}".format(message_log_str(ctx.message)))
 
-        if daterange:
-            dates = parse_daterange(daterange)
-        else:
-            dates = self.default_daterange()
+        dates = daterange or self.default_daterange()
 
         await self.bot.say("One moment, collecting stats for {} to {}..."
             .format(format_date(dates[0]), format_date(dates[1])))
@@ -347,7 +345,7 @@ class UserStats(KazCog):
     @mod_only()
     @mod_channels()
     async def report(self, ctx: commands.Context, type_: str, channel: str=None,
-                     *, daterange: str=None):
+                     *, daterange: DateRange=None):
         """
         [MOD ONLY] Generate and show a statistics report for a date or range of dates.
 
@@ -388,10 +386,7 @@ class UserStats(KazCog):
         if type_ not in types:
             raise commands.BadArgument("Invalid type; types in {}".format(types))
 
-        if daterange:
-            dates = parse_daterange(daterange)
-        else:
-            dates = self.default_daterange()
+        dates = daterange or self.default_daterange()
 
         if channel.lower() != 'all':
             conv = ChannelConverter(ctx, channel)

@@ -20,6 +20,29 @@ class NaturalDateConverter(commands.Converter):
         return date
 
 
+class FutureDateRange(commands.Converter):
+    """
+    Convert a natural language date range, in the form "date1 to date2". If there is ambiguity to
+    the range (e.g. implied year), then it will start in the future.
+    """
+    def convert(self):
+        try:
+            return utils_dt.parse_daterange(self.argument, future=True)
+        except ValueError as e:
+            raise commands.BadArgument(e.args[0])
+
+
+class DateRange(commands.Converter):
+    """
+    Convert a natural language date range, in the form "date1 to date2".
+    """
+    def convert(self):
+        try:
+            return utils_dt.parse_daterange(self.argument, future=False)
+        except ValueError as e:
+            raise commands.BadArgument(e.args[0])
+
+
 class MemberConverter2(commands.Converter):
     """
     Member converter with slightly more tolerant ID inputs permitted.
