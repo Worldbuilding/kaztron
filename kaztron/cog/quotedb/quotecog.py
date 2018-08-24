@@ -401,6 +401,7 @@ class QuoteCog(KazCog):
             await self.send_output(message_text)
 
     @quote.error
+    @quote_find.error
     @quote_list.error
     @quote_add.error
     @quote_grab.error
