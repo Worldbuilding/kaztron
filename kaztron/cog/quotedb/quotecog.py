@@ -270,10 +270,10 @@ class QuoteCog(KazCog):
             if search:
                 await self.bot.say(("No message from {} matching '{}' "
                                    "found in the last {:d} messages")
-                    .format(user.nick, search, self.grab_max))
+                    .format(user.nick if user.nick else user.name, search, self.grab_max))
             else:
                 await self.bot.say("No message from {} found in the last {:d} messages"
-                    .format(user.nick, self.grab_max))
+                    .format(user.nick if user.nick else user.name, self.grab_max))
             return
 
         message_text = grabbed_message.content
