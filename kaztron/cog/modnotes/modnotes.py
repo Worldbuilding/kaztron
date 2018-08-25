@@ -58,7 +58,7 @@ class ModNotes(KazCog):
 
     @staticmethod
     def format_display_user(db_user: User):
-        return "<@{}> (`*{}`)".format(db_user.discord_id, db_user.user_id)
+        return "{} (`*{}`)".format(user_mention(db_user.discord_id), db_user.user_id)
 
     def _get_user_fields(self, user: User, group: Sequence[User]) -> OrderedDict:
         user_fields = OrderedDict()
@@ -66,7 +66,7 @@ class ModNotes(KazCog):
         # noinspection PyTypeChecker
         user_fields['Aliases'] = '\n'.join(a.name for a in user.aliases) or 'None'
         if group:
-            user_fields['Links'] = '\n'.join(user_mention(u.discord_id)
+            user_fields['Links'] = '\n'.join(self.format_display_user(u)
                                              for u in group if u != user) or 'None'
         return user_fields
 
@@ -366,7 +366,7 @@ class ModNotes(KazCog):
 
         await self.show_record(self.channel_log, record=record, title='New Moderation Record')
         await self.bot.say("Added note #{:04d} for {}."
-            .format(record.record_id, user_mention(record.user.discord_id)))
+            .format(record.record_id, self.format_display_user(record.user)))
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['x', 'expire'])
     @mod_only()
@@ -425,11 +425,13 @@ class ModNotes(KazCog):
         logger.info("notes rem: {}".format(message_log_str(ctx.message)))
         try:
             record = c.mark_removed_record(note_id)
+            user = record.user
         except db.orm_exc.NoResultFound:
             await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
         else:
             await self.show_record(ctx.message.channel, record=record, title='Note removed')
-            await self.bot.send_message(self.channel_log, "Removed note #{:04d}".format(note_id))
+            await self.bot.send_message(self.channel_log, "Removed note #{:04d} for {}"
+                .format(note_id, self.format_display_user(user)))
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
@@ -495,12 +497,14 @@ class ModNotes(KazCog):
         logger.info("notes purge: {}".format(message_log_str(ctx.message)))
         try:
             record = c.get_record(note_id, removed=True)
+            user = record.user
             await self.show_record(ctx.message.channel, record=record, title='Purging...')
             c.delete_removed_record(note_id)
         except db.orm_exc.NoResultFound:
             await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
         else:
-            await self.bot.say("Record #{:04d} purged.".format(note_id))
+            await self.bot.say("Record #{:04d} purged (user {})."
+                .format(note_id, self.format_display_user(user)))
             # don't send to channel_log, this has no non-admin visibility
 
     @notes.command(pass_context=True, ignore_extra=False)
@@ -748,8 +752,8 @@ class ModNotes(KazCog):
             if isinstance(root_exc, ValueError) and root_exc.args and 'user ID' in root_exc.args[0]:
                 logger.warning("Invalid user argument: {!s}. For {}".format(root_exc, cmd_string))
                 await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
-                    " User format is not valid. User must be specified as an @mention, as a Discord "
-                    "ID (numerical only), or a KazTron ID (`*` followed by a number).")
+                    " User format is not valid. User must be specified as an @mention, as a "
+                    "Discord ID (numerical only), or a KazTron ID (`*` followed by a number).")
 
             elif isinstance(root_exc, c.UserNotFound):
                 logger.warning("User not found: {!s}. For {}".format(root_exc, cmd_string))
