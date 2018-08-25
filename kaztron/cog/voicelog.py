@@ -131,11 +131,12 @@ class VoiceLog(KazCog):
 
     async def on_voice_state_update(self, before: discord.Member, after: discord.Member):
         """ Assigns "in voice" role to members who join voice channels. """
-        await self.show_voice_message(before, after)
-        await self.update_voice_role(before, after)
+        if before.voice_channel != after.voice_channel:
+            await self.show_voice_message(before, after)
+            await self.update_voice_role(before, after)
 
     async def show_voice_message(self, before: discord.Member, after: discord.Member):
-        """ Show join/part messages in text channel when a user's voice status changes. """
+        """ Show join/part messages in text channel. Called when a user's voice channel changes. """
         valid_before = self.is_in_voice(before)
         valid_after = self.is_in_voice(after)
 
@@ -153,7 +154,6 @@ class VoiceLog(KazCog):
             msg = None
 
         if msg:
-            # await self.bot.send_message(self.dest_output, msg)
             await self.bot.send_message(self.channel_voicelog, msg)
 
     async def update_voice_role(self, before: discord.Member, after: discord.Member):
@@ -165,7 +165,7 @@ class VoiceLog(KazCog):
         if self.is_in_voice(after):
             await self.bot.add_roles(after, self.role_voice)
             logger.info("Gave '{}' role to {}".format(self.role_voice_name, after))
-        elif self.role_voice in after.roles:
+        elif self.role_voice in after.roles:  # if not in voice channel but has voice role
             await self.bot.remove_roles(after, self.role_voice)
             logger.info("Took '{}' role from {}".format(self.role_voice_name, after))
 

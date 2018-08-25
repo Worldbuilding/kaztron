@@ -15,7 +15,8 @@ from kaztron.cog.userstats.core import EventType, StatsAccumulator
 from kaztron.config import SectionView
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.datetime import utctimestamp, format_date, parse_daterange
+from kaztron.utils.converter import DateRange
+from kaztron.utils.datetime import utctimestamp, format_date
 from kaztron.utils.logging import message_log_str
 
 logger = logging.getLogger(__name__)
@@ -379,7 +380,7 @@ class UserStats(KazCog):
     @commands.group(pass_context=True, ignore_extra=False, invoke_without_command=True)
     @mod_only()
     @mod_channels()
-    async def userstats(self, ctx: commands.Context, *, daterange: str=None):
+    async def userstats(self, ctx: commands.Context, *, daterange: DateRange=None):
         """!kazhelp
         description: |
             Retrieve a CSV dump of stats for a date or range of dates.
@@ -416,10 +417,7 @@ class UserStats(KazCog):
             - command: .userstats 3 days ago to yesterday
             - command: .userstats 2018-01-01 to 7 days ago
         """
-        if daterange:
-            dates = parse_daterange(daterange)
-        else:
-            dates = self.default_daterange()
+        dates = daterange or self.default_daterange()
 
         await self.bot.say("One moment, collecting stats for {} to {}..."
             .format(format_date(dates[0]), format_date(dates[1])))
@@ -442,7 +440,7 @@ class UserStats(KazCog):
     @mod_only()
     @mod_channels()
     async def report(self, ctx: commands.Context, type_: str, channel: str,
-                     *, daterange: str=None):
+                     *, daterange: DateRange=None):
         """!kazhelp
         description: |
             Generate and show a statistics report for a date or range of dates.
@@ -486,10 +484,7 @@ class UserStats(KazCog):
         if type_ not in types:
             raise commands.BadArgument("Invalid type; types in {}".format(types))
 
-        if daterange:
-            dates = parse_daterange(daterange)
-        else:
-            dates = self.default_daterange()
+        dates = daterange or self.default_daterange()
 
         if channel.lower() != 'all':
             conv = ChannelConverter(ctx, channel)
@@ -500,7 +495,10 @@ class UserStats(KazCog):
         await self.bot.say("Preparing report, please wait...")
 
         if type_ == "full":
-            report = reports.prepare_report(*dates, channel=channel)
+            try:
+                report = reports.prepare_report(*dates, channel=channel)
+            except ValueError as e:
+                raise commands.BadArgument(e.args[0])
             if not channel:
                 report.name = "Report for {} to {}"\
                     .format(format_date(dates[0]), format_date(dates[1]))
@@ -515,7 +513,12 @@ class UserStats(KazCog):
                 core.format_filename_date(dates[0]),
                 core.format_filename_date(dates[1])
             )
-            week_reports = reports.prepare_weekday_report(*dates, channel=channel)
+
+            try:
+                week_reports = reports.prepare_weekday_report(*dates, channel=channel)
+            except ValueError as e:
+                raise commands.BadArgument(e.args[0])
+
             heads = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
             with reports.collect_report_matrix(filename, week_reports, heads) as collect_file:
                 logger.info("Sending collected reports file.")
@@ -534,7 +537,12 @@ class UserStats(KazCog):
                 core.format_filename_date(dates[0]),
                 core.format_filename_date(dates[1])
             )
-            hourly_reports = reports.prepare_hourly_report(*dates, channel=channel)
+
+            try:
+                hourly_reports = reports.prepare_hourly_report(*dates, channel=channel)
+            except ValueError as e:
+                raise commands.BadArgument(e.args[0])
+
             heads = tuple(str(i) for i in range(24))
             with reports.collect_report_matrix(filename, hourly_reports, heads) as collect_file:
                 logger.info("Sending collected reports file.")

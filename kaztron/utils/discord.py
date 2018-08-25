@@ -224,12 +224,7 @@ def get_member(ctx: commands.Context, user: str) -> discord.Member:
         s_user_id = user
 
     member_converter = commands.MemberConverter(ctx, s_user_id)
-    try:
-        return member_converter.convert()
-    except commands.BadArgument:
-        raise discord.InvalidArgument(
-            "User ID format {!r} is invalid or user not found".format(user)
-        )
+    return member_converter.convert()
 
 
 def get_command_prefix(ctx: commands.Context) -> str:
