@@ -34,8 +34,8 @@ class Task(Hashable):
         self.callback = callback
         self.is_unique = is_unique
         self.instance = None  # instance the last time this Task was accessed as a descriptor
-        self.on_error = None  # type: Callable[[Exception], Awaitable[None]]
-        self.on_cancel = None  # type: Callable[[], Awaitable[None]]
+        self.on_error = None  # type: Callable[[Exception, TaskInstance], Awaitable[None]]
+        self.on_cancel = None  # type: Callable[[TaskInstance], Awaitable[None]]
 
     def __get__(self, instance, owner):
         if instance:
@@ -47,12 +47,12 @@ class Task(Hashable):
         return self.callback(instance, *args, **kwargs) if instance else \
                self.callback(*args, **kwargs)
 
-    def error(self, coro: Callable[[Exception], Awaitable[None]]):
+    def error(self, coro: Callable[[Exception, 'TaskInstance'], Awaitable[None]]):
         """
         Decorator. Sets a coroutine as a local error handler for this task. This handler will be
         called for any exception raised by the task.
 
-        :param coro: Coroutine to handle errors, signature func(exception) -> None.
+        :param coro: Coroutine to handle errors, signature func(exception, task_inst) -> None.
         :raise discord.ClientException: Argument is not a coroutine
         """
         if not asyncio.iscoroutinefunction(coro):
@@ -61,7 +61,7 @@ class Task(Hashable):
         self.on_error = coro
         return coro
 
-    def cancel(self, coro: Callable[[], Awaitable[None]]):
+    def cancel(self, coro: Callable[['TaskInstance'], Awaitable[None]]):
         """
         Decorator. Sets a coroutine as a cancellation handler. This handler is called whenever the
         task is cancelled prior to or while running.
@@ -128,23 +128,23 @@ class TaskInstance:
                 await self.on_error(e)
             except Exception:
                 logger.exception("Error in Task {!s} while handling error.".format(task_id))
-            await self.scheduler.bot.dispatch('error', 'scheduled_task', self.task, self.timestamp)
+            await self.scheduler.bot.on_error('scheduled_task', self.task, self.timestamp)
 
     async def on_error(self, e: Exception):
         if self.task.on_error:
             if self.instance:
-                await self.task.on_error(self.instance, e)
+                await self.task.on_error(self.instance, e, self)
             else:
-                await self.task.on_error(e)
+                await self.task.on_error(e, self)
         else:
             logger.debug("Task {!s} has no error handler".format(self.task))
 
     async def on_cancel(self):
         if self.task.on_cancel:
             if self.instance:
-                await self.task.on_cancel(self.instance)
+                await self.task.on_cancel(self.instance, self)
             else:
-                await self.task.on_cancel()
+                await self.task.on_cancel(self)
         else:
             logger.debug("Task {!s} has no cancellation handler".format(self.task))
 
@@ -189,12 +189,15 @@ class Scheduler:
             pass # task code here
 
         @my_task.error
-        async def my_task_error_handler(self, exc: Exception):
+        async def my_task_error_handler(self, exc: Exception, t: TaskInstance):
             pass # handle exception here
 
         @my_task.cancel
-        async def my_task_cancellation_handler(self):
+        async def my_task_cancellation_handler(self, t: TaskInstance):
             pass # handle cancellation here: cleanup, etc.
+
+    Both handlers take a TaskInstance parameter, from which you can obtain the task object,
+    timestamp, and any args and kwargs passed to the task function on execution of the task.
 
     Furthermore, any errors will call the discord Client's `on_error` event, with
     event_type = ``'scheduled_task'`` and two arguments corresponding to the TaskInstance tuple
@@ -209,7 +212,7 @@ class Scheduler:
         self.scheduler.schedule_task_in(self.my_task, 300)  # scheduled in 5 minutes (300s)
 
     """
-    def __init__(self, bot: discord.Client):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.tasks = {}  # type: Dict[Task, Dict[float, TaskInstance]]
 

@@ -4,8 +4,10 @@ import csv
 import enum
 import gzip
 import hashlib
+import io
 import logging
 import os
+import shutil
 from datetime import datetime, timedelta
 from os import path
 from typing import Union, Tuple, Optional, List
@@ -213,14 +215,21 @@ class CsvRow:
 
     def __init__(self, row: List):
         self.data = row
+        self._dt_cache = None  # type: datetime
+        self._count_cache = None  # type: int
+        self._event_cache = None  # type: EventType
 
     @property
     def period(self) -> datetime:
-        return utils.datetime.parse(self.data[0])
+        if not self._dt_cache:
+            self._dt_cache = datetime.strptime(self.data[0], '%Y-%m-%d %H:%M:%S')
+        return self._dt_cache
 
     @property
     def event(self) -> EventType:
-        return EventType[self.data[1]]
+        if not self._event_cache:
+            self._event_cache = EventType[self.data[1]]
+        return self._event_cache
 
     @property
     def user(self) -> str:
@@ -236,7 +245,9 @@ class CsvRow:
 
     @property
     def count(self) -> int:
-        return int(self.data[4])
+        if not self._count_cache:
+            self._count_cache = int(self.data[4])
+        return self._count_cache
 
 
 def init_stats_dir():
@@ -362,19 +373,21 @@ def collect_stats(filename: str, from_date: datetime, to_date: datetime):
 
     filename = path.join(out_dir, filename)
     try:
-        with open(filename, mode='w+b') as outfile:
-            with gzip.open(outfile, mode='wt') as zipfile:
-                zipfile.write(','.join(CsvRow.headings))
-                zipfile.write('\n')
-                for file in filenames:
-                    logger.info("Writing '{}' to temp file...".format(file))
-                    try:
-                        with gzip.open(file, mode='rt') as infile:
-                            for line in infile:
-                                zipfile.write(line)
-                    except FileNotFoundError:
-                        logger.warning("No stats file '{}'".format(file))
-            outfile.seek(0)
-            yield outfile
+        buf = io.BytesIO()
+        with gzip.open(buf, mode='wt') as zipfile:
+            zipfile.write(','.join(CsvRow.headings))
+            zipfile.write('\n')
+            for file in filenames:
+                logger.info("Collecting from '{}'...".format(file))
+                try:
+                    with gzip.open(file, mode='rt') as infile:
+                        shutil.copyfileobj(infile, zipfile)
+                except FileNotFoundError:
+                    logger.warning("No stats file '{}'".format(file))
+        buf.seek(0)
+        yield buf
     finally:
-        os.unlink(filename)
+        try:
+            buf.close()
+        except (IOError, NameError):
+            logger.exception("Exception while trying to close bytes buffer")

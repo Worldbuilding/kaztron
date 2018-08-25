@@ -345,6 +345,9 @@ class CoreHelpParser:
             elif check_type is CheckId.C_ADMIN:
                 channels = ['Admin channels']
                 new_brief = '[ADMIN ONLY] ' + data['brief']
+            elif check_type is CheckId.C_PM_ONLY:
+                channels = ['PM only']
+                new_brief = '[PM ONLY]' + data['brief']
 
         if roles:
             data['users'] = ', '.join(roles) + '. ' + data['users']

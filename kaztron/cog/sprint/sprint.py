@@ -1,13 +1,10 @@
 import asyncio
-import logging
 from datetime import timedelta
 from typing import Optional
 
-import discord
 from discord.ext import commands
 
 from kaztron import KazCog, task, TaskInstance
-from kaztron.cog.role_man import RoleManager
 from kaztron.cog.sprint.model import *
 from kaztron.errors import UnauthorizedUserError, ModOnlyError
 from kaztron.theme import solarized
@@ -413,39 +410,30 @@ class WritingSprint(KazCog):
         logger.debug("Validating sprint channel...")
         self.channel = self.validate_channel(self.channel_id)
 
-        roleman = self.bot.get_cog("RoleManager")  # type: RoleManager
-        if roleman:
-            try:
-                roleman.add_managed_role(
-                    role_name=self.role_follow_name,
-                    join_name="follow",
-                    leave_name="unfollow",
-                    join_msg="You will now receive notifications when others start a sprint. You "
-                             "can stop getting notifications by using the `.w unfollow` command.",
-                    leave_msg="You will no longer receive notifications when others start a "
-                              "sprint. "
-                              "You can get notifications again by using the `.w follow` command.",
-                    join_err="Oops! You're already receiving notifications for sprints. "
-                             "Use the `.w unfollow` command to stop getting notifications.",
-                    leave_err="Oops! You're not currently getting notifications for sprints. Use "
-                              "the `.w follow` command if you want to start getting notifications.",
-                    join_doc="Get notified when sprints are happening.",
-                    leave_doc="Stop getting notifications about sprints.\n\n"
-                              "You will still get notifications for sprints you have joined.",
-                    group=self.sprint,
-                    cog_instance=self,
-                    ignore_extra=False
-                )
-            except discord.ClientException:
-                logger.warning("`sprint follow` command already defined - "
-                               "this is OK if client reconnected")
-        else:
-            err_msg = "Cannot find RoleManager - is it enabled in config?"
-            logger.warning(err_msg)
-            try:
-                await self.send_output(err_msg)
-            except discord.HTTPException:
-                logger.exception("Error sending error to output ch")
+        try:
+            self.rolemanager.add_managed_role(
+                role_name=self.role_follow_name,
+                join_name="follow",
+                leave_name="unfollow",
+                join_msg="You will now receive notifications when others start a sprint. You "
+                         "can stop getting notifications by using the `.w unfollow` command.",
+                leave_msg="You will no longer receive notifications when others start a "
+                          "sprint. "
+                          "You can get notifications again by using the `.w follow` command.",
+                join_err="Oops! You're already receiving notifications for sprints. "
+                         "Use the `.w unfollow` command to stop getting notifications.",
+                leave_err="Oops! You're not currently getting notifications for sprints. Use "
+                          "the `.w follow` command if you want to start getting notifications.",
+                join_doc="Get notified when sprints are happening.",
+                leave_doc="Stop getting notifications about sprints.\n\n"
+                          "You will still get notifications for sprints you have joined.",
+                group=self.sprint,
+                cog_instance=self,
+                ignore_extra=False
+            )
+        except discord.ClientException:
+            logger.warning("`sprint follow` command already defined - "
+                           "this is OK if client reconnected")
 
         state = self.get_state()
         if state is not SprintState.IDLE:
@@ -1150,7 +1138,7 @@ class WritingSprint(KazCog):
     @task_on_sprint_start.error
     @task_on_sprint_warning.error
     @task_on_sprint_end.error
-    async def task_error(self, e: Exception):
+    async def task_error(self, e: Exception, i: TaskInstance):
         logger.exception("Error while executing sprint event task")
         self._save_sprint()
 
@@ -1204,18 +1192,27 @@ class WritingSprint(KazCog):
         self._save_sprint()  # also calls self.state.write() - OK for stats too
 
     @task_on_sprint_results.error
-    async def task_results_error(self, e: Exception):
+    async def task_results_error(self, e: Exception, i: TaskInstance):
         logger.exception("Error while executing sprint event task")
         logger.debug("Resetting sprint state...")
         self.set_state(SprintState.IDLE)
         self.sprint_data = SprintData()
         self._save_sprint()
 
+    @task_on_sprint_results.cancel
+    async def task_results_cancel(self, i: TaskInstance):
+        # should only happen when 'fast-forwarding' the results, after all participants finalise
+        # so reverting is enough: no need to resched the results
+        logger.info("Sprint results task cancelled: reverting state.")
+        self.state.read()
+        self._load_sprint()
+
     @start.error
     @stop.error
     @join.error
     @leave.error
     @wordcount.error
+    @final.error
     async def sprint_on_error(self, exc, ctx: commands.Context):
         cmd_string = message_log_str(ctx.message)
         state = self.get_state()

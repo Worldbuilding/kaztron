@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 from sqlalchemy import orm
 
-from kaztron.config import KaztronConfig
+from kaztron.config import KaztronConfig, SectionView
 # noinspection PyUnresolvedReferences
 from kaztron.driver import database as db
 from kaztron.cog.blots.model import *
@@ -35,6 +35,14 @@ def init_db():
 on_error_rollback = make_error_handler_decorator(lambda *args, **kwargs: args[0].session, logger)
 
 
+class BlotsConfig(SectionView):
+    check_in_channel: str
+    check_in_period_weekdays: List[int]
+    check_in_period_time: str
+    check_in_window_exempt_roles: List[str]
+    milestone_map: Dict[str, Dict[str, int]]
+
+
 class MilestoneInfo:
     MULTIPLE_ROLES = discord.Object(id=0)
 
@@ -54,7 +62,7 @@ class MilestoneInfo:
 
 
 class BlotsController:
-    def __init__(self, server: discord.Server, config: KaztronConfig):
+    def __init__(self, server: discord.Server, config: BlotsConfig):
         self.server = server
         self.config = config
         self.session = session
@@ -86,11 +94,11 @@ class CheckInController(BlotsController):
     :param milestone_map: Role mappings for each project type. The role mappings map the
         {MINIMUM wordcount value: corresponding role}.
     """
-    def __init__(self, server: discord.Server, config: KaztronConfig,
+    def __init__(self, server: discord.Server, config: BlotsConfig,
                  milestone_map: Dict[ProjectType, Dict[discord.Role, int]]):
         super().__init__(server, config)
-        self.checkin_weekday = self.config.get('blots', 'check_in_weekday')
-        self.checkin_time = dt_parse(self.config.get('blots', 'check_in_time')).time()
+        self.checkin_weekdays = self.config.check_in_period_weekdays
+        self.checkin_time = dt_parse(self.config.check_in_period_time).time()
 
         self.milestone_map = {}  # type: Dict[ProjectType, Dict[discord.Role, int]]
 
@@ -112,8 +120,34 @@ class CheckInController(BlotsController):
         """
         Get the start and end times for a check-in week that includes the passed date.
         """
-        end_date = get_weekday(included_date, self.checkin_weekday, future=True).date()
+        if not included_date:
+            included_date = datetime.utcnow()
+
+        end_date = get_weekday(included_date, self.checkin_weekdays[1], future=True).date()
         start_date = end_date - timedelta(days=7)
+
+        end_dt = datetime.combine(end_date, self.checkin_time)
+        start_dt = datetime.combine(start_date, self.checkin_time)
+
+        if included_date > end_dt:  # for the day-of, check if the time has already passed
+            end_dt += timedelta(days=7)
+            start_dt += timedelta(days=7)
+
+        return start_dt, end_dt
+
+    def get_check_in_window(self, included_date: datetime=None) -> Tuple[datetime, datetime]:
+        """
+        Get the start and end times for the current or future check-in window relative to the
+        passed date.
+        """
+        if not included_date:
+            included_date = datetime.utcnow()
+
+        end_date = get_weekday(included_date, self.checkin_weekdays[1], future=True).date()
+        start_date = get_weekday(included_date, self.checkin_weekdays[0], future=True).date()
+
+        if start_date > end_date:
+            start_date -= timedelta(days=7)
 
         end_dt = datetime.combine(end_date, self.checkin_time)
         start_dt = datetime.combine(start_date, self.checkin_time)
@@ -157,11 +191,17 @@ class CheckInController(BlotsController):
             .format(len(results), ' and '.join(log_conds)))
         return results
 
-    def query_latest_check_ins(self) -> Dict[discord.Member, CheckIn]:
-        results = self.session \
-            .query(CheckIn, db.func.max(CheckIn.timestamp).label('timestamp_max')) \
-            .group_by(CheckIn.user_id) \
-            .all()
+    def query_latest_check_ins(self, members: List[discord.Member]=None)\
+            -> Dict[discord.Member, CheckIn]:
+        """
+        :param members: List of members to query for. Default: all members.
+        :return:
+        """
+        query = self.session \
+            .query(CheckIn, db.func.max(CheckIn.timestamp).label('timestamp_max'))
+        if members:
+            query = query.filter(User.discord_id.in_(tuple(m.id for m in members)))
+        results = query.group_by(CheckIn.user_id).all()
         logger.info("query_latest_check_ins: Found {:d} records".format(len(results)))
         return {self.server.get_member(check_in.user.discord_id): check_in
                 for check_in, _ in results}
@@ -171,12 +211,13 @@ class CheckInController(BlotsController):
         """
         Get a report of all server users and their check-ins in a given report week.
 
-        Note that the user list is the CURRENT list. This report does not account for users who
-        were not members at the time of the check-in.
+        Note that this function checks all CURRENT users. The report does not account for users who
+        had not joined during the requested report week, or who left after that week.
 
         :param included_date: The check-in week to report for must include this date.
-        :return: Tuple. First element is a map of users and their latest check-in. Second element
-            is a list of users who did not check in.
+        :return: Map of users to their last checkin in the checkin period. If the user did not
+            check in during the checkin period, the mapped value is None. This map is guaranteed
+            to contain keys for all users currently on the server.
         """
         logger.info("get_check_in_report: Generating report (included_date={})"
             .format(included_date.isoformat(' ')))
@@ -187,11 +228,13 @@ class CheckInController(BlotsController):
         for c in check_ins:
             member_check_in_map[self.server.get_member(c.user.discord_id)] = c
 
+        # Delete users who are no longer on the server - will all be filed under the None key
         try:
-            del member_check_in_map[None]  # for any users who are no longer on the server
+            del member_check_in_map[None]
         except KeyError:
             pass
 
+        # Remove exempt users
         for user in self.session.query(User).filter_by(is_exempt=True).all():
             try:
                 del member_check_in_map[self.server.get_member(user.discord_id)]

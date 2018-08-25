@@ -116,9 +116,11 @@ def run(loop: asyncio.AbstractEventLoop):
     client.scheduler = Scheduler(client)
     client.kaz_help_parser = kaz_help_parser
 
+    # Load core extension (core + rolemanager)
+    client.load_extension("kaztron.core")
+
     # Load extensions
     startup_extensions = config.get("core", "extensions")
-    client.load_extension("kaztron.cog.core")
     for extension in startup_extensions:
         logger.debug("Loading extension: {}".format(extension))
         # noinspection PyBroadException

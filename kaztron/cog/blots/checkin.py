@@ -1,23 +1,24 @@
 import logging
-from typing import Sequence
+from typing import Sequence, Dict
 
 import discord
 from discord.ext import commands
+from discord.ext.commands import UserInputError
 from sqlalchemy import orm
 from datetime import datetime, timedelta
 
-from kaztron import KazCog
+from kaztron import KazCog, task
 from kaztron.driver.pagination import Pagination
 from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only, mod_channels, in_channels
 from kaztron.utils.converter import MemberConverter2, NaturalDateConverter, BooleanConverter, \
     NaturalInteger
-from kaztron.utils.discord import Limits, get_group_help, user_mention, get_named_role
+from kaztron.utils.discord import Limits, get_group_help, user_mention, get_named_role, check_mod
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.datetime import format_datetime, format_date
 
 from kaztron.cog.blots import model
-from kaztron.cog.blots.controller import CheckInController, MilestoneInfo
+from kaztron.cog.blots.controller import CheckInController, MilestoneInfo, BlotsConfig
 from kaztron.utils.strings import split_chunks_on
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,10 @@ class CheckInManager(KazCog):
     description: |
         This module allows {{name}} to manage user check-ins for Inkblood's BLOTS programme, and
         provides tools to help moderators oversee this programme.
+
+        Check-ins are **only** allowed from {{checkin_window_start}} to {{checkin_window_end}},
+        unless you are a mod or a member of the following roles: {{checkin_anytime_roles}}. The
+        start and end of the checkin window are announced in the channel.
     contents:
         - checkin:
             - type
@@ -40,6 +45,8 @@ class CheckInManager(KazCog):
             - report
             - update
     """
+    cog_config: BlotsConfig
+
     ITEMS_PER_PAGE = 12
     EMBED_COLOR = solarized.yellow
     PROJECT_UNIT_MAP = {
@@ -48,20 +55,65 @@ class CheckInManager(KazCog):
         model.ProjectType.words: "words"
     }
 
-    check_in_channel_id = KazCog.config.get('blots', 'check_in_channel')
-    test_channel_id = KazCog.config.get('discord', 'channel_test')
+    check_in_channel_id = KazCog.config.blots.check_in_channel
+    test_channel_id = KazCog.config.discord.channel_test
 
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'blots', BlotsConfig)
+        self.cog_config.set_defaults(milestone_map={})
         self.c = None  # type: CheckInController
+        self.checkin_anytime_roles = []
+        self.check_in_channel = None
+        self.announce_tasks = []
+
+    def export_kazhelp_vars(self):
+        import calendar
+        window = self.c.get_check_in_window(datetime.utcnow())
+        return {
+            'checkin_window_start': "{} {}".format(
+                calendar.day_name[window[0].weekday()],
+                self.c.checkin_time.strftime('%H:%M') + ' UTC'
+            ),
+            'checkin_window_end': "{} {}".format(
+                calendar.day_name[window[1].weekday()],
+                self.c.checkin_time.strftime('%H:%M') + ' UTC'
+            ),
+            'checkin_anytime_roles': ', '.join(r.name for r in self.checkin_anytime_roles)
+        }
 
     async def on_ready(self):
         await super().on_ready()
+        self.check_in_channel = self.validate_channel(self.check_in_channel_id)
+        self.checkin_anytime_roles = tuple(get_named_role(self.server, n)
+                                           for n in self.cog_config.check_in_window_exempt_roles)
         milestone_map = {}
-        for pt, ms_map in self.config.get('blots', 'milestone_map').items():
+        for pt, ms_map in self.cog_config.milestone_map.items():
             milestone_map[model.ProjectType[pt]] = {get_named_role(self.server, r): v
                                                     for r, v in ms_map.items()}
-        self.c = CheckInController(self.server, self.config, milestone_map)
+        self.c = CheckInController(self.server, self.cog_config, milestone_map)
+        await self.schedule_checkin_announcements()
+
+    async def schedule_checkin_announcements(self):
+        if not self.announce_tasks:
+            window = self.c.get_check_in_window(datetime.utcnow())
+            self.announce_tasks.append(self.scheduler.schedule_task_at(
+                self.announce_start, window[0], every=timedelta(days=7)
+            ))
+            self.announce_tasks.append(self.scheduler.schedule_task_at(
+                self.announce_end, window[1], every=timedelta(days=7)
+            ))
+
+    @task(is_unique=True)
+    async def announce_start(self):
+        logger.info("Announcing start of check-in window")
+        await self.bot.send_message(self.check_in_channel,
+            "~\n" + ("^" * 32) + "\n**Check-ins for this week are now OPEN!**")
+
+    @task(is_unique=True)
+    async def announce_end(self):
+        logger.info("Announcing end of check-in window")
+        await self.bot.send_message(self.check_in_channel,
+            "~\n**Check-ins for this week are now CLOSED!**\n" + ("=" * 32))
 
     async def send_check_in_list(self,
                                dest: discord.Channel,
@@ -102,6 +154,10 @@ class CheckInManager(KazCog):
             If your project type is "words", enter your word_count in words (total). If your project
             type is "visual" or "script", enter your total number of pages instead. See also
             {{!checkin type}}.
+
+            Check-ins are **only** allowed from {{checkin_window_start}} to {{checkin_window_end}},
+            unless you are a mod or a member of the following roles: {{checkin_anytime_roles}}. The
+            start and end of the checkin window are announced in the channel.
         parameters:
             - name: word_count
               type: number
@@ -114,12 +170,33 @@ class CheckInManager(KazCog):
             - command: ".checkin 304882 Finished chapter 82 and developed some of the social and
                 economic fallout of the Potato Battle of 1912."
         """
+
+        # check if allowed to checkin at the current time
+        msg_time = ctx.message.timestamp
+        window = self.c.get_check_in_window(msg_time)
+        is_in_window = window[0] <= msg_time <= window[1]
+        is_anytime = set(ctx.message.author.roles) & set(self.checkin_anytime_roles)
+
+        if not check_mod(ctx) and not is_in_window and not is_anytime:
+            import calendar
+            window_name = "from {0} {2} to {1} {2}".format(
+                calendar.day_name[window[0].weekday()],
+                calendar.day_name[window[1].weekday()],
+                self.c.checkin_time.strftime('%H:%M') + ' UTC'
+            )
+            raise UserInputError(
+                "**You cannot check-in right now!** Check-ins are {}. Need help? Ask us in #meta!"
+                .format(window_name)
+            )
+
+        # validate argument
         word_count = word_count  # type: int  # for IDE type checking
         if word_count < 0:
             raise commands.BadArgument("word_count must be greater than 0.")
         if not message:
             raise commands.BadArgument("Check-in message is required.")
 
+        # store the checkin
         check_in = self.c.save_check_in(
             member=ctx.message.author,
             word_count=word_count,
@@ -267,28 +344,42 @@ class CheckInManager(KazCog):
             await self.bot.say("No check-ins for {}.".format(week_str))
             return
 
-        users_checked_in = ["{0} ({1})".format(m.mention, format_datetime(c.timestamp))
-                            for m, c in report.items() if c]
-        users_not_checked_in = []
-        if None in report.values():
-            latest_check_ins = self.c.query_latest_check_ins()
-            for m, c in report.items():
-                if c is None:
-                    try:
-                        last_check_in = latest_check_ins[m]
-                        date_str = format_date(last_check_in.timestamp)
-                    except KeyError:
-                        date_str = 'Never'
-                    users_not_checked_in.append("{0} (last: {1})".format(m.mention, date_str))
+        # split into checked-in and not checked in during the reporting week
+        checked_in_users = [u for u, c in report.items() if c is not None]
+        non_checked_in_users = [u for u, c in report.items() if c is None]
 
-        checked_in_str = "**CHECKED IN**\n{}"\
-            .format('\n'.join(users_checked_in))
+        # get the latest checkins of users who did not check in during the reporting week
+        try:
+            latest_check_ins = self.c.query_latest_check_ins(members=non_checked_in_users)
+        except orm.exc.NoResultFound:
+            latest_check_ins = {}
+
+        # sort the two lists (checked in by name, non-checked-in by last checkin date (all time))
+        checked_in_users.sort(key=lambda u: u.nick if u.nick else u.name)
+        non_checked_in_users.sort(key=lambda u:
+            latest_check_ins[u].timestamp if u in latest_check_ins else datetime(1970, 1, 1),
+            reverse=True
+        )
+
+        # format strings for display
+        checked_in_strings = [
+            "{0} ({1})".format(u.mention, format_datetime(report[u].timestamp))
+            for u in checked_in_users
+        ]
+        not_checked_in_strings = [
+            "{0} (last: {1})".format(
+                u.mention,
+                format_date(latest_check_ins[u].timestamp) if u in latest_check_ins else 'Never'
+            ) for u in non_checked_in_users
+        ]
+
+        checked_in_str = "**CHECKED IN**\n{}".format('\n'.join(checked_in_strings))
         if len(checked_in_str) > Limits.MESSAGE:  # if too long for one message, summarize
             checked_in_str = "**CHECKED IN**\n{:d} users (list too long)"\
-                .format(len(users_checked_in))
+                .format(len(checked_in_strings))
 
         no_check_in_str = "**DID NOT CHECK IN**\n{}" \
-            .format('\n'.join(users_not_checked_in))  # don't summarize: may need action
+            .format('\n'.join(not_checked_in_strings))  # don't summarize: may need action
 
         await self.bot.say("**Check-In Report for {}**".format(week_str))
         for msg in split_chunks_on(checked_in_str, Limits.MESSAGE):

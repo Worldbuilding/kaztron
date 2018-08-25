@@ -7,11 +7,12 @@
     "playing": "status (playing ...) message here",
     "token": "bot auth token",
     "channel_output": "channel ID for general bot messages (technical/audit mostly)",
+    "channel_public": "channel ID for public bot usage and some status/notification messages to users",
     "channel_test": "channel ID for general bot usage or testing purposes (mostly unused, some commands are allowed here as well as their normal allowed channels)"
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "role_man", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
+    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
     "channel_request": "channel ID for requests",
     "info_links": {
       "link name 1": "http://potato.example/url/to/something",
@@ -38,7 +39,7 @@
       "discord": "INFO"
     }
   },
-  "role_man": {
+  "rolemanager": {
     "user_roles": {
       "role_name1": {
         "join_name": "join command name",
@@ -74,8 +75,9 @@
     }
   },
   "blots": {
-    "check_in_weekday": 4,
-    "check_in_time": "5:00",
+    "check_in_period_weekdays": [2, 3],
+    "check_in_period_time": "5:00",
+    "check_in_window_exempt_roles": ["role name", "another role name"],
     "check_in_channel": "channel ID here",
     "milestone_map": {
       "words": {
@@ -109,6 +111,7 @@
   },
   "modtools": {
     "tempban_role": "Role Name Here",
+    "notif_role": "Name of role used to send notifications to all mods",
     "channel_mod": "ID of channel for mod notifications (like timed unbans)",
     "distinguish_map": {
       "mod-role1": "distinguish-role1",

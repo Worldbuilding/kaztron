@@ -11,6 +11,7 @@ from kaztron import KazCog
 from kaztron import theme
 from kaztron.driver import database as db
 from kaztron.driver.pagination import Pagination
+from kaztron.utils.converter import NaturalInteger
 from kaztron.utils.datetime import parse as dt_parse
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, \
@@ -418,7 +419,7 @@ class ModNotes(KazCog):
     @notes.command(pass_context=True, ignore_extra=False, aliases=['x', 'expire'])
     @mod_only()
     @mod_channels(delete_on_fail=True)
-    async def expires(self, ctx, note_id: int, *, timespec: str="now"):
+    async def expires(self, ctx, note_id: NaturalInteger, *, timespec: str="now"):
         """!kazhelp
         description: Change the expiration time of an existing note.
         parameters:
@@ -437,6 +438,8 @@ class ModNotes(KazCog):
             - command: .notes expires 138 2018-01-24
               description: Change the expiration time of note #138 to 24 January 2018.
         """
+        note_id: int
+
         expires = dt_parse(timespec, future=True)
         if expires is None:  # dateparser failed to parse
             raise commands.BadArgument("Invalid timespec: '{}'".format(timespec))
@@ -454,7 +457,7 @@ class ModNotes(KazCog):
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
     @mod_only()
     @mod_channels(delete_on_fail=True)
-    async def rem(self, ctx, note_id: int):
+    async def rem(self, ctx, note_id: NaturalInteger):
         """!kazhelp
         description: Remove an existing note.
         details: To prevent accidental data deletion, the removed note can be viewed and restored by
@@ -467,6 +470,8 @@ class ModNotes(KazCog):
             - command: .notes rem 122
               description: Remove note number 122.
         """
+        note_id: int
+
         try:
             record = c.mark_removed_record(note_id)
         except db.orm_exc.NoResultFound:
@@ -512,7 +517,7 @@ class ModNotes(KazCog):
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
     @mod_channels(delete_on_fail=True)
-    async def restore(self, ctx, note_id: int):
+    async def restore(self, ctx, note_id: NaturalInteger):
         """!kazhelp
         description: Restore a removed note.
         parameters:
@@ -520,6 +525,8 @@ class ModNotes(KazCog):
               type: number
               description: The ID of the note to remove. See {{!notes}}.
         """
+        note_id: int
+
         try:
             record = c.mark_removed_record(note_id, removed=False)
         except db.orm_exc.NoResultFound:
@@ -531,7 +538,7 @@ class ModNotes(KazCog):
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
     @mod_channels(delete_on_fail=True)
-    async def purge(self, ctx, note_id: int):
+    async def purge(self, ctx, note_id: NaturalInteger):
         """!kazhelp
         description: |
             Permanently destroy a removed now.
@@ -543,6 +550,8 @@ class ModNotes(KazCog):
               type: number
               description: The ID of the note to remove. See {{!notes}}.
         """
+        note_id: int
+
         try:
             record = c.get_record(note_id, removed=True)
             await self.show_record(ctx.message.channel, record=record, title='Purging...')
@@ -571,7 +580,7 @@ class ModNotes(KazCog):
               optional: true
               default: 1
               type: number
-              description: "The page number to show, if there are more than 1 page of notes."
+              description: "The page number to show, if there are more than 1 page of results."
         examples:
             - command: ".notes finduser Indium"
               description: 'This would match, for example, a user called "IndiumPhosphide".'

@@ -10,11 +10,11 @@ import kaztron
 from kaztron.config import SectionView
 from kaztron.errors import *
 from kaztron.help_formatter import DiscordHelpFormatter, JekyllHelpFormatter
+from kaztron.rolemanager import RoleManager
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.decorators import task_handled_errors
 from kaztron.utils.logging import message_log_str, exc_log_str, tb_log_str, exc_msg_str
-from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str, \
-    Limits
+from kaztron.utils.discord import get_command_prefix, get_command_str, get_help_str, get_usage_str
 from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,7 @@ class CoreCog(kaztron.KazCog):
         try:
             self.bot.kaz_help_parser.variables['output_channel'] = '#' + self.channel_out.name
             self.bot.kaz_help_parser.variables['test_channel'] = '#' + self.channel_test.name
+            self.bot.kaz_help_parser.variables['public_channel'] = '#' + self.channel_public.name
         except AttributeError:
             logger.warning("Help parser not found in bot")
 
@@ -244,6 +245,18 @@ class CoreCog(kaztron.KazCog):
             if isinstance(root_exc, KeyboardInterrupt):
                 logger.warning("Interrupted by user (SIGINT)")
                 raise root_exc
+            elif isinstance(root_exc, discord.Forbidden) \
+                    and root_exc.code == DiscordErrorCodes.CANNOT_PM_USER:
+                author: discord.Member = ctx.message.author
+                err_msg = "Can't PM user (FORBIDDEN): {0} {1}".format(
+                    author.nick or author.name, author.id)
+                logger.warning(err_msg)
+                logger.debug(tb_log_str(root_exc))
+                await self.bot.send_message(ctx.message.channel,
+                    ("{} You seem to have PMs from this server disabled or you've blocked me. "
+                     "I need to be able to PM you for this command.").format(author.mention))
+                await self.send_output("[WARNING] " + err_msg, auto_split=False)
+                return  # we don't want the generic "an error occurred!"
             elif isinstance(root_exc, discord.HTTPException):  # API errors
                 err_msg = 'While executing {c}\n\nDiscord API error {e!s}' \
                     .format(c=cmd_string, e=root_exc)
@@ -412,7 +425,7 @@ class CoreCog(kaztron.KazCog):
         await self.bot.say(embed=em)
 
     @commands.command(pass_context=True, aliases=['bug', 'issue'])
-    @commands.cooldown(rate=5, per=60)
+    @commands.cooldown(rate=3, per=120)
     async def request(self, ctx, *, content: str):
         """!kazhelp
 
@@ -494,3 +507,4 @@ class CoreCog(kaztron.KazCog):
 
 def setup(bot):
     bot.add_cog(CoreCog(bot))
+    bot.add_cog(RoleManager(bot))

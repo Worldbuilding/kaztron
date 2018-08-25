@@ -1,13 +1,16 @@
 import functools
 import logging
 from asyncio import iscoroutinefunction
-from typing import Type, Dict
+from typing import Type, Dict, Union
 
 import discord
 from discord.ext import commands
 
+from kaztron.utils.embeds import EmbedSplitter
 from kaztron.config import KaztronConfig, SectionView
 from kaztron.errors import BotNotReady
+from kaztron.utils.discord import Limits
+from kaztron.utils.strings import natural_split, split_chunks_on
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,7 @@ class KazCog:
     _custom_states = []
 
     _core_cache = None
+    _roleman_cache = None
 
     _ch_out_id = None
     _ch_test_id = None
@@ -68,6 +72,7 @@ class KazCog:
         setattr(self, '_{0.__class__.__name__}__unload'.format(self), self.unload)
         self._ch_out = discord.Object(self._ch_out_id)  # type: discord.Channel
         self._ch_test = discord.Object(self._ch_test_id)  # type: discord.Channel
+        self._ch_pub = discord.Object(self._ch_pub_id)  # type: discord.Channel
 
         # Detect success/error in cog's on_ready w/o boilerplate from the child class
         def on_ready_wrapper(f):
@@ -112,6 +117,7 @@ class KazCog:
         cls.config = cls._config = config
         cls._ch_out_id = cls.config.discord.channel_output
         cls._ch_test_id = cls.config.discord.channel_test
+        cls._ch_pub_id = cls.config.discord.channel_public
         cls.state = cls._state = state
 
     async def on_ready(self):
@@ -120,6 +126,7 @@ class KazCog:
         """
         self._ch_out = self.validate_channel(self._ch_out_id)
         self._ch_test = self.validate_channel(self._ch_test_id)
+        self._ch_pub = self.validate_channel(self._ch_pub_id)
 
     # noinspection PyBroadException
     def unload(self):
@@ -191,21 +198,102 @@ class KazCog:
             raise ValueError("Channel {} not found".format(id_))
         return channel
 
-    async def send_output(self, *args, **kwargs):
+    async def send_message(self, destination, contents, *, tts=False,
+                           embed: Union[discord.Embed, EmbedSplitter]=None,
+                           auto_split=True, split='word'):
+        """
+        Send a message. This method wraps the :meth:`discord.Client.send_message` method and adds
+        automatic message splitting if a message is too long for one line.
+
+        No parsing of Markdown is done for message splitting; this behaviour may break intended
+        formatting. For messages which may contain formatting, it is suggested you parse and split
+        the message instead of relying on auto-splitting.
+
+        See also :meth:`kaztron.utils.split_chunks_on` and :meth:`kaztron.utils.natural_split` for
+        manual control of splitting behaviour. See also :meth:`kaztron.utils.split_code_chunks_on`
+        for splitting Markdown code blocks manually.
+
+        See also :cls:`kaztron.utils.embeds.EmbedSplitter` for similar functionality in splitting
+        embeds.
+
+        :param destination: he location to send the message (Channel, PrivateChannel, User, etc.)
+        :param contents: The content of the message to send. If this is missing, then the ``embed``
+            parameter must be present.
+        :param tts: Indicates if the message should be sent using text-to-speech.
+        :param embed: The rich embed for the content. Also accepts EmbedSplitter instances, for
+            automatic splitting - in this case, the EmbedSplitter will be finalized by this method.
+        :param auto_split: Whether to auto-split messages that exceed the maximum message length.
+        :param split: What to split on: 'word' or 'line'. 'Line' should only be used for messages
+            known to contain many line breaks, as otherwise auto-splitting is likely to fail.
+        """
+
+        # prepare text contents
+        if not contents or not auto_split:
+            content_chunks = (contents,)
+        else:
+            if split == 'word':
+                content_chunks = natural_split(contents, Limits.MESSAGE)
+            elif split == 'line':
+                content_chunks = split_chunks_on(contents, Limits.MESSAGE, split_char='\n')
+            else:
+                raise ValueError('`split` argument must be \'word\' or \'line\'')
+
+        # prepare embed
+        try:
+            embed_list = embed.finalize()
+        except AttributeError:
+            embed_list = (embed,)
+
+        # strategy: output all text chunks before starting to output embed chunks
+        # so the last text chunk will have the first embed chunk attached
+        # this is because non-split messages usually have the embed appear after the msg -
+        # should be fairly rare for both msg and embed to be split
+        for content_chunk in content_chunks[:-1]:
+            await self.bot.send_message(destination, content_chunk, tts=tts)
+
+        await self.bot.send_message(destination, content_chunks[-1], tts=tts, embed=embed_list[0])
+
+        for embed_chunk in embed_list[1:]:
+            await self.bot.send_message(destination, tts=tts, embed=embed_chunk)
+
+    async def send_output(self, contents, *,
+                          tts=False, embed: Union[discord.Embed, EmbedSplitter]=None,
+                          auto_split=True, split='word'):
         """
         Send a message to the bot output channel.
 
-        Convenience function equivalent to ``self.bot.send_message(self.channel_out, ...).
+        Convenience function equivalent to ``self.send_message(self.channel_out, ...)``. See also
+        :meth:`.send_message`.
         """
-        await self.bot.send_message(self.channel_out, *args, **kwargs)
+        await self.send_message(self.channel_out, contents, tts=tts, embed=embed,
+            auto_split=auto_split, split=split)
+
+    async def send_public(self, contents, *,
+                          tts=False, embed: Union[discord.Embed, EmbedSplitter]=None,
+                          auto_split=True, split='word'):
+        """
+        Send a message to the bot public output channel.
+
+        Convenience function equivalent to ``self.send_message(self.channel_public, ...)``. See also
+        :meth:`.send_message`.
+        """
+        await self.send_message(self.channel_public, contents, tts=tts, embed=embed,
+            auto_split=auto_split, split=split)
 
     @property
     def core(self):
         # cached since we need this when handling disconnect, after cog potentially unloaded...
-        from kaztron.cog.core import CoreCog
+        from kaztron.core import CoreCog
         if not self._core_cache:
             self._core_cache = self.bot.get_cog('CoreCog')
         return self._core_cache  # type: CoreCog
+
+    @property
+    def rolemanager(self):
+        from kaztron.rolemanager import RoleManager
+        if not self._roleman_cache:
+            self._roleman_cache = self.bot.get_cog('RoleManager')
+        return self._roleman_cache  # type: RoleManager
 
     @property
     def is_ready(self):
@@ -227,6 +315,14 @@ class KazCog:
         :meth:`discord.Client.send_message` and similar.
         """
         return self._ch_out
+
+    @property
+    def channel_public(self) -> discord.Channel:
+        """
+        Configured public output channel. Before on_ready, returns a discord Object only usable in
+        :meth:`discord.Client.send_message` and similar.
+        """
+        return self._ch_pub
 
     @property
     def channel_test(self) -> discord.Channel:

@@ -1,6 +1,11 @@
 from discord.ext import commands
 
 
+class DiscordErrorCodes:
+    # https://discordapp.com/developers/docs/topics/opcodes-and-status-codes
+    CANNOT_PM_USER = 50007
+
+
 class BotNotReady(commands.CommandError):
     pass
 

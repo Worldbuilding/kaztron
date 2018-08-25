@@ -6,7 +6,7 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron.cog.blots import model
-from kaztron.cog.blots.controller import BlotsBadgeController
+from kaztron.cog.blots.controller import BlotsBadgeController, BlotsConfig
 from kaztron.driver import database
 from kaztron.driver.pagination import Pagination
 from kaztron.kazcog import ready_only
@@ -41,13 +41,15 @@ class BadgeManager(KazCog):
             - report
             - load
     """
+    cog_config: BlotsConfig
+
     ITEMS_PER_PAGE = 8
     EMBED_COLOUR = solarized.green
 
-    badge_channel_id = KazCog.config.get('blots', 'badge_channel')
+    badge_channel_id = KazCog.config.blots.badge_channel
 
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'blots', BlotsConfig)
         self.channel = None  # type: discord.Channel
         self.c = None  # type: BlotsBadgeController
 
