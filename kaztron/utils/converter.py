@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 
 import kaztron.utils.datetime as utils_dt
-from kaztron.utils.discord import extract_user_id
+from kaztron.utils.discord import get_member
 
 
 class NaturalDateConverter(commands.Converter):
@@ -20,17 +20,35 @@ class NaturalDateConverter(commands.Converter):
         return date
 
 
-class MemberConverter2(commands.MemberConverter):
+class FutureDateRange(commands.Converter):
+    """
+    Convert a natural language date range, in the form "date1 to date2". If there is ambiguity to
+    the range (e.g. implied year), then it will start in the future.
+    """
+    def convert(self):
+        try:
+            return utils_dt.parse_daterange(self.argument, future=True)
+        except ValueError as e:
+            raise commands.BadArgument(e.args[0])
+
+
+class DateRange(commands.Converter):
+    """
+    Convert a natural language date range, in the form "date1 to date2".
+    """
+    def convert(self):
+        try:
+            return utils_dt.parse_daterange(self.argument, future=False)
+        except ValueError as e:
+            raise commands.BadArgument(e.args[0])
+
+
+class MemberConverter2(commands.Converter):
     """
     Member converter with slightly more tolerant ID inputs permitted.
     """
     def convert(self):
-        try:
-            s_user_id = extract_user_id(self.argument)
-        except discord.InvalidArgument:
-            s_user_id = self.argument
-        self.argument = s_user_id
-        return super().convert()
+        return get_member(self.ctx, self.argument)
 
 
 class BooleanConverter(commands.Converter):
