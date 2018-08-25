@@ -580,7 +580,7 @@ class ModNotes(KazCog):
               optional: true
               default: 1
               type: number
-              description: "The page number to show, if there are more than 1 page of notes."
+              description: "The page number to show, if there are more than 1 page of results."
         examples:
             - command: ".notes finduser Indium"
               description: 'This would match, for example, a user called "IndiumPhosphide".'
