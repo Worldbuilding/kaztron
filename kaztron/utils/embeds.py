@@ -105,11 +105,15 @@ class EmbedSplitter:
             if not self.auto_truncate:
                 raise ValueError("Field name too long")
             name = natural_truncate(name, maxlen=Limits.EMBED_FIELD_NAME)
+        elif not name.strip():
+            raise ValueError("Empty name field for embed titled {!r}".format(self.template.title))
 
         if len(value) > Limits.EMBED_FIELD_VALUE:
             if not self.auto_truncate:
                 raise ValueError("Field value too long")
             self._add_split_field(name, value, inline)
+        elif not value.strip():
+            raise ValueError("Empty value for field named {!r}".format(name))
         else:
             self._field_cache.append({'name': name, 'value': value, 'inline': inline})
 

@@ -198,7 +198,7 @@ class KazCog:
             raise ValueError("Channel {} not found".format(id_))
         return channel
 
-    async def send_message(self, destination, contents, *, tts=False,
+    async def send_message(self, destination, contents=None, *, tts=False,
                            embed: Union[discord.Embed, EmbedSplitter]=None,
                            auto_split=True, split='word'):
         """
