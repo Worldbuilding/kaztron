@@ -23,6 +23,8 @@ engine = None
 Session = db.sessionmaker()
 session = None
 
+CheckInMap = Dict[discord.Member, Optional[CheckIn]]
+
 
 def init_db():
     global engine, session
@@ -191,65 +193,141 @@ class CheckInController(BlotsController):
             .format(len(results), ' and '.join(log_conds)))
         return results
 
-    def query_latest_check_ins(self, members: List[discord.Member]=None)\
-            -> Dict[discord.Member, CheckIn]:
+    def query_latest_check_ins(self, members: List[discord.Member]=None, before: datetime=None)\
+            -> CheckInMap:
         """
         :param members: List of members to query for. Default: all members.
+        :param before: If specified, will query the latest checkin before this time.
         :return:
         """
+        query: orm.Query
         query = self.session \
             .query(CheckIn, db.func.max(CheckIn.timestamp).label('timestamp_max'))
         if members:
-            query = query.filter(User.discord_id.in_(tuple(m.id for m in members)))
+            query = query.join(CheckIn.user)\
+                         .filter(User.discord_id.in_(tuple(m.id for m in members)))
+        if before:
+            query = query.filter(CheckIn.timestamp < before)
         results = query.group_by(CheckIn.user_id).all()
         logger.info("query_latest_check_ins: Found {:d} records".format(len(results)))
         return {self.server.get_member(check_in.user.discord_id): check_in
                 for check_in, _ in results}
 
-    def get_check_in_report(self, included_date: datetime=None) \
-            -> Dict[discord.Member, Optional[CheckIn]]:
+    def generate_check_in_report(self, included_date: datetime=None)\
+            -> Tuple[CheckInMap, CheckInMap]:
         """
-        Get a report of all server users and their check-ins in a given report week.
+        Get a report of all users and their check-ins for a given week.
 
         Note that this function checks all CURRENT users. The report does not account for users who
         had not joined during the requested report week, or who left after that week.
 
-        :param included_date: The check-in week to report for must include this date.
-        :return: Map of users to their last checkin in the checkin period. If the user did not
-            check in during the checkin period, the mapped value is None. This map is guaranteed
-            to contain keys for all users currently on the server.
+        :param included_date: The check-in week to report for must include this date. Default:
+            the last full report week.
+        :return: Two maps. The first maps users who checked in during that checkin week; the second
+            maps users who did NOT check in during that checkin week to their last checkin before
+            that week.
         """
-        logger.info("get_check_in_report: Generating report (included_date={})"
+        logger.info("generate_check_in_report(included_date={})"
             .format(included_date.isoformat(' ')))
 
-        check_ins = self.query_check_ins(included_date=included_date)
-
-        member_check_in_map = {m: None for m in self.server.members}
-        for c in check_ins:
-            member_check_in_map[self.server.get_member(c.user.discord_id)] = c
-
-        # Delete users who are no longer on the server - will all be filed under the None key
         try:
-            del member_check_in_map[None]
-        except KeyError:
-            pass
+            check_ins = self.query_check_ins(included_date=included_date)
+        except orm.exc.NoResultFound:
+            check_ins = []
 
-        # Remove exempt users
+        ci_map = {}  # members with checkins
+        for c in check_ins:
+            m = self.server.get_member(c.user.discord_id)
+            if m is not None:  # filter members who left the server
+                ci_map[m] = c
+        nci_map = {m: None for m in self.server.members if m not in ci_map}  # members w/o checkins
+
+        # Remove exempt users from the non-checked-in map
         for user in self.session.query(User).filter_by(is_exempt=True).all():
             try:
-                del member_check_in_map[self.server.get_member(user.discord_id)]
+                del nci_map[self.server.get_member(user.discord_id)]
             except KeyError:
                 pass
-        return member_check_in_map
 
-    def get_milestone_report(self) -> Mapping[Union[discord.Role, None], Sequence[MilestoneInfo]]:
+        # get the last checkins of users who did not check in during the reporting week
+        try:
+            start, _ = self.get_check_in_week(included_date)
+            prev_map = self.query_latest_check_ins(members=list(nci_map.keys()), before=start)
+            for m, c in prev_map.items():
+                nci_map[m] = c
+        except orm.exc.NoResultFound:
+            pass
+
+        return ci_map, nci_map
+
+    def generate_check_in_deltas(self, included_date: datetime=None)\
+            -> Tuple[Dict[discord.Member, Optional[int]], CheckInMap]:
+        """
+        Get a report of all users and their check-ins for a given week.
+
+        Note that this function checks all CURRENT users. The report does not account for users who
+        had not joined during the requested report week, or who left after that week.
+
+        :param included_date: The check-in week to report for must include this date. Default:
+            the last full report week.
+        :return: 1) A mapping of users to their delta word count. If they did NOT check in in the
+            given week, the mapped value is None; if they did and reported no progress, the mapped
+            value is 0. 2) A map of that week's checkins. May not contain all users.
+        """
+        logger.info("generate_check_in_deltas(included_date={})"
+            .format(included_date.isoformat(' ')))
+
+        ci_map = {}
+        prev_map = {}
+        diffs_map = {m: None for m in self.server.members}  # users to report
+
+        # Remove exempt users from users to report
+        for user in self.session.query(User).filter_by(is_exempt=True).all():
+            try:
+                del diffs_map[self.server.get_member(user.discord_id)]
+            except KeyError:
+                pass
+
+        # get this week's checkins
+        try:
+            check_ins = self.query_check_ins(included_date=included_date)
+            for c in check_ins:
+                m = self.server.get_member(c.user.discord_id)
+                if m is not None:  # filter members who left the server
+                    ci_map[m] = c
+        except orm.exc.NoResultFound:
+            pass
+
+        # get prev checkin for all users
+        try:
+            start, _ = self.get_check_in_week(included_date)
+            prev_map = self.query_latest_check_ins(members=list(diffs_map.keys()), before=start)
+            for m, c in prev_map.items():
+                if m is not None:
+                    prev_map[m] = c
+        except orm.exc.NoResultFound:
+            pass
+
+        # calculate diffs
+        for m in diffs_map.keys():
+            if m in ci_map and m in prev_map:
+                diffs_map[m] = ci_map[m].word_count - prev_map[m].word_count
+            elif m in ci_map:
+                diffs_map[m] = ci_map[m].word_count
+            else:
+                diffs_map[m] = None
+
+        return diffs_map, ci_map
+
+    def generate_milestone_report(self)\
+            -> Mapping[Union[discord.Role, None], Sequence[MilestoneInfo]]:
         """
         Get a report of all users who have checked in and what their milestone role should be.
 
         :return: Ordered map of TARGET role to full milestone information. This map will
         always include a None key for any users who have not submitted valid check-ins.
         """
-        logger.info("get_milestone_report: Generating report")
+        logger.info("generate_milestone_report: Generating report")
 
         # set up output structure with the full list of milestone roles
         milestones = OrderedDict() \
@@ -257,7 +335,7 @@ class CheckInController(BlotsController):
         for role in self.get_milestone_roles():
             milestones[role] = []
         milestones[None] = []
-        logger.debug("get_milestone_report: Detected milestone roles: {!r}"
+        logger.debug("generate_milestone_report: Detected milestone roles: {!r}"
             .format([r.name for r in milestones.keys() if r is not None]))
 
         check_in_map = self.query_latest_check_ins()
