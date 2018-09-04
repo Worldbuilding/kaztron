@@ -58,11 +58,12 @@ class QuoteCog(KazCog):
         if title is None:
             title = discord.Embed.Empty
         em = discord.Embed(title=title, description=quote_str, color=self.EMBED_COLOR)
-        if index is not None and total is not None:
-            em.set_footer(text="saved by {u} | {n:d}/{total:d}"
-                .format(u=quote.saved_by.name, n=index, total=total))
-        else:
-            em.set_footer(text="saved by {u}".format(u=quote.saved_by.name))
+        if index is None:
+            index = quote.get_index() + 1
+        if total is None:
+            total = len(quote.author.quotes)
+        em.set_footer(text="saved by {u} | {n:d}/{total:d}"
+            .format(u=quote.saved_by.name, n=index, total=total))
         return em
 
     async def send_quotes_list(self,
