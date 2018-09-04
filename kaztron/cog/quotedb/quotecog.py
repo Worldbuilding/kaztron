@@ -6,6 +6,7 @@ from discord.ext import commands
 from sqlalchemy import orm
 
 from kaztron import KazCog
+from kaztron.config import SectionView
 from kaztron.driver.pagination import Pagination
 from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only
@@ -18,6 +19,20 @@ from kaztron.cog.quotedb.model import Quote
 from kaztron.cog.quotedb import controller as c, model
 
 logger = logging.getLogger(__name__)
+
+
+# noinspection PyUnresolvedReferences
+class QuoteConfig(SectionView):
+    """
+    :ivar grab_search_max: Maximum number of messages in history to search for the grab command.
+        Default: 100.
+    :ivar show_channel: Whether to show the channel in quote records. Default: True.
+    :ivar date_format: One of 'seconds', 'datetime', or 'date'. How to format the date in quote
+        records. Default: 'datetime'.
+    """
+    grab_search_max: int
+    show_channel: bool
+    datetime_format: str
 
 
 class QuoteCog(KazCog):
@@ -36,21 +51,31 @@ class QuoteCog(KazCog):
             - undo
             - del
     """
+    cog_config: QuoteConfig
+
     QUOTES_PER_PAGE = 15
     EMBED_COLOR = solarized.blue
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.grab_max = self.config.get("quotedb", "grab_search_max", 100)
-        self.show_channel = self.config.get('quotedb', 'show_channel', True)
-        self.date_format = self.config.get('quotedb', 'datetime_format', 'datetime')
-        if self.date_format not in ('seconds', 'datetime', 'date'):
-            raise ValueError("quotedb:date_format value invalid (seconds, datetime, date): {}"
-                .format(self.date_format))
+        super().__init__(bot, 'quotedb', QuoteConfig)
+        self.cog_config.set_defaults(
+            grab_search_max=100,
+            show_channel=True,
+            datetime_format='datetime'
+        )
+
+        def date_format_validator(s: str):
+            if s not in ('seconds', 'datetime', 'date'):
+                raise ValueError(
+                    "config quotedb:datetime_format value invalid (seconds, datetime, date): {}"
+                    .format(s))
+            return s
+
+        self.cog_config.set_converters('date_format', date_format_validator, date_format_validator)
 
     def export_kazhelp_vars(self):
         return {
-            'grab_search_max': "{:d}".format(self.grab_max)
+            'grab_search_max': "{:d}".format(self.cog_config.grab_search_max)
         }
 
     def make_single_embed(self, quote: Quote,
@@ -82,19 +107,18 @@ class QuoteCog(KazCog):
             # Format strings for this quote
             f_name = "#{:d}".format(start_index + i + 1)
             f_message = self.format_quote(quote, show_saved=False) + '\n\\_\\_\\_'
-            cur_len = len(f_name) + len(f_message)
             es.add_field(name=f_name, value=f_message, inline=False)
 
         await self.send_message(dest, embed=es)
 
     def format_quote(self, quote: Quote, show_saved=True):
-        s_fmt = "[{0}] <#{1}> <{2}> {3}" if self.show_channel else "[{0}] <{2}> {3}"
+        s_fmt = "[{0}] <#{1}> <{2}> {3}" if self.cog_config.show_channel else "[{0}] <{2}> {3}"
 
-        if self.date_format == 'seconds':
+        if self.cog_config.datetime_format == 'seconds':
             timestamp_str = format_datetime(quote.timestamp, seconds=True)
-        elif self.date_format == 'datetime':
+        elif self.cog_config.datetime_format == 'datetime':
             timestamp_str = format_datetime(quote.timestamp, seconds=False)
-        elif self.date_format == 'date':
+        elif self.cog_config.datetime_format == 'date':
             timestamp_str = format_date(quote.timestamp)
         else:
             raise RuntimeError("Invalid date_format??")
@@ -292,7 +316,8 @@ class QuoteCog(KazCog):
             - command: .quote grab @JaneDoe#0921 mosh pit
               description: Finds the most recent message from @JaneDoe containing "mosh pit".
         """
-        async for message in self.bot.logs_from(ctx.message.channel, self.grab_max): \
+        search_messages = self.bot.logs_from(ctx.message.channel, self.cog_config.grab_search_max)
+        async for message in search_messages: \
                 # type: discord.Message
             # if requested author, and this message isn't the invoking one (in case of self-grab)
             if message.author == user and message.id != ctx.message.id:
@@ -301,12 +326,17 @@ class QuoteCog(KazCog):
                     break
         else:  # Nothing found
             if search:
-                await self.bot.say(("No message from {} matching '{}' "
-                                   "found in the last {:d} messages")
-                    .format(user.nick if user.nick else user.name, search, self.grab_max))
+                await self.bot.say(
+                    "No message from {} matching '{}' found in the last {:d} messages"
+                    .format(
+                        user.nick if user.nick else user.name,
+                        search,
+                        self.cog_config.grab_search_max
+                    )
+                )
             else:
                 await self.bot.say("No message from {} found in the last {:d} messages"
-                    .format(user.nick if user.nick else user.name, self.grab_max))
+                    .format(user.nick if user.nick else user.name, self.cog_config.grab_search_max))
             return
 
         message_text = grabbed_message.content
