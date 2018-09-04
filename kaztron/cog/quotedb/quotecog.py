@@ -189,7 +189,8 @@ class QuoteCog(KazCog):
     async def quote_find(self, ctx: commands.Context, user: str, *, search: str=None):
         """!kazhelp
         description: >
-            Find the most recent quote matching a user and/or text search.
+            Find a quote matching a user and/or text search. If multiple quotes are found, return
+            a random one.
         parameters:
             - name: user
               type: "@user or string or \\"all\\""
@@ -203,11 +204,11 @@ class QuoteCog(KazCog):
               description: The text to search.
         examples:
             - command: .quote find Jane
-              description: Find the latest quote from any user whose name/nickname contains "Jane".
+              description: Find a quote from any user whose name/nickname contains "Jane".
             - command: .quote find @JaneDoe#0921 flamingo
-              description: Find the latest quote by JaneDoe containing "flamingo".
+              description: Find a quote by JaneDoe containing "flamingo".
             - command: .quote find Jane flamingo
-              description: Find the latest quote both matching user "Jane" and containing
+              description: Find a quote both matching user "Jane" and containing
                 "flamingo".
         """
         try:
@@ -219,7 +220,9 @@ class QuoteCog(KazCog):
                 db_user = None
 
         db_records = c.search_quotes(search, db_user)
-        em = self.make_single_embed(db_records[-1])
+        quote = db_records[random.randint(0, len(db_records) - 1)]
+        logger.debug("Selected: {!r}".format(quote))
+        em = self.make_single_embed(quote)
         await self.bot.say(embed=em)
 
     @quote.command(name='list', pass_context=True, ignore_extra=False)

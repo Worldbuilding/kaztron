@@ -154,7 +154,8 @@ def search_quotes(search_term: str=None, user: Union[User, List[User]]=None) -> 
         results[0]
     except IndexError:
         raise orm.exc.NoResultFound
-    logger.info("search_quotes: Found {:d} results for {!r}".format(len(results), query))
+    logger.info("search_quotes: Found {:d} results for search_term={}, user_list={}"
+        .format(len(results), search_term, ','.join(u.name for u in user_list)))
     return results
 
 
