@@ -384,7 +384,6 @@ class QuoteCog(KazCog):
         await self.send_message(ctx.message.channel, embed=em)
 
     @quote.command(name='rem', pass_context=True, ignore_extra=False)
-    @mod_only()
     async def quote_remove(self, ctx: commands.Context, number: int):
         """!kazhelp
         description: |
