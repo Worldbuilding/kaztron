@@ -10,6 +10,7 @@ from kaztron.driver.pagination import Pagination
 from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import Limits
+from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.datetime import format_datetime, format_date
 
@@ -69,42 +70,22 @@ class QuoteCog(KazCog):
     async def send_quotes_list(self,
                                dest: discord.Channel,
                                quotes: Pagination,
-                               user: model.User,
-                               server: discord.Server):
+                               user: model.User):
         title = "Quotes by {}".format(user.name)
         footer_text = "Page {:d}/{:d}".format(quotes.page + 1, quotes.total_pages)
-        base_len = len(title) + len(footer_text)
 
-        em = discord.Embed(title=title, color=self.EMBED_COLOR)
+        es = EmbedSplitter(title=title, color=self.EMBED_COLOR, auto_truncate=True)
+        es.set_footer(text=footer_text)
 
         start_index, end_index = quotes.get_page_indices()
-        total_fields = 0
-        total_len = base_len
         for i, quote in enumerate(quotes.get_page_records()):
             # Format strings for this quote
             f_name = "#{:d}".format(start_index + i + 1)
             f_message = self.format_quote(quote, show_saved=False) + '\n\\_\\_\\_'
             cur_len = len(f_name) + len(f_message)
+            es.add_field(name=f_name, value=f_message, inline=False)
 
-            # check lengths and number of fields
-            too_many_fields = total_fields + 1 > Limits.EMBED_FIELD_NUM
-            embed_too_long = total_len + cur_len > int(0.95 * Limits.EMBED_TOTAL)
-
-            # if we can't fit this quote in this embed, send it and start a new one
-            if too_many_fields or embed_too_long:
-                await self.bot.send_message(dest, embed=em)
-                em = discord.Embed(title=title, color=self.EMBED_COLOR)
-                total_len = base_len
-                total_fields = 0
-
-            # add the field for the current quote
-            em.add_field(name=f_name, value=f_message, inline=False)
-
-            # end of iteration updates
-            total_len += cur_len
-
-        em.set_footer(text=footer_text)
-        await self.bot.send_message(dest, embed=em)
+        await self.send_message(dest, embed=es)
 
     def format_quote(self, quote: Quote, show_saved=True):
         s_fmt = "[{0}] <#{1}> <{2}> {3}" if self.show_channel else "[{0}] <{2}> {3}"
@@ -249,7 +230,7 @@ class QuoteCog(KazCog):
         paginator = Pagination(db_user.quotes, self.QUOTES_PER_PAGE, align_end=True)
         if page is not None:
             paginator.page = max(0, min(paginator.total_pages - 1, page-1))
-        await self.send_quotes_list(ctx.message.author, paginator, db_user, ctx.message.server)
+        await self.send_quotes_list(ctx.message.author, paginator, db_user)
 
     @quote.command(name='add', pass_context=True, no_pm=True)
     async def quote_add(self, ctx: commands.Context, user: str, *, message: str):
