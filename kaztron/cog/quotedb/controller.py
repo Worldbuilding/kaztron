@@ -100,33 +100,6 @@ def create_user(member: discord.Member) -> User:
     return db_user
 
 
-def query_author_quotes(user: User) -> List[Quote]:
-    results = session.query(Quote)\
-        .filter_by(author_id=user.user_id)\
-        .order_by(Quote.timestamp)\
-        .all()
-    try:
-        results[0]
-    except IndexError:
-        raise orm.exc.NoResultFound
-    logger.info("query_author_quotes: Found {:d} records by user {!r}".format(len(results), user))
-    return results
-
-
-def query_saved_quotes(user: User) -> List[Quote]:
-    results = session.query(Quote) \
-        .filter_by(saved_by_id=user.user_id) \
-        .order_by(Quote.timestamp) \
-        .all()
-    try:
-        results[0]
-    except IndexError:
-        raise orm.exc.NoResultFound
-    logger.info("query_saved_quotes: Found {:d} records saved by user {!r}"
-        .format(len(results), user))
-    return results
-
-
 def search_users(query: str) -> List[User]:
     """
     Search for users.

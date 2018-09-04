@@ -155,8 +155,7 @@ class QuoteCog(KazCog):
               description: Find the 4th quote by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
-        db_records = c.query_author_quotes(db_user)
-        len_recs = len(db_records)
+        len_recs = len(db_user.quotes)
 
         if number is None:
             number = random.randint(1, len_recs)
@@ -170,7 +169,7 @@ class QuoteCog(KazCog):
                 .format(number, db_user.name, len_recs))
             return
 
-        em = self.make_single_embed(db_records[number - 1], number, len_recs)
+        em = self.make_single_embed(db_user.quotes[number - 1], number, len_recs)
         await self.bot.say(embed=em)
 
     @quote.command(name='find', pass_context=True)
@@ -231,8 +230,7 @@ class QuoteCog(KazCog):
               description: List the 4th page of quotes by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
-        db_records = c.query_author_quotes(db_user)
-        paginator = Pagination(db_records, self.QUOTES_PER_PAGE, align_end=True)
+        paginator = Pagination(db_user.quotes, self.QUOTES_PER_PAGE, align_end=True)
         if page is not None:
             paginator.page = max(0, min(paginator.total_pages - 1, page-1))
         await self.send_quotes_list(ctx.message.author, paginator, db_user, ctx.message.server)
@@ -362,8 +360,7 @@ class QuoteCog(KazCog):
               description: Delete the 4th quote attributed to you.
         """
         db_user = c.query_user(self.server, ctx.message.author.id)
-        db_records = c.query_author_quotes(db_user)
-        len_recs = len(db_records)
+        len_recs = len(db_user.quotes)
 
         if number < 1 or number > len_recs:
             logger.warning("Invalid index {:d}".format(number))
@@ -371,7 +368,7 @@ class QuoteCog(KazCog):
                 .format(number, db_user.name, len_recs))
             return
 
-        quote = db_records[number - 1]
+        quote = db_user.quotes[number - 1]
         message_text = "Removed quote (remove): {}".format(self.format_quote(quote))
         em = self.make_single_embed(quote, number, len_recs, title="Quote deleted.")
         c.remove_quotes([quote])
@@ -392,9 +389,7 @@ class QuoteCog(KazCog):
             TIP: To delete quotes attributed to you, use {{!quote rem}}.
         """
         db_user = c.query_user(self.server, ctx.message.author.id)
-        db_records = c.query_saved_quotes(db_user)
-
-        quote = db_records[-1]
+        quote = db_user.saved_quotes[-1]
         message_text = "Removed quote (undo): {}".format(self.format_quote(quote))
         em = self.make_single_embed(quote, title="Quote deleted.")
         c.remove_quotes([quote])
@@ -421,12 +416,11 @@ class QuoteCog(KazCog):
               description: Remove all quotes by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
-        db_records = c.query_author_quotes(db_user)
-        len_recs = len(db_records)
+        len_recs = len(db_user.quotes)
 
         if number == 'all':
             logger.info("Removing all {} quotes for {!r}...".format(len_recs, db_user))
-            c.remove_quotes(db_records)
+            c.remove_quotes(db_user.quotes)
             await self.bot.say("Removed all {} quotes for {}.".format(len_recs, db_user.mention))
             await self.send_output("Removed all {} quotes for {}."
                 .format(len_recs, db_user.mention))
@@ -442,7 +436,7 @@ class QuoteCog(KazCog):
                     .format(number, db_user.name, len_recs))
                 return
 
-            quote = db_records[number - 1]
+            quote = db_user.quotes[number - 1]
             message_text = "Removed quote (mod): {}".format(self.format_quote(quote))
             em = self.make_single_embed(quote, number, len_recs, title="Quote deleted.")
             c.remove_quotes([quote])
