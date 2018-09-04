@@ -17,6 +17,7 @@ from kaztron.utils.datetime import format_datetime, format_date
 
 from kaztron.cog.quotedb.model import Quote
 from kaztron.cog.quotedb import controller as c, model
+from kaztron.utils.strings import format_list
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class QuoteCog(KazCog):
             - list
             - add
             - grab
+            - stats
             - rem
             - undo
             - del
@@ -361,6 +363,25 @@ class QuoteCog(KazCog):
         logger.info(message_text)
         await self.bot.say(embed=self.make_single_embed(quote, title="Added quote."))
         await self.send_output(message_text)
+
+    @quote.command(name='stats', pass_context=True)
+    async def quote_stats(self, ctx: commands.Context):
+        """!kazhelp
+        description: Get quote statistics.
+        """
+        em = discord.Embed(title="Quote statistics")
+        em.add_field(name="Total quotes", value=str(c.get_total_quotes()))
+        em.add_field(name="Quoted users", value=str(c.get_total_quoted_users()))
+
+        most_quoted = c.get_top_quoted()
+        most_quoted_strs = ['{.name} ({} quotes)'.format(u, total) for u, total in most_quoted]
+        em.add_field(name="Most quoted", value='{}'.format(format_list(most_quoted_strs)))
+
+        most_saved = c.get_top_saved()
+        most_saved_strs = ['{.name} ({} quotes saved)'.format(u, total) for u, total in most_saved]
+        em.add_field(name="Top quoters", value='{}'.format(format_list(most_saved_strs)))
+
+        await self.send_message(ctx.message.channel, embed=em)
 
     @quote.command(name='rem', pass_context=True, ignore_extra=False)
     @mod_only()

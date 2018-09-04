@@ -124,6 +124,27 @@ def random_quote() -> Quote:
     return session.query(Quote).order_by(func.random()).limit(1).one()
 
 
+def get_total_quotes() -> int:
+    return session.query(Quote).count()
+
+
+def get_total_quoted_users() -> int:
+    total = db.func.count(Quote.quote_id).label('total')
+    return session.query(User).join(User.quotes).having(total > 0).group_by(User.user_id).count()
+
+
+def get_top_quoted(num: int=3) -> List[Quote]:
+    total = db.func.count(Quote.quote_id).label('total')
+    return session.query(User, total).join(User.quotes) \
+        .group_by(Quote.author_id).order_by(db.desc(total)).limit(num).all()
+
+
+def get_top_saved(num: int=3) -> List[Quote]:
+    total = db.func.count(Quote.quote_id).label('total')
+    return session.query(User, total).join(User.saved_quotes) \
+        .group_by(Quote.saved_by_id).order_by(db.desc(total)).limit(num).all()
+
+
 def search_quotes(search_term: str=None, user: Union[User, List[User]]=None) -> List[Quote]:
     """
     Fulltext search for quotes.
