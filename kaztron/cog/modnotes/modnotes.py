@@ -55,7 +55,6 @@ class ModNotes(KazCog):
     NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
 
-    USEARCH_HEADING_F = "**USER SEARCH RESULTS [{page}/{pages}]** - {total} results for `{query!r}`"
     EMBED_SEPARATOR = '\n{}'.format('\\_'*16)
     EMBED_FIELD_LEN = Limits.EMBED_FIELD_VALUE - len(EMBED_SEPARATOR)
 
@@ -566,88 +565,16 @@ class ModNotes(KazCog):
                 .format(note_id, self.format_display_user(user)))
             # don't send to channel_log, this has no non-admin visibility
 
-    @notes.command(pass_context=True, ignore_extra=False)
+    @notes.command(pass_context=True, ignore_extra=True)
     @mod_only()
     @mod_channels(delete_on_fail=True)
-    async def finduser(self, ctx, search_term: str, page: int=1):
+    async def finduser(self, ctx):
         """!kazhelp
+        brief: DEPRECATED. Use {{!whois}}.
         description: |
-            Find a user in the modnotes database.
-
-            This command searches both the name and aliases fields.
-        parameters:
-            - name: search_term
-              type: "@user"
-              description: "Part of a user's name to find. Searches both the canonical name and
-                aliases. If this contains spaces, use quotation marks."
-            - name: page
-              optional: true
-              default: 1
-              type: number
-              description: "The page number to show, if there are more than 1 page of results."
-        examples:
-            - command: ".notes finduser Indium"
-              description: 'This would match, for example, a user called "IndiumPhosphide".'
+            Deprecated as of version 2.2. Use {{!whois}}.
         """
-        search_term_s = search_term[:Limits.NAME]
-
-        # Get results
-        results = c.search_users(search_term_s)
-
-        # Prepare for display
-        len_results = len(results)
-        total_pages = int(math.ceil(len_results/self.USEARCH_PAGE_SIZE))
-        page = max(1, min(total_pages, page))
-
-        results_lines = []
-        start_index = (page-1)*self.USEARCH_PAGE_SIZE
-        end_index = start_index + self.USEARCH_PAGE_SIZE
-
-        for user in results[start_index:end_index]:
-            matched_alias = self._find_match_field(user, search_term_s)
-
-            # Format this user for the list display
-            if not matched_alias:
-                results_lines.append("{} - Canonical name: {}"
-                    .format(self.format_display_user(user), user.name))
-            else:
-                results_lines.append("{} - Alias: {}".format(
-                    self.format_display_user(user), matched_alias.name
-                ))
-
-        # Output - should always be sub-2000 characters (given length limits + page size)
-        heading = self.USEARCH_HEADING_F.format(
-            page=page, pages=total_pages,
-            total=len_results, query=search_term_s
-        )
-        await self.bot.say("{}\n\n{}".format(heading, format_list(results_lines)))
-
-    @staticmethod
-    def _find_match_field(user: User, search_term: str) -> Optional[UserAlias]:
-        """
-        Find whether the canonical name or alias of a user was matched.
-
-        Needed because the results don't indicate whether the canonical name or an alias was
-        matched - only 20 results at a time so the processing time shouldn't be a concern.
-
-        :param user:
-        :param search_term:
-        :return: The UserAlias object that matched, or None if the canonical name matches or
-            no match is found (for now this is non-critical, it's a should-not-happen error case
-            that just ends up displaying the canonical name - can change to raise ValueError
-            in the future?)
-        """
-        if search_term.lower() in user.name.lower():
-            return None
-
-        # noinspection PyTypeChecker
-        for alias_ in filter(lambda a: search_term.lower() in a.name.lower(), user.aliases):
-            return alias_  # first one is fine
-        else:  # if no results from the filter()
-            logger.warning(("User is in results set but doesn't seem to match query? "
-                            "Is something buggered? "
-                            "Q: {!r} User: {!r} Check sqlalchemy output...")
-                .format(search_term, user))
+        await self.send_message(ctx.message.channel, "Deprecated (v2.2). Use `.whois` instead.")
 
     @notes.command(pass_context=True)
     @mod_only()
