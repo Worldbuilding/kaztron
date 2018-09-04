@@ -129,17 +129,20 @@ class QuoteCog(KazCog):
 
     @commands.group(aliases=['quotes'], pass_context=True, invoke_without_command=True,
                     ignore_extra=False)
-    async def quote(self, ctx: commands.Context, user: str, number: int=None):
+    async def quote(self, ctx: commands.Context, user: str=None, number: int=None):
         """!kazhelp
         description: |
             Retrieve a quote.
 
-            If a quote number isn't given, picks a random quote.
+            If a user isn't given, pick a random quote. If a quote number isn't given, picks a
+            random quote by that user.
 
             TIP: To search for a quote by keyword, use {{!quote find}}.
         parameters:
             - name: user
               type: "@user"
+              optional: true
+              default: all users
               description: >
                 The user to find a quote for. Should be an @mention or a discord ID.
             - name: number
@@ -149,27 +152,36 @@ class QuoteCog(KazCog):
                 The ID number of the quote to find (starting from 1), as shown by the {{!quote}},
                 {{!quote find}} and {{!quote list}} commands.
         examples:
+            - command: .quote
+              description: Find a random quote.
             - command: .quote @JaneDoe#0921
               description: Find a random quote by JaneDoe.
             - command: .quote @JaneDoe#0921 4
               description: Find the 4th quote by JaneDoe.
         """
-        db_user = c.query_user(self.server, user)
-        len_recs = len(db_user.quotes)
+        if user:
+            db_user = c.query_user(self.server, user)
+            len_recs = len(db_user.quotes)
 
-        if number is None:
-            number = random.randint(1, len_recs)
-            logger.info("Selected random quote {:d} by user {!r}...".format(number, db_user))
+            if number is None:
+                number = random.randint(1, len_recs)
+                logger.info("Selected random quote {:d} by user {!r}...".format(number, db_user))
+            else:
+                logger.info("Requested quote {:d} by user {!r}".format(number, db_user))
+
+            if number < 1 or number > len_recs:
+                logger.warning("Invalid index {:d}".format(number))
+                await self.bot.say("Oops, I can't get quote {:d} for {}! Valid quotes are 1 to {:d}"
+                    .format(number, db_user.name, len_recs))
+                return
+            quote = db_user.quotes[number - 1]
         else:
-            logger.info("Requested quote {:d} by user {!r}".format(number, db_user))
+            quote = c.random_quote()
+            number = quote.get_index() + 1
+            len_recs = len(quote.author.quotes)
+            logger.info("Selected random quote id={:d} from all users".format(quote.quote_id))
 
-        if number < 1 or number > len_recs:
-            logger.warning("Invalid index {:d}".format(number))
-            await self.bot.say("Oops, I can't get quote {:d} for {}! Valid quotes are 1 to {:d}"
-                .format(number, db_user.name, len_recs))
-            return
-
-        em = self.make_single_embed(db_user.quotes[number - 1], number, len_recs)
+        em = self.make_single_embed(quote, number, len_recs)
         await self.bot.say(embed=em)
 
     @quote.command(name='find', pass_context=True)

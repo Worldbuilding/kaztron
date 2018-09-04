@@ -8,7 +8,7 @@ from sqlalchemy import orm
 # noinspection PyUnresolvedReferences
 from kaztron.driver import database as db
 from kaztron.cog.quotedb.model import *
-from kaztron.driver.database import make_error_handler_decorator
+from kaztron.driver.database import make_error_handler_decorator, func
 from kaztron.utils.discord import extract_user_id
 
 logger = logging.getLogger(__name__)
@@ -77,13 +77,12 @@ def query_user(server: discord.Server, id_: str):
     else:
         logger.debug('query_user: found user: {!r}'.format(db_user))
 
-        try:
-            member = server.get_member(discord_id)  # type: discord.Member
-        except discord.NotFound:
+        member = server.get_member(discord_id)  # type: discord.Member
+        if member:
+            update_nicknames(db_user, member)
+        else:
             logger.warning("Can't find user {!r} on Discord, skipping update nicknames"
                 .format(db_user))
-        else:
-            update_nicknames(db_user, member)
 
     return db_user
 
@@ -119,6 +118,10 @@ def search_users(query: str) -> List[User]:
         raise UserNotFound
     logger.info("search_users: Found {:d} results for {!r}".format(len(results), query))
     return results
+
+
+def random_quote() -> Quote:
+    return session.query(Quote).order_by(func.random()).limit(1).one()
 
 
 def search_quotes(search_term: str=None, user: Union[User, List[User]]=None) -> List[Quote]:

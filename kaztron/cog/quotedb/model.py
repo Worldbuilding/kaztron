@@ -45,7 +45,7 @@ class Quote(Base):
     channel_id = db.Column(db.String(24), nullable=False)
     message = db.Column(db.String(MAX_MESSAGE_LEN), nullable=False)
 
-    def get_id(self):
+    def get_index(self):
         return self.author.quotes.index(self)
 
     def __repr__(self):
