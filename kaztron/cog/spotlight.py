@@ -1,3 +1,4 @@
+import asyncio
 import random
 import re
 import time
@@ -718,10 +719,9 @@ class Spotlight(KazCog):
         )
         await self.send_validation_warnings(ctx, current_app)
 
-        # Deassign the spotlight host role
-        server = ctx.message.server  # type: discord.Server
-        host_role = get_named_role(server, self.role_host_name)
-        await remove_role_from_all(self.bot, server, host_role)
+        # remove host role
+        host_role = get_named_role(self.server, self.role_host_name)
+        await remove_role_from_all(self.bot, self.server, host_role)
 
         # Assign the role to the selected app's owner
         try:
@@ -1357,6 +1357,15 @@ class Spotlight(KazCog):
 
         await self.bot.send_message(self.channel_spotlight, msg)
         await self.send_output(log_msg)
+
+        logger.info("Removing host role from {}".format(host.nick if host.nick else host.name))
+        host_role = get_named_role(self.server, self.role_host_name)
+        try:
+            await self.bot.remove_roles(host, host_role)
+        except discord.HTTPException as e:
+            logger.exception("While trying to remove host role, an exception occurred")
+            await self.send_output("While trying to remove spotlight host role, "
+                                   "an exception occurred: " + exc_log_str(e))
 
 
 def setup(bot):
