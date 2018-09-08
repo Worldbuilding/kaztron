@@ -68,10 +68,9 @@ def query_user(server: discord.Server, id_: str):
         raise
     except db.orm_exc.NoResultFound:
         logger.debug('query_user: user not found, creating user')
-        try:
-            member = server.get_member(discord_id)  # type: discord.Member
-        except discord.NotFound as e:
-            raise UserNotFound('Discord user not found') from e
+        member = server.get_member(discord_id)  # type: discord.Member
+        if member is None:
+            raise UserNotFound('Discord user not found')
         db_user = create_user(member)
         logger.debug('query_user: created user: {!r}'.format(db_user))
     else:
