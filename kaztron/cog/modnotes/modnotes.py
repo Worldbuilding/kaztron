@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron import theme
+from kaztron.config import SectionView
 from kaztron.driver import database as db
 from kaztron.driver.pagination import Pagination
 from kaztron.utils.converter import NaturalInteger
@@ -25,6 +26,13 @@ from kaztron.cog.modnotes.model import User, Record, RecordType
 from kaztron.cog.modnotes import controller as c
 
 logger = logging.getLogger(__name__)
+
+
+class ModNotesConfig(SectionView):
+    """
+    :ivar channel_log: str. The channel ID number to which all new modnotes are logged.
+    """
+    channel_log: discord.Channel
 
 
 class ModNotes(KazCog):
@@ -74,12 +82,12 @@ class ModNotes(KazCog):
     KW_EXPIRE = ('expires', 'expire', 'ends', 'end')
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.channel_log = discord.Object(self.config.get('modnotes', 'channel_log'))
+        super().__init__(bot, 'modnotes')
+        self.channel_log = discord.Object(self.cog_config.channel_log)
 
     async def on_ready(self):
         await super().on_ready()
-        self.channel_log = self.validate_channel(self.channel_log.id)
+        self.channel_log = self.validate_channel(self.cog_config.channel_log)
 
     @staticmethod
     def format_display_user(db_user: User):
