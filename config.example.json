@@ -168,8 +168,11 @@
     "ignore_channels": ["channel ID 1", "channel ID 2", "etc"]
   },
   "voicelog": {
-    "channels_voice": ["channel ID 1", "channel ID 2", "etc."],
-    "channel_text": "text channel ID to output voice status messages to",
+    "voice_text_channel_map": {
+      "voice channel ID 1": "text channel ID 1 (where join/part messages are output)",
+      "voice channel ID 2": "text channel ID 2 (can be same as text channel ID 1)",
+      "etc.": "etc."
+    },
     "role_voice": "Name of the role to assign while in voice channels"
   },
   "welcome": {
