@@ -4,12 +4,16 @@ import random
 from discord.ext import commands
 
 from kaztron import errors, KazCog
-from kaztron.config import get_kaztron_config
+from kaztron.config import SectionView
 from kaztron.utils.checks import in_channels
 from kaztron.utils.discord import channel_mention
 from kaztron.utils.logging import message_log_str
 
 logger = logging.getLogger(__name__)
+
+
+class DiceConfig(SectionView):
+    channel_dice: str
 
 
 class Dice(KazCog):
@@ -22,21 +26,24 @@ class Dice(KazCog):
         - roll
         - rollf
     """
-    config = get_kaztron_config()
+    cog_config: DiceConfig
     ch_allowed_list = (
-        config.get('dice', 'channel_dice'),
-        config.get("discord", "channel_test"),
-        config.get("discord", "channel_output")
+        KazCog.config.dice.channel_dice,
+        KazCog.config.discord.channel_test,
+        KazCog.config.discord.channel_output
     )
     MAX_CHOICES = 20
 
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'dice', DiceConfig)
+        self.cog_config.set_converters('channel_dice',
+            lambda cid: self.validate_channel(cid),
+            lambda _: None)
         self.ch_dice = None
 
     async def on_ready(self):
         await super().on_ready()
-        self.ch_dice = self.validate_channel(self.config.get('dice', 'channel_dice'))
+        self.ch_dice = self.cog_config.channel_dice
 
     @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
     @in_channels(ch_allowed_list)
