@@ -496,6 +496,7 @@ class CheckInManager(KazCog):
             - command: .checkin exempt @JaneDoe yes
               description: Set JaneDoe as exempt from check-ins.
         """
+        self.c.cleanup_exempt(self.server)
         if user is None:
             exempt_users = self.c.get_exempt_users()
             if exempt_users:

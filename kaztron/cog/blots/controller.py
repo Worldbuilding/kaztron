@@ -417,6 +417,17 @@ class CheckInController(BlotsController):
         self.get_user(member).is_exempt = is_exempt
         self.session.commit()
 
+    @on_error_rollback
+    def cleanup_exempt(self, server: discord.Server):
+        server_uids = [str(u.id) for u in server.members]
+        # noinspection PyUnresolvedReferences
+        users = self.session.query(User).filter_by(is_exempt=True) \
+            .filter(User.discord_id.notin_(server_uids)).all()
+        logger.info("Removing {} exempt users no longer on the server: {}."
+            .format(len(users), ','.join(repr(u) for u in users)))
+        for u in users:
+            u.is_exempt = False
+
 
 class BlotsBadgeController(BlotsController):
     """
