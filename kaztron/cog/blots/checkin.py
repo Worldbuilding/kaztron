@@ -316,7 +316,7 @@ class CheckInManager(KazCog):
     @check_in.command(name='report', pass_context=True, ignore_extra=False)
     @mod_only()
     @mod_channels()
-    async def check_in_report(self, ctx: commands.Context, datespec: NaturalDateConverter=None):
+    async def check_in_report(self, ctx: commands.Context, *, datespec: NaturalDateConverter=None):
         """!kazhelp
         description: "Get a report of who has or has not checked in in a given week."
         parameters:
@@ -339,53 +339,132 @@ class CheckInManager(KazCog):
         start, end = self.c.get_check_in_week(datespec)
         week_str = "the week from {} to {}".format(format_datetime(start), format_datetime(end))
         try:
-            report = self.c.get_check_in_report(datespec)
+            ci, nci = self.c.generate_check_in_report(datespec)  # checked in, not checked in
         except orm.exc.NoResultFound:
             await self.bot.say("No check-ins for {}.".format(week_str))
             return
 
-        # split into checked-in and not checked in during the reporting week
-        checked_in_users = [u for u, c in report.items() if c is not None]
-        non_checked_in_users = [u for u, c in report.items() if c is None]
+        #
+        # determine sorting order of each list
+        #
 
-        # get the latest checkins of users who did not check in during the reporting week
-        try:
-            latest_check_ins = self.c.query_latest_check_ins(members=non_checked_in_users)
-        except orm.exc.NoResultFound:
-            latest_check_ins = {}
+        # checked in: by name
+        ci_users = list(ci.keys())
+        ci_users.sort(key=lambda u: u.nick.lower() if u.nick else u.name.lower())
 
-        # sort the two lists (checked in by name, non-checked-in by last checkin date (all time))
-        checked_in_users.sort(key=lambda u: u.nick if u.nick else u.name)
-        non_checked_in_users.sort(key=lambda u:
-            latest_check_ins[u].timestamp if u in latest_check_ins else datetime(1970, 1, 1),
-            reverse=True
-        )
+        # not checked in: by last checkin date pre-reporting week
+        nci_users = list(nci.keys())
+        epoch = datetime(1970, 1, 1)
+        nci_users.sort(key=lambda u: nci[u].timestamp if nci.get(u, None) else epoch, reverse=True)
+
+        #
+        # Prepare display
+        #
 
         # format strings for display
-        checked_in_strings = [
-            "{0} ({1})".format(u.mention, format_datetime(report[u].timestamp))
-            for u in checked_in_users
-        ]
-        not_checked_in_strings = [
-            "{0} (last: {1})".format(
+        ci_list_str = '\n'.join(
+            "{0} ({1} - *{2:d} {3}*)".format(
                 u.mention,
-                format_date(latest_check_ins[u].timestamp) if u in latest_check_ins else 'Never'
-            ) for u in non_checked_in_users
-        ]
+                format_datetime(ci[u].timestamp),
+                ci[u].word_count,
+                self.PROJECT_UNIT_MAP[ci[u].project_type]
+            ) for u in ci_users
+        )
+        nci_list_str = '\n'.join(
+            "{0} (last: {1})".format(
+                u.mention, format_date(nci[u].timestamp) if nci.get(u, None) else 'Never'
+            ) for u in nci_users
+        )
 
-        checked_in_str = "**CHECKED IN**\n{}".format('\n'.join(checked_in_strings))
-        if len(checked_in_str) > Limits.MESSAGE:  # if too long for one message, summarize
-            checked_in_str = "**CHECKED IN**\n{:d} users (list too long)"\
-                .format(len(checked_in_strings))
+        # Prepare the overall embed
+        es = EmbedSplitter(
+            title="Check-In Report",
+            colour=solarized.green,
+            description="Report for " + week_str,
+            timestamp=datetime.utcnow(),
+            repeat_header=True,
+            auto_truncate=True
+        )
+        es.set_footer(text="Generated: ")
+        if len(ci_list_str) < Limits.EMBED_FIELD_VALUE:
+            es.add_field(name="Checked in", value=ci_list_str or 'Nobody', inline=False)
+        else:
+            es.add_field(
+                name="Checked in",
+                value="{:d} users (list too long)".format(len(ci_users)),
+                inline=False
+            )
 
-        no_check_in_str = "**DID NOT CHECK IN**\n{}" \
-            .format('\n'.join(not_checked_in_strings))  # don't summarize: may need action
+        es.add_field(name="Did NOT check in", value=nci_list_str, inline=False)
+        await self.send_message(ctx.message.channel, embed=es)
 
-        await self.bot.say("**Check-In Report for {}**".format(week_str))
-        for msg in split_chunks_on(checked_in_str, Limits.MESSAGE):
-            await self.bot.say(msg[:Limits.MESSAGE])
-        for msg in split_chunks_on(no_check_in_str, Limits.MESSAGE):
-            await self.bot.say(msg[:Limits.MESSAGE])
+    @check_in.command(name='delta', pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def check_in_delta(self, ctx: commands.Context, *, datespec: NaturalDateConverter=None):
+        """!kazhelp
+        description: "Get a report of wordcount changes in a given check-in week, compared to
+            previous check-in."
+        parameters:
+            - name: datespec
+              type: datespec
+              optional: true
+              default: 'last week ("7 days ago")'
+              description: A date in any unambiguous format (2018-03-14, March 14 2018,
+                  14 March 2018, today, 1 month ago, etc.). The report will be for the check-in week
+                  that includes this date.
+        examples:
+            - command: .checkin delta
+              description: Get a report for last week.
+            - command: .checkin delta 2018-04-18
+              description: Get a report for the week that includes 18 April 2018.
+        """
+        if not datespec:
+            datespec = datetime.utcnow() - timedelta(days=7)
+
+        start, end = self.c.get_check_in_week(datespec)
+        week_str = "the week from {} to {}".format(format_datetime(start), format_datetime(end))
+        try:
+            report, ci_map = self.c.generate_check_in_deltas(datespec)
+        except orm.exc.NoResultFound:
+            await self.bot.say("No check-ins for {}.".format(week_str))
+            return
+
+        # sort descending by diff value
+        s_users = list(report.keys())
+        s_users.sort(key=lambda u: report[u] if report.get(u, None)
+                     else float('-inf'), reverse=True)
+
+        # Prepare display
+        delta_strings = []
+        for u in s_users:
+            if report[u] is not None:
+                unit = self.PROJECT_UNIT_MAP[ci_map[u].project_type] if ci_map.get(u, None) \
+                    else 'words'
+                delta_strings.append(
+                    "{0} ({1:+d} {3} - *total {2:d} {3}*)".format(
+                        u.mention,
+                        report[u],
+                        ci_map[u].word_count if ci_map.get(u, None) else 0,
+                        unit
+                    )
+                )
+            else:
+                delta_strings.append("{0} (no check-in)".format(u.mention))
+        delta_list_str = '\n'.join(delta_strings)
+
+        # Prepare the overall embed
+        es = EmbedSplitter(
+            title="User Progress Report",
+            colour=solarized.cyan,
+            description="Report for " + week_str + '\n\n',
+            timestamp=datetime.utcnow(),
+            repeat_header=True,
+            auto_truncate=True
+        )
+        es.set_footer(text="Generated: ")
+        es.add_field(name="_", value=delta_list_str, inline=False)
+        await self.send_message(ctx.message.channel, embed=es)
 
     @check_in.command(name='exempt', pass_context=True, ignore_extra=True)
     @mod_only()
@@ -417,6 +496,7 @@ class CheckInManager(KazCog):
             - command: .checkin exempt @JaneDoe yes
               description: Set JaneDoe as exempt from check-ins.
         """
+        self.c.cleanup_exempt(self.server)
         if user is None:
             exempt_users = self.c.get_exempt_users()
             if exempt_users:
@@ -455,22 +535,30 @@ class CheckInManager(KazCog):
         description: Give a report of each user's current milestone roles compared to their last
             check-in.
         """
-        report = self.c.get_milestone_report()
-        report_text = ["**Milestone Updates Required**\n"]
+        report = self.c.generate_milestone_report()
+        es = EmbedSplitter(
+            title="Milestone Updates Required",
+            colour=solarized.yellow,
+            timestamp=datetime.utcnow(),
+            repeat_header=True,
+            auto_truncate=True
+        )
+        es.set_footer(text="Generated: ")
+
         for role, ms_info_list in report.items():
             if role is not None:
                 changed_milestone_list = [m for m in ms_info_list if m.milestone_changed]
-                report_text.append("**{}**\n{}\n".format(
-                    role.name,
-                    self._ms_report_list_users(changed_milestone_list) or 'None'
-                ))
+                es.add_field(
+                    name=role.name,
+                    value=self._ms_report_list_users(changed_milestone_list) or 'None',
+                    inline=False
+                )
             else:
-                report_text.append("**No Check-Ins**\n{}\n".format(
-                    self._ms_report_list_users(ms_info_list) or 'None'
-                ))
-
-        for msg in split_chunks_on('\n'.join(report_text), Limits.MESSAGE):
-            await self.bot.say(msg[:Limits.MESSAGE])
+                es.add_field(
+                    name="No Check-Ins",
+                    value=self._ms_report_list_users(ms_info_list) or 'None'
+                )
+        await self.send_message(ctx.message.channel, embed=es)
 
     def _ms_report_list_users(self, ms_info_list: Sequence[MilestoneInfo]) -> str:
         list_str = []

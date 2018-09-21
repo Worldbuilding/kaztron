@@ -1,6 +1,5 @@
 from datetime import datetime
 import logging
-import math
 from collections import OrderedDict
 from typing import Optional, Sequence
 
@@ -9,6 +8,7 @@ from discord.ext import commands
 
 from kaztron import KazCog
 from kaztron import theme
+from kaztron.config import SectionView
 from kaztron.driver import database as db
 from kaztron.driver.pagination import Pagination
 from kaztron.utils.converter import NaturalInteger
@@ -16,15 +16,23 @@ from kaztron.utils.datetime import parse as dt_parse
 from kaztron.utils.checks import mod_only, mod_channels, admin_only, admin_channels
 from kaztron.utils.discord import Limits, user_mention, get_command_str, get_help_str, \
     get_usage_str, get_group_help
+from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import format_list, parse_keyword_args
+from kaztron.utils.strings import parse_keyword_args
 
 from kaztron.utils.datetime import format_timestamp
 
-from kaztron.cog.modnotes.model import User, UserAlias, Record, RecordType
+from kaztron.cog.modnotes.model import User, Record, RecordType
 from kaztron.cog.modnotes import controller as c
 
 logger = logging.getLogger(__name__)
+
+
+class ModNotesConfig(SectionView):
+    """
+    :ivar channel_log: str. The channel ID number to which all new modnotes are logged.
+    """
+    channel_log: discord.Channel
 
 
 class ModNotes(KazCog):
@@ -55,7 +63,6 @@ class ModNotes(KazCog):
     NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
 
-    USEARCH_HEADING_F = "**USER SEARCH RESULTS [{page}/{pages}]** - {total} results for `{query!r}`"
     EMBED_SEPARATOR = '\n{}'.format('\\_'*16)
     EMBED_FIELD_LEN = Limits.EMBED_FIELD_VALUE - len(EMBED_SEPARATOR)
 
@@ -75,12 +82,12 @@ class ModNotes(KazCog):
     KW_EXPIRE = ('expires', 'expire', 'ends', 'end')
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.channel_log = discord.Object(self.config.get('modnotes', 'channel_log'))
+        super().__init__(bot, 'modnotes')
+        self.channel_log = discord.Object(self.cog_config.channel_log)
 
     async def on_ready(self):
         await super().on_ready()
-        self.channel_log = self.validate_channel(self.channel_log.id)
+        self.channel_log = self.validate_channel(self.cog_config.channel_log)
 
     @staticmethod
     def format_display_user(db_user: User):
@@ -137,7 +144,7 @@ class ModNotes(KazCog):
         for field_name, field_value in contents.items():
             em.add_field(name=field_name, value=field_value, inline=False)
 
-        await self.bot.send_message(dest, embed=em)
+        await self.send_message(dest, embed=em)
 
     async def show_record_page(self, dest: discord.Object, *,
                                user: Optional[User],
@@ -148,59 +155,32 @@ class ModNotes(KazCog):
         if group is None:
             group = []
 
-        footer = 'Page {page:d}/{total:d} (Total {len:d} records)'\
-            .format(page=records.page + 1, total=records.total_pages, len=len(records))
-
-        em = discord.Embed(color=self.COLOR_MAP[None], title=title)
-        em_len = 0
-        em_n = 0
+        es = EmbedSplitter(color=self.COLOR_MAP[None], title=title)
+        es.set_footer(text='Page {page:d}/{total:d} (Total {len:d} records)'
+            .format(page=records.page + 1, total=records.total_pages, len=len(records)))
 
         # user information
         if user:
             user_fields = self._get_user_fields(user, group)
-            em_len += len(title) + len(footer)
-            em_n += len(user_fields) + 1  # user_fields + separator
-
             for field_name, field_value in user_fields.items():
-                em.add_field(name=field_name, value=field_value, inline=True)
-                em_len += len(field_name) + len(field_value)
+                es.add_field_no_break(name=field_name, value=field_value, inline=True)
 
         # separator
         sep_name = 'Records Listing'
         sep_value = self.EMBED_SEPARATOR
-        em.add_field(name=sep_name, value=sep_value, inline=False)
-        em_len += len(sep_name) + len(sep_value)
+        es.add_field_no_break(name=sep_name, value=sep_value, inline=False)
 
         # records page
         for record in records:
             record_fields, contents = self._get_record_fields(record, show_user=True)
 
-            rec_n = len(record_fields) + len(contents)
-            rec_len = sum(len(name) + len(value) for name, value in record_fields.items()) + \
-                sum(len(name) + len(value) for name, value in contents.items())
-
-            # If the length would be too long w/the current record, split the message here
-            # Kinda hacky, we send the current embed and rebuild a new one here
-            # 0.95 safety factor - I don't know how Discord counts the 6000 embed limit...
-            too_many_fields = em_n + rec_n > Limits.EMBED_FIELD_NUM
-            embed_too_long = em_len + rec_len > int(0.95 * Limits.EMBED_TOTAL)
-            if too_many_fields or embed_too_long:
-                await self.bot.send_message(dest, embed=em)
-                em = discord.Embed(color=self.COLOR_MAP[None], title=title)
-                em_len = len(title)  # that's all for this next embed
-                em_n = 0
-
             for field_name, field_value in record_fields.items():
-                em.add_field(name=field_name, value=field_value, inline=True)
+                es.add_field_no_break(name=field_name, value=field_value, inline=True)
 
             for field_name, field_value in contents.items():
-                em.add_field(name=field_name, value=field_value, inline=False)
+                es.add_field(name=field_name, value=field_value, inline=False)
 
-            em_len += rec_len
-            em_n += rec_n
-
-        em.set_footer(text=footer)
-        await self.bot.send_message(dest, embed=em)
+        await self.send_message(dest, embed=es)
 
     @commands.group(aliases=['note'], invoke_without_command=True, pass_context=True,
         ignore_extra=False)
@@ -566,88 +546,16 @@ class ModNotes(KazCog):
                 .format(note_id, self.format_display_user(user)))
             # don't send to channel_log, this has no non-admin visibility
 
-    @notes.command(pass_context=True, ignore_extra=False)
+    @notes.command(pass_context=True, ignore_extra=True)
     @mod_only()
     @mod_channels(delete_on_fail=True)
-    async def finduser(self, ctx, search_term: str, page: int=1):
+    async def finduser(self, ctx):
         """!kazhelp
+        brief: DEPRECATED. Use {{!whois}}.
         description: |
-            Find a user in the modnotes database.
-
-            This command searches both the name and aliases fields.
-        parameters:
-            - name: search_term
-              type: "@user"
-              description: "Part of a user's name to find. Searches both the canonical name and
-                aliases. If this contains spaces, use quotation marks."
-            - name: page
-              optional: true
-              default: 1
-              type: number
-              description: "The page number to show, if there are more than 1 page of results."
-        examples:
-            - command: ".notes finduser Indium"
-              description: 'This would match, for example, a user called "IndiumPhosphide".'
+            Deprecated as of version 2.2. Use {{!whois}}.
         """
-        search_term_s = search_term[:Limits.NAME]
-
-        # Get results
-        results = c.search_users(search_term_s)
-
-        # Prepare for display
-        len_results = len(results)
-        total_pages = int(math.ceil(len_results/self.USEARCH_PAGE_SIZE))
-        page = max(1, min(total_pages, page))
-
-        results_lines = []
-        start_index = (page-1)*self.USEARCH_PAGE_SIZE
-        end_index = start_index + self.USEARCH_PAGE_SIZE
-
-        for user in results[start_index:end_index]:
-            matched_alias = self._find_match_field(user, search_term_s)
-
-            # Format this user for the list display
-            if not matched_alias:
-                results_lines.append("{} - Canonical name: {}"
-                    .format(self.format_display_user(user), user.name))
-            else:
-                results_lines.append("{} - Alias: {}".format(
-                    self.format_display_user(user), matched_alias.name
-                ))
-
-        # Output - should always be sub-2000 characters (given length limits + page size)
-        heading = self.USEARCH_HEADING_F.format(
-            page=page, pages=total_pages,
-            total=len_results, query=search_term_s
-        )
-        await self.bot.say("{}\n\n{}".format(heading, format_list(results_lines)))
-
-    @staticmethod
-    def _find_match_field(user: User, search_term: str) -> Optional[UserAlias]:
-        """
-        Find whether the canonical name or alias of a user was matched.
-
-        Needed because the results don't indicate whether the canonical name or an alias was
-        matched - only 20 results at a time so the processing time shouldn't be a concern.
-
-        :param user:
-        :param search_term:
-        :return: The UserAlias object that matched, or None if the canonical name matches or
-            no match is found (for now this is non-critical, it's a should-not-happen error case
-            that just ends up displaying the canonical name - can change to raise ValueError
-            in the future?)
-        """
-        if search_term.lower() in user.name.lower():
-            return None
-
-        # noinspection PyTypeChecker
-        for alias_ in filter(lambda a: search_term.lower() in a.name.lower(), user.aliases):
-            return alias_  # first one is fine
-        else:  # if no results from the filter()
-            logger.warning(("User is in results set but doesn't seem to match query? "
-                            "Is something buggered? "
-                            "Q: {!r} User: {!r} Check sqlalchemy output...")
-                .format(search_term, user))
+        await self.send_message(ctx.message.channel, "Deprecated (v2.2). Use `.whois` instead.")
 
     @notes.command(pass_context=True)
     @mod_only()

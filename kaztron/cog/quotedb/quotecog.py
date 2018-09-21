@@ -6,17 +6,34 @@ from discord.ext import commands
 from sqlalchemy import orm
 
 from kaztron import KazCog
+from kaztron.config import SectionView
 from kaztron.driver.pagination import Pagination
 from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only
 from kaztron.utils.discord import Limits
+from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.datetime import format_datetime, format_date
 
 from kaztron.cog.quotedb.model import Quote
 from kaztron.cog.quotedb import controller as c, model
+from kaztron.utils.strings import format_list
 
 logger = logging.getLogger(__name__)
+
+
+# noinspection PyUnresolvedReferences
+class QuoteConfig(SectionView):
+    """
+    :ivar grab_search_max: Maximum number of messages in history to search for the grab command.
+        Default: 100.
+    :ivar show_channel: Whether to show the channel in quote records. Default: True.
+    :ivar date_format: One of 'seconds', 'datetime', or 'date'. How to format the date in quote
+        records. Default: 'datetime'.
+    """
+    grab_search_max: int
+    show_channel: bool
+    datetime_format: str
 
 
 class QuoteCog(KazCog):
@@ -31,25 +48,36 @@ class QuoteCog(KazCog):
             - list
             - add
             - grab
+            - stats
             - rem
             - undo
             - del
     """
+    cog_config: QuoteConfig
+
     QUOTES_PER_PAGE = 15
     EMBED_COLOR = solarized.blue
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.grab_max = self.config.get("quotedb", "grab_search_max", 100)
-        self.show_channel = self.config.get('quotedb', 'show_channel', True)
-        self.date_format = self.config.get('quotedb', 'datetime_format', 'datetime')
-        if self.date_format not in ('seconds', 'datetime', 'date'):
-            raise ValueError("quotedb:date_format value invalid (seconds, datetime, date): {}"
-                .format(self.date_format))
+        super().__init__(bot, 'quotedb', QuoteConfig)
+        self.cog_config.set_defaults(
+            grab_search_max=100,
+            show_channel=True,
+            datetime_format='datetime'
+        )
+
+        def date_format_validator(s: str):
+            if s not in ('seconds', 'datetime', 'date'):
+                raise ValueError(
+                    "config quotedb:datetime_format value invalid (seconds, datetime, date): {}"
+                    .format(s))
+            return s
+
+        self.cog_config.set_converters('date_format', date_format_validator, date_format_validator)
 
     def export_kazhelp_vars(self):
         return {
-            'grab_search_max': "{:d}".format(self.grab_max)
+            'grab_search_max': "{:d}".format(self.cog_config.grab_search_max)
         }
 
     def make_single_embed(self, quote: Quote,
@@ -58,61 +86,41 @@ class QuoteCog(KazCog):
         if title is None:
             title = discord.Embed.Empty
         em = discord.Embed(title=title, description=quote_str, color=self.EMBED_COLOR)
-        if index is not None and total is not None:
-            em.set_footer(text="saved by {u} | {n:d}/{total:d}"
-                .format(u=quote.saved_by.name, n=index, total=total))
-        else:
-            em.set_footer(text="saved by {u}".format(u=quote.saved_by.name))
+        if index is None:
+            index = quote.get_index() + 1
+        if total is None:
+            total = len(quote.author.quotes)
+        em.set_footer(text="saved by {u} | {n:d}/{total:d}"
+            .format(u=quote.saved_by.name, n=index, total=total))
         return em
 
     async def send_quotes_list(self,
                                dest: discord.Channel,
                                quotes: Pagination,
-                               user: model.User,
-                               server: discord.Server):
+                               user: model.User):
         title = "Quotes by {}".format(user.name)
         footer_text = "Page {:d}/{:d}".format(quotes.page + 1, quotes.total_pages)
-        base_len = len(title) + len(footer_text)
 
-        em = discord.Embed(title=title, color=self.EMBED_COLOR)
+        es = EmbedSplitter(title=title, color=self.EMBED_COLOR, auto_truncate=True)
+        es.set_footer(text=footer_text)
 
         start_index, end_index = quotes.get_page_indices()
-        total_fields = 0
-        total_len = base_len
         for i, quote in enumerate(quotes.get_page_records()):
             # Format strings for this quote
             f_name = "#{:d}".format(start_index + i + 1)
             f_message = self.format_quote(quote, show_saved=False) + '\n\\_\\_\\_'
-            cur_len = len(f_name) + len(f_message)
+            es.add_field(name=f_name, value=f_message, inline=False)
 
-            # check lengths and number of fields
-            too_many_fields = total_fields + 1 > Limits.EMBED_FIELD_NUM
-            embed_too_long = total_len + cur_len > int(0.95 * Limits.EMBED_TOTAL)
-
-            # if we can't fit this quote in this embed, send it and start a new one
-            if too_many_fields or embed_too_long:
-                await self.bot.send_message(dest, embed=em)
-                em = discord.Embed(title=title, color=self.EMBED_COLOR)
-                total_len = base_len
-                total_fields = 0
-
-            # add the field for the current quote
-            em.add_field(name=f_name, value=f_message, inline=False)
-
-            # end of iteration updates
-            total_len += cur_len
-
-        em.set_footer(text=footer_text)
-        await self.bot.send_message(dest, embed=em)
+        await self.send_message(dest, embed=es)
 
     def format_quote(self, quote: Quote, show_saved=True):
-        s_fmt = "[{0}] <#{1}> <{2}> {3}" if self.show_channel else "[{0}] <{2}> {3}"
+        s_fmt = "[{0}] <#{1}> <{2}> {3}" if self.cog_config.show_channel else "[{0}] <{2}> {3}"
 
-        if self.date_format == 'seconds':
+        if self.cog_config.datetime_format == 'seconds':
             timestamp_str = format_datetime(quote.timestamp, seconds=True)
-        elif self.date_format == 'datetime':
+        elif self.cog_config.datetime_format == 'datetime':
             timestamp_str = format_datetime(quote.timestamp, seconds=False)
-        elif self.date_format == 'date':
+        elif self.cog_config.datetime_format == 'date':
             timestamp_str = format_date(quote.timestamp)
         else:
             raise RuntimeError("Invalid date_format??")
@@ -129,17 +137,20 @@ class QuoteCog(KazCog):
 
     @commands.group(aliases=['quotes'], pass_context=True, invoke_without_command=True,
                     ignore_extra=False)
-    async def quote(self, ctx: commands.Context, user: str, number: int=None):
+    async def quote(self, ctx: commands.Context, user: str=None, number: int=None):
         """!kazhelp
         description: |
             Retrieve a quote.
 
-            If a quote number isn't given, picks a random quote.
+            If a user isn't given, pick a random quote. If a quote number isn't given, picks a
+            random quote by that user.
 
             TIP: To search for a quote by keyword, use {{!quote find}}.
         parameters:
             - name: user
               type: "@user"
+              optional: true
+              default: all users
               description: >
                 The user to find a quote for. Should be an @mention or a discord ID.
             - name: number
@@ -149,35 +160,44 @@ class QuoteCog(KazCog):
                 The ID number of the quote to find (starting from 1), as shown by the {{!quote}},
                 {{!quote find}} and {{!quote list}} commands.
         examples:
+            - command: .quote
+              description: Find a random quote.
             - command: .quote @JaneDoe#0921
               description: Find a random quote by JaneDoe.
             - command: .quote @JaneDoe#0921 4
               description: Find the 4th quote by JaneDoe.
         """
-        db_user = c.query_user(self.server, user)
-        db_records = c.query_author_quotes(db_user)
-        len_recs = len(db_records)
+        if user:
+            db_user = c.query_user(self.server, user)
+            len_recs = len(db_user.quotes)
 
-        if number is None:
-            number = random.randint(1, len_recs)
-            logger.info("Selected random quote {:d} by user {!r}...".format(number, db_user))
+            if number is None:
+                number = random.randint(1, len_recs)
+                logger.info("Selected random quote {:d} by user {!r}...".format(number, db_user))
+            else:
+                logger.info("Requested quote {:d} by user {!r}".format(number, db_user))
+
+            if number < 1 or number > len_recs:
+                logger.warning("Invalid index {:d}".format(number))
+                await self.bot.say("Oops, I can't get quote {:d} for {}! Valid quotes are 1 to {:d}"
+                    .format(number, db_user.name, len_recs))
+                return
+            quote = db_user.quotes[number - 1]
         else:
-            logger.info("Requested quote {:d} by user {!r}".format(number, db_user))
+            quote = c.random_quote()
+            number = quote.get_index() + 1
+            len_recs = len(quote.author.quotes)
+            logger.info("Selected random quote id={:d} from all users".format(quote.quote_id))
 
-        if number < 1 or number > len_recs:
-            logger.warning("Invalid index {:d}".format(number))
-            await self.bot.say("Oops, I can't get quote {:d} for {}! Valid quotes are 1 to {:d}"
-                .format(number, db_user.name, len_recs))
-            return
-
-        em = self.make_single_embed(db_records[number - 1], number, len_recs)
+        em = self.make_single_embed(quote, number, len_recs)
         await self.bot.say(embed=em)
 
     @quote.command(name='find', pass_context=True)
     async def quote_find(self, ctx: commands.Context, user: str, *, search: str=None):
         """!kazhelp
         description: >
-            Find the most recent quote matching a user and/or text search.
+            Find a quote matching a user and/or text search. If multiple quotes are found, return
+            a random one.
         parameters:
             - name: user
               type: "@user or string or \\"all\\""
@@ -191,11 +211,11 @@ class QuoteCog(KazCog):
               description: The text to search.
         examples:
             - command: .quote find Jane
-              description: Find the latest quote from any user whose name/nickname contains "Jane".
+              description: Find a quote from any user whose name/nickname contains "Jane".
             - command: .quote find @JaneDoe#0921 flamingo
-              description: Find the latest quote by JaneDoe containing "flamingo".
+              description: Find a quote by JaneDoe containing "flamingo".
             - command: .quote find Jane flamingo
-              description: Find the latest quote both matching user "Jane" and containing
+              description: Find a quote both matching user "Jane" and containing
                 "flamingo".
         """
         try:
@@ -207,7 +227,9 @@ class QuoteCog(KazCog):
                 db_user = None
 
         db_records = c.search_quotes(search, db_user)
-        em = self.make_single_embed(db_records[-1])
+        quote = db_records[random.randint(0, len(db_records) - 1)]
+        logger.debug("Selected: {!r}".format(quote))
+        em = self.make_single_embed(quote)
         await self.bot.say(embed=em)
 
     @quote.command(name='list', pass_context=True, ignore_extra=False)
@@ -231,11 +253,10 @@ class QuoteCog(KazCog):
               description: List the 4th page of quotes by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
-        db_records = c.query_author_quotes(db_user)
-        paginator = Pagination(db_records, self.QUOTES_PER_PAGE, align_end=True)
+        paginator = Pagination(db_user.quotes, self.QUOTES_PER_PAGE, align_end=True)
         if page is not None:
             paginator.page = max(0, min(paginator.total_pages - 1, page-1))
-        await self.send_quotes_list(ctx.message.author, paginator, db_user, ctx.message.server)
+        await self.send_quotes_list(ctx.message.author, paginator, db_user)
 
     @quote.command(name='add', pass_context=True, no_pm=True)
     async def quote_add(self, ctx: commands.Context, user: str, *, message: str):
@@ -297,7 +318,8 @@ class QuoteCog(KazCog):
             - command: .quote grab @JaneDoe#0921 mosh pit
               description: Finds the most recent message from @JaneDoe containing "mosh pit".
         """
-        async for message in self.bot.logs_from(ctx.message.channel, self.grab_max): \
+        search_messages = self.bot.logs_from(ctx.message.channel, self.cog_config.grab_search_max)
+        async for message in search_messages: \
                 # type: discord.Message
             # if requested author, and this message isn't the invoking one (in case of self-grab)
             if message.author == user and message.id != ctx.message.id:
@@ -306,12 +328,17 @@ class QuoteCog(KazCog):
                     break
         else:  # Nothing found
             if search:
-                await self.bot.say(("No message from {} matching '{}' "
-                                   "found in the last {:d} messages")
-                    .format(user.nick if user.nick else user.name, search, self.grab_max))
+                await self.bot.say(
+                    "No message from {} matching '{}' found in the last {:d} messages"
+                    .format(
+                        user.nick if user.nick else user.name,
+                        search,
+                        self.cog_config.grab_search_max
+                    )
+                )
             else:
                 await self.bot.say("No message from {} found in the last {:d} messages"
-                    .format(user.nick if user.nick else user.name, self.grab_max))
+                    .format(user.nick if user.nick else user.name, self.cog_config.grab_search_max))
             return
 
         message_text = grabbed_message.content
@@ -337,8 +364,26 @@ class QuoteCog(KazCog):
         await self.bot.say(embed=self.make_single_embed(quote, title="Added quote."))
         await self.send_output(message_text)
 
+    @quote.command(name='stats', pass_context=True)
+    async def quote_stats(self, ctx: commands.Context):
+        """!kazhelp
+        description: Get quote statistics.
+        """
+        em = discord.Embed(title="Quote statistics")
+        em.add_field(name="Total quotes", value=str(c.get_total_quotes()))
+        em.add_field(name="Quoted users", value=str(c.get_total_quoted_users()))
+
+        most_quoted = c.get_top_quoted()
+        most_quoted_strs = ['{.name} ({} quotes)'.format(u, total) for u, total in most_quoted]
+        em.add_field(name="Most quoted", value='{}'.format(format_list(most_quoted_strs)))
+
+        most_saved = c.get_top_saved()
+        most_saved_strs = ['{.name} ({} quotes saved)'.format(u, total) for u, total in most_saved]
+        em.add_field(name="Top quoters", value='{}'.format(format_list(most_saved_strs)))
+
+        await self.send_message(ctx.message.channel, embed=em)
+
     @quote.command(name='rem', pass_context=True, ignore_extra=False)
-    @mod_only()
     async def quote_remove(self, ctx: commands.Context, number: int):
         """!kazhelp
         description: |
@@ -362,8 +407,7 @@ class QuoteCog(KazCog):
               description: Delete the 4th quote attributed to you.
         """
         db_user = c.query_user(self.server, ctx.message.author.id)
-        db_records = c.query_author_quotes(db_user)
-        len_recs = len(db_records)
+        len_recs = len(db_user.quotes)
 
         if number < 1 or number > len_recs:
             logger.warning("Invalid index {:d}".format(number))
@@ -371,7 +415,7 @@ class QuoteCog(KazCog):
                 .format(number, db_user.name, len_recs))
             return
 
-        quote = db_records[number - 1]
+        quote = db_user.quotes[number - 1]
         message_text = "Removed quote (remove): {}".format(self.format_quote(quote))
         em = self.make_single_embed(quote, number, len_recs, title="Quote deleted.")
         c.remove_quotes([quote])
@@ -392,9 +436,7 @@ class QuoteCog(KazCog):
             TIP: To delete quotes attributed to you, use {{!quote rem}}.
         """
         db_user = c.query_user(self.server, ctx.message.author.id)
-        db_records = c.query_saved_quotes(db_user)
-
-        quote = db_records[-1]
+        quote = db_user.saved_quotes[-1]
         message_text = "Removed quote (undo): {}".format(self.format_quote(quote))
         em = self.make_single_embed(quote, title="Quote deleted.")
         c.remove_quotes([quote])
@@ -421,12 +463,11 @@ class QuoteCog(KazCog):
               description: Remove all quotes by JaneDoe.
         """
         db_user = c.query_user(self.server, user)
-        db_records = c.query_author_quotes(db_user)
-        len_recs = len(db_records)
+        len_recs = len(db_user.quotes)
 
         if number == 'all':
             logger.info("Removing all {} quotes for {!r}...".format(len_recs, db_user))
-            c.remove_quotes(db_records)
+            c.remove_quotes(db_user.quotes)
             await self.bot.say("Removed all {} quotes for {}.".format(len_recs, db_user.mention))
             await self.send_output("Removed all {} quotes for {}."
                 .format(len_recs, db_user.mention))
@@ -442,7 +483,7 @@ class QuoteCog(KazCog):
                     .format(number, db_user.name, len_recs))
                 return
 
-            quote = db_records[number - 1]
+            quote = db_user.quotes[number - 1]
             message_text = "Removed quote (mod): {}".format(self.format_quote(quote))
             em = self.make_single_embed(quote, number, len_recs, title="Quote deleted.")
             c.remove_quotes([quote])

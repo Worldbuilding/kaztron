@@ -1,10 +1,11 @@
 import logging
-from typing import Union
+from typing import Union, List
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
+from kaztron.config import SectionView
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
@@ -16,6 +17,16 @@ from kaztron.utils.strings import format_list, split_code_chunks_on, natural_tru
 from kaztron.utils.datetime import format_timestamp
 
 logger = logging.getLogger(__name__)
+
+
+class WordFilterConfig(SectionView):
+    channel_warning: discord.Channel
+
+
+class WordFilterState(SectionView):
+    warn: List[str]
+    delete: List[str]
+    channel: discord.Channel
 
 
 class WordFilter(KazCog):
@@ -68,6 +79,8 @@ class WordFilter(KazCog):
             - switch
         - switch
     """
+    cog_config: WordFilterConfig
+    cog_state: WordFilterState
 
     display_filter_types = ['warn', 'del']
 
@@ -99,13 +112,18 @@ class WordFilter(KazCog):
     }
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.state.set_defaults(
-            'filter',
+        super().__init__(bot, 'filter', WordFilterConfig, WordFilterState)
+        self.cog_state.set_defaults(
             warn=[],
             delete=[],
-            channel=self.config.get('filter', 'channel_warning')
+            channel=self.cog_config.channel_warning
         )
+        self.cog_config.set_converters('channel_warning',
+            lambda cid: self.validate_channel(cid),
+            lambda _: None)
+        self.cog_state.set_converters('channel',
+            lambda cid: self.validate_channel(cid),
+            lambda c: str(c.id))
         self._load_filter_rules()
         self.channel_warning = None
         self.channel_current = None
@@ -113,22 +131,19 @@ class WordFilter(KazCog):
     def _load_filter_rules(self):
         for filter_type, engine in self.engines.items():
             logger.debug("Reloading {} rules".format(filter_type))
-            engine.load_rules(self.state.get("filter", filter_type, []))
+            engine.load_rules(self.cog_state.get(filter_type))
 
     async def on_ready(self):
         """
         Load information from the server.
         """
         await super().on_ready()
-
-        dest_warning_id = self.config.get('filter', 'channel_warning')
-        self.channel_warning = self.validate_channel(dest_warning_id)
+        self.channel_warning = self.cog_config.channel_warning
 
         try:
-            self.channel_current = self.validate_channel(self.state.get('filter', 'channel'))
+            self.channel_current = self.cog_state.channel
         except ValueError:
-            self.channel_current = self.channel_warning
-            self.state.set('filter', 'channel', str(self.channel_warning.id))
+            self.cog_state.channel = self.channel_current = self.channel_warning
 
     def export_kazhelp_vars(self):
         return {'warn_channel': '#' + self.channel_warning.name}
@@ -138,8 +153,8 @@ class WordFilter(KazCog):
         """
         Message handler. Check all non-mod messages for filtered words.
         """
-        is_mod = check_role(self.config.get("discord", "mod_roles", []) +
-                            self.config.get("discord", "admin_roles", []), message)
+        is_mod = check_role(self.config.discord.get("mod_roles", []) +
+                            self.config.discord.get("admin_roles", []), message)
         is_pm = isinstance(message.channel, discord.PrivateChannel)
         if not is_mod and not is_pm:
             message_string = str(message.content)
@@ -238,7 +253,7 @@ class WordFilter(KazCog):
 
             logger.info("filter_list: listing '{}' list for {}"
                 .format(validated_type, ctx.message.author))
-            filter_list = self.state.get("filter", validated_type)
+            filter_list = self.cog_state.get(validated_type)
             if filter_list:
                 list_str = format_list(filter_list)
             else:
@@ -279,9 +294,9 @@ class WordFilter(KazCog):
             # error messages and logging already managed
             return
         else:
-            # not a copy - can modify directly
-            self.state.get("filter", validated_type).append(word)
-            self.state.write()
+            filter_list = self.cog_state.get(validated_type)
+            filter_list.append(word)
+            self.cog_state.set(validated_type, filter_list)
 
             logger.info("add: {}: Added {!r} to the {} list."
                 .format(ctx.message.author, word, validated_type))
@@ -314,10 +329,10 @@ class WordFilter(KazCog):
             # error messages and logging already managed
             return
         else:
-            filter_list = self.state.get("filter", validated_type)
+            filter_list = self.cog_state.get(validated_type)
             try:
-                # not a copy - can modify directly
                 filter_list.remove(word)
+                self.cog_state.set(validated_type, filter_list)
             except ValueError:
                 err_msg = "No such item in filter list {}: {}".format(validated_type, word)
                 logger.error("rem: " + err_msg)
@@ -325,8 +340,6 @@ class WordFilter(KazCog):
                 return
 
             else:  # no exceptions
-                self.state.write()
-
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, word, validated_type))
                 await self.bot.say("Removed `{}` from the {} list."
@@ -361,12 +374,12 @@ class WordFilter(KazCog):
             return
         else:
             cfg_index = index - 1
-            filter_list = self.state.get("filter", validated_type)
+            filter_list = self.cog_state.get(validated_type)
             try:
                 # not a copy - can modify directly
                 del_value = filter_list[cfg_index]
                 del filter_list[cfg_index]
-
+                self.cog_state.set(validated_type, filter_list)
             except IndexError:
                 err_msg = "Index out of range: {:d}".format(index)
                 logger.error("rem: " + err_msg)
@@ -374,8 +387,6 @@ class WordFilter(KazCog):
                 return
 
             else:  # no exceptions
-                self.state.write()
-
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, del_value, validated_type))
                 await self.bot.say("Removed `{}` from the {} list."
@@ -402,8 +413,7 @@ class WordFilter(KazCog):
             self.channel_current = self.channel_out
         else:
             self.channel_current = self.channel_warning
-        self.state.set('filter', 'channel', str(self.channel_current.id))
-        self.state.write()
+        self.cog_state.channel = self.channel_current
 
         logger.info("switch(): Changed filter warning channel to #{}"
             .format(self.channel_current.name))

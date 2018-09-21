@@ -16,11 +16,12 @@ from kaztron.utils.checks import mod_only, mod_or_has_role, in_channels_cfg
 from kaztron.utils.converter import NaturalDateConverter
 from kaztron.utils.datetime import utctimestamp, parse as dt_parse, parse_daterange, \
     get_month_offset, truncate, format_timedelta
-from kaztron.utils.decorators import error_handler
+from kaztron.utils.decorators import error_handler, natural_truncate
 from kaztron.utils.discord import get_named_role, Limits, remove_role_from_all, \
     extract_user_id, user_mention, get_member, get_group_help, get_members_with_role
+from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str, tb_log_str, exc_log_str
-from kaztron.utils.strings import format_list, natural_truncate, split_chunks_on
+from kaztron.utils.strings import format_list, split_chunks_on
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ class SpotlightApp:
     Should only be instantiated once the bot is ready (as it attempts to retrieve user data from
     the server).
     """
+    TRUNC_LEN = 3*Limits.EMBED_FIELD_VALUE
+    SHORT_TRUNC_LEN = 0.5 * Limits.EMBED_FIELD_VALUE
 
     def __init__(self, data: List[str], bot: commands.Bot):
         self._data = data
@@ -42,29 +45,32 @@ class SpotlightApp:
         return str_property and str_property.strip().lower() != 'n/a'
 
     @property
-    @error_handler(ValueError, datetime.utcfromtimestamp(0))
     @error_handler(IndexError, datetime.utcfromtimestamp(0))
     def timestamp(self) -> datetime:
         return dt_parse(self._data[0], future=False)
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def user_name(self) -> str:
         return self._data[1].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def user_name_only(self) -> str:
         """ User name without discriminator (if provided in the field). """
         return self._data[1].split('#', maxsplit=1)[0].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def user_discriminator(self) -> str:
         """ Discriminator (the #xxxx part of an @mention in the client, if provided). """
         return self._data[1].split('#', maxsplit=1)[1].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def user_disp(self) -> str:
         """ Displayed user: either a mention if possible, else their user_name_only. """
@@ -76,52 +82,62 @@ class SpotlightApp:
             return user_mention(s_user_id)
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(ValueError, "")
     @error_handler(IndexError, "")
     def user_id(self) -> str:
         return self._data[2].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def user_reddit(self) -> str:
         return self._data[3].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def project(self) -> str:
         return self._data[4].strip()
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def keywords(self) -> str:
         return self._data[5].strip()
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def favorite(self) -> str:
         return self._data[6].strip()
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def talking_point(self) -> str:
         return self._data[7].strip()
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def mature(self) -> str:
         return self._data[8].strip()
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def inspirations(self) -> str:
         return self._data[9].strip()
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def prompt(self) -> str:
         return self._data[10].strip()
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def pitch(self) -> str:
         return self._data[11].strip()
@@ -132,16 +148,19 @@ class SpotlightApp:
         return self._data[12].strip().lower() == 'yes'
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def nsfw_info(self) -> str:
         return self._data[13].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def art_url(self) -> str:
         return self._data[14].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def additional_info_url(self) -> str:
         return self._data[15].strip()
@@ -152,21 +171,25 @@ class SpotlightApp:
         return self._data[16].strip().lower() == 'yes'
 
     @property
+    @natural_truncate(TRUNC_LEN)
     @error_handler(IndexError, "")
     def unnamed(self) -> str:
         return self._data[17].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def genre(self) -> str:
         return self._data[27].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def project_type(self) -> str:
         return self._data[28].strip()
 
     @property
+    @natural_truncate(SHORT_TRUNC_LEN)
     @error_handler(IndexError, "")
     def language(self) -> str:
         return self._data[29].strip()
@@ -425,53 +448,34 @@ class Spotlight(KazCog):
         else:
             author_value = "{} ({})".format(user_mention(s_user_id), app.user_name_only)
 
-        em = discord.Embed(color=0x80AAFF)
-        em.add_field(name="Project Name", value=app.project, inline=True)
-        em.add_field(name="Author", value=author_value, inline=True)
+        es = EmbedSplitter(color=0x80AAFF, auto_truncate=True)
+        es.add_field_no_break(name="Project Name", value=app.project, inline=True)
+        es.add_field(name="Author", value=author_value, inline=True)
 
-        # if app.is_filled(app.user_reddit):
-        #     em.add_field(name="Reddit", value="/u/" + app.user_reddit[:128], inline=True)
-
-        em.add_field(name="Elevator Pitch",
-                     value=natural_truncate(app.pitch, Limits.EMBED_FIELD_VALUE) or "None",
-                     inline=False)
+        es.add_field(name="Elevator Pitch", value=app.pitch or "None", inline=False)
 
         if app.is_filled(app.mature):
-            em.add_field(name="Mature & Controversial Issues",
-                         value=natural_truncate(app.mature, Limits.EMBED_FIELD_VALUE),
-                         inline=True)
+            es.add_field(name="Mature & Controversial Issues", value=app.mature, inline=True)
 
         if app.is_filled(app.keywords):
-            em.add_field(name="Keywords",
-                         value=natural_truncate(app.keywords, Limits.EMBED_FIELD_VALUE),
-                         inline=False)
+            es.add_field(name="Keywords", value=app.keywords, inline=False)
 
         if app.is_filled(app.art_url):
-            em.add_field(name="Project Art",
-                         value=natural_truncate(app.art_url, Limits.EMBED_FIELD_VALUE),
-                         inline=True)
+            es.add_field_no_break(name="Project Art", value=app.art_url, inline=True)
 
         if app.is_filled(app.additional_info_url):
-            em.add_field(name="Additional Content",
-                         value=natural_truncate(app.additional_info_url, Limits.EMBED_FIELD_VALUE),
-                         inline=True)
+            es.add_field(name="Additional Content", value=app.additional_info_url, inline=True)
 
         if app.is_filled(app.genre):
-            em.add_field(name="Genre",
-                value=natural_truncate(app.genre, Limits.EMBED_FIELD_VALUE),
-                inline=True)
+            es.add_field_no_break(name="Genre", value=app.genre, inline=True)
 
         if app.is_filled(app.project_type):
-            em.add_field(name="Type",
-                value=natural_truncate(app.project_type, Limits.EMBED_FIELD_VALUE),
-                inline=True)
+            es.add_field_no_break(name="Type", value=app.project_type, inline=True)
 
         if app.is_filled(app.language):
-            em.add_field(name="Language",
-                value=natural_truncate(app.language, Limits.EMBED_FIELD_VALUE),
-                inline=True)
+            es.add_field(name="Language", value=app.language, inline=True)
 
-        await self.bot.send_message(destination, embed=em)
+        await self.send_message(destination, embed=es)
         await self.bot.say("Spotlight ID #{:d}: {!s}".format(index, app))
 
     async def send_validation_warnings(self, ctx: commands.Context, app: SpotlightApp):
@@ -718,10 +722,9 @@ class Spotlight(KazCog):
         )
         await self.send_validation_warnings(ctx, current_app)
 
-        # Deassign the spotlight host role
-        server = ctx.message.server  # type: discord.Server
-        host_role = get_named_role(server, self.role_host_name)
-        await remove_role_from_all(self.bot, server, host_role)
+        # remove host role
+        host_role = get_named_role(self.server, self.role_host_name)
+        await remove_role_from_all(self.bot, self.server, host_role)
 
         # Assign the role to the selected app's owner
         try:
@@ -1357,6 +1360,15 @@ class Spotlight(KazCog):
 
         await self.bot.send_message(self.channel_spotlight, msg)
         await self.send_output(log_msg)
+
+        logger.info("Removing host role from {}".format(host.nick if host.nick else host.name))
+        host_role = get_named_role(self.server, self.role_host_name)
+        try:
+            await self.bot.remove_roles(host, host_role)
+        except discord.HTTPException as e:
+            logger.exception("While trying to remove host role, an exception occurred")
+            await self.send_output("While trying to remove spotlight host role, "
+                                   "an exception occurred: " + exc_log_str(e))
 
 
 def setup(bot):

@@ -1,23 +1,26 @@
+from datetime import datetime
 import logging
 import random
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import discord
+from discord import Member
 from discord.ext import commands
 
 from kaztron import KazCog, task
 from kaztron.cog.modnotes.model import RecordType
 from kaztron.cog.modnotes.modnotes import ModNotes
-from kaztron.cog.modnotes import controller as c, model
+from kaztron.cog.modnotes import controller, model
 from kaztron.config import SectionView
+from kaztron.errors import BotCogError
 from kaztron.kazcog import ready_only
 from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only, mod_channels, pm_only
 from kaztron.utils.converter import MemberConverter2
-from kaztron.utils.discord import get_named_role, Limits, role_mention
+from kaztron.utils.discord import get_named_role, Limits
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import parse_keyword_args, split_chunks_on
+from kaztron.utils.strings import parse_keyword_args
 
 logger = logging.getLogger(__name__)
 
@@ -66,28 +69,33 @@ class ModTools(KazCog):
         self.cog_config.set_defaults(distinguish_map={}, wb_images=tuple())
         self.ch_mod = discord.Object(self.cog_config.channel_mod)
         self.cog_modnotes: ModNotes = None
+        self.notes = None
         self.tempban_role: discord.Role = None
 
     async def on_ready(self):
         await super().on_ready()
-        self.check_for_modnotes()
+        try:
+            await self.check_for_modnotes()
+        except RuntimeError:
+            await self.send_output(
+                "**ERROR**: Can't find ModNotes cog. The `.tempban` command and automatic tempban "
+                "management will not work. `.whois` reverted to basic functionality."
+            )
         self.tempban_role = get_named_role(self.server, self.cog_config.tempban_role)
         self.ch_mod = self.validate_channel(self.ch_mod.id)
 
         # schedule tempban update tick (unless already done i.e. reconnects)
-        if not self.scheduler.get_instances(self.task_update_tempbans):
+        if self.cog_modnotes and not self.scheduler.get_instances(self.task_update_tempbans):
             self.scheduler.schedule_task_in(self.task_update_tempbans, 0, every=3600)
 
-    def check_for_modnotes(self):
+    async def check_for_modnotes(self):
         logger.debug("Getting modnotes cog")
         self.cog_modnotes = self.bot.get_cog("ModNotes")
         if self.cog_modnotes is None:
-            logger.error("Can't find ModNotes cog. Tempban command will not work.")
-            self.send_output(
-                "**ERROR**: Can't find ModNotes cog. The `.tempban` command and automatic tempban "
-                "management will not work."
-            )
+            logger.error("Can't find ModNotes cog.")
             raise RuntimeError("Can't find ModNotes cog")
+        else:
+            self.notes = controller
 
     def unload_kazcog(self):
         self.scheduler.cancel_all(self.task_update_tempbans)
@@ -145,11 +153,13 @@ class ModTools(KazCog):
             await self.bot.say("That command is only available to mods and admins.")
             await self.send_output("[WARNING] " + err_msg)
 
-    @staticmethod
-    def _get_tempbanned_members_db(server: discord.Server) -> List[model.Record]:
-        records = c.query_unexpired_records(types=RecordType.temp)
-        members_raw = (server.get_member(record.user.discord_id) for record in records)
-        return [m for m in members_raw if m is not None]
+    def _get_tempbanned_members_db(self, server: discord.Server) -> List[model.Record]:
+        if self.notes:
+            records = self.notes.query_unexpired_records(types=RecordType.temp)
+            members_raw = (server.get_member(record.user.discord_id) for record in records)
+            return [m for m in members_raw if m is not None]
+        else:
+            raise BotCogError("ModNotes cog not loaded. This command requires ModNotes to run.")
 
     def _get_tempbanned_members_server(self, server: discord.Server) -> List[discord.Member]:
         return [m for m in server.members if self.tempban_role in m.roles]
@@ -237,7 +247,7 @@ class ModTools(KazCog):
               description: Issues a 3-day ban.
         """
         if not self.cog_modnotes:
-            raise RuntimeError("Can't find ModNotes cog")
+            raise BotCogError("ModNotes cog not loaded. This command requires ModNotes to run.")
 
         # Parse and validate kwargs (we won't use this, just want to validate valid keywords)
         try:
@@ -264,17 +274,16 @@ class ModTools(KazCog):
 
         brief: Find a Discord user.
         description: |
-            Finds a Discord user from their ID, name, or name with discriminator.
+            Finds a Discord user from their ID, name, or name with discriminator. If modnotes is
+            enabled, will also search the name and alias fields of modnotes users.
 
             If an exact match isn't found, then this tool will do a substring search on all visible
             users' names and nicknames.
-
-            WARNING: If the user is in the channel where you use this command, the user will receive
-            a notification.
         parameters:
             - name: user
               type: string
-              description: An ID number, name, name with discriminator, etc. of a user to find.
+              description: "An ID number, name, name with discriminator, etc. of a user to find. If
+                this contains spaces, use quotation marks."
         examples:
             - command: .whois 123456789012345678
               description: Find a user with ID 123456789012345678.
@@ -284,34 +293,114 @@ class ModTools(KazCog):
               description: Find a user whose name matches JaneDoe, or if not found, a user whose
                 name or nickname contains JaneDoe.
         """
-        await self._whois_match(ctx, user) or await self._whois_search(ctx, user)
+        match_user = self._whois_match(ctx, user)
+        search_users = self._whois_search(ctx, user)
+        st = user[:Limits.NAME]
+        if self.cog_modnotes:
+            notes_users = self.notes.search_users(st)
+            notes_map = {self.server.get_member(u.discord_id): u for u in notes_users}
+            title_fmt = 'whois {} (with modnotes)'
+            field_name = 'Partial and usernote matches'
+        else:
+            notes_map = {}
+            title_fmt = 'whois {} (NO MODNOTES)'
+            field_name = 'Partial matches'
 
-    async def _whois_match(self, ctx, user: str):
+        members = list(set(search_users) | set(notes_map.keys()))
+        str_data = []
+        for m in members:
+            try:
+                u = notes_map[m]
+                str_data.append(self._whois_notes_info(m, u, st))
+            except KeyError:
+                str_data.append(self._whois_info(m))
+        str_data.sort(key=lambda t: t[0])
+
+        # prepare output embed
+        es = EmbedSplitter(
+            title=title_fmt.format(user),
+            timestamp=datetime.utcnow(),
+            auto_truncate=True,
+            repeat_header=False
+        )
+        if match_user:
+            es.add_field(name="Exact match", value=self._whois_info(match_user)[1])
+        if str_data:
+            es.add_field(
+                name=field_name,
+                value='\n'.join(t[1] for t in str_data[:50])
+            )
+            if len(str_data) > 50:
+                es.set_footer(text="{:d}/{:d} results (too many matches)"
+                    .format(50, len(search_users)))
+            else:
+                es.set_footer(text="{:d} results".format(len(search_users)))
+        await self.send_message(ctx.message.channel, embed=es)
+
+    @staticmethod
+    def _whois_match(ctx, user: str) -> Optional[Member]:
         try:
-            member = MemberConverter2(ctx, user).convert()
-            msg = "Found user {0.mention} with ID {0.id}".format(member)
-            logger.debug(msg)
-            await self.bot.say(msg)
-            return True
+            m = MemberConverter2(ctx, user).convert()
+            logger.debug("Found exact match {0.mention} with ID {0.id}".format(m))
+            return m
         except commands.BadArgument:
-            return False
+            return None
 
-    async def _whois_search(self, ctx, user: str):
+    @staticmethod
+    def _whois_search(ctx, user: str):
         logger.info("whois: searching for name match")
+        search = user.lower()
         members = [m for m in ctx.message.server.members
-                   if (m.nick and user.lower() in m.nick.lower()) or user.lower() in m.name.lower()]
+                   if (m.nick and search in m.nick.lower()) or search in m.name.lower()]
         if members:
             member_list_str = ', '.join(str(m) for m in members)
             logger.debug("Found {:d} users: {}".format(len(members), member_list_str))
-
-            s = '**{:d} users found**\n'.format(len(members)) +\
-                '\n'.join("{0.mention} ID {0.id}".format(m) for m in members)
-            for part in split_chunks_on(s, maxlen=Limits.MESSAGE):
-                await self.bot.say(part)
-            return True
         else:
-            await self.bot.say("No matching user found.")
-            return False
+            logger.debug("Found no matches")
+        return members
+
+    @staticmethod
+    def _whois_info(member: discord.Member):
+        key = member.nick if member.nick else member.name
+        info = "{0.mention} (`{0!s}` - nick: `{0.nick}` - id: `{0.id}`)".format(member)
+        return key.lower(), info
+
+    def _whois_notes_info(self, member: discord.Member, user: model.User, search_term: str):
+        matched_alias = self._find_match_field(user, search_term)
+        info = ("{0.mention} (matched {2}: {3} - kazID `*{1.user_id}` - canonical name {1.name} - "
+                "id: `{1.discord_id}`)").format(
+            member, user,
+            'alias' if matched_alias else 'canonical name',
+            matched_alias.name if matched_alias else user.name
+        )
+        return user.name.lower(), info
+
+    @staticmethod
+    def _find_match_field(user: model.User, search_term: str) -> Optional[model.UserAlias]:
+        """
+        Find whether the canonical name or alias of a user was matched.
+
+        Needed because the results don't indicate whether the canonical name or an alias was
+        matched - only 20 results at a time so the processing time shouldn't be a concern.
+
+        :param user:
+        :param search_term:
+        :return: The UserAlias object that matched, or None if the canonical name matches or
+            no match is found (for now this is non-critical, it's a should-not-happen error case
+            that just ends up displaying the canonical name - can change to raise ValueError
+            in the future?)
+        """
+        if search_term.lower() in user.name.lower():
+            return None
+
+        # noinspection PyTypeChecker
+        for alias_ in filter(lambda a: search_term.lower() in a.name.lower(), user.aliases):
+            return alias_  # first one is fine
+        else:  # if no results from the filter()
+            logger.warning(("User is in results set but doesn't seem to match query? "
+                            "Is something buggered? "
+                            "Q: {!r} User: {!r} Check sqlalchemy output...")
+                .format(search_term, user))
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
