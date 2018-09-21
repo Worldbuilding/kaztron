@@ -62,7 +62,7 @@ class VoiceLog(KazCog):
         super().__init__(bot, 'voicelog', VoiceLogConfig)
         self.cog_config.set_defaults(voice_text_channel_map={}, role_voice='')
         self.cog_config.set_converters('role_voice',
-            lambda name: get_named_role(self.server, name),
+            lambda name: discord.utils.get(self.server.roles, name=name),
             lambda _: None)
 
         self.is_role_managed = False
