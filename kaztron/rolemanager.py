@@ -1,12 +1,12 @@
 import copy
 import logging
-from typing import Iterable
+from typing import Iterable, Tuple
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
-from kaztron.utils.checks import mod_only
+from kaztron.utils.checks import mod_only, admin_only
 from kaztron.utils.discord import get_named_role, get_group_help
 from kaztron.utils.logging import message_log_str
 
@@ -41,6 +41,7 @@ class ManagedRole:
         self.join_aliases = join_aliases
         self.leave_aliases = leave_aliases
         self.checks = checks
+        self.commands = None  # type: Tuple[commands.Command]
 
     def reply_dest(self, ctx: commands.Context) -> discord.Object:
         return ctx.message.author if self.pm else ctx.message.channel
@@ -215,6 +216,33 @@ class RoleManager(KazCog):
         if not self.is_ready:  # first time this is called - not a reconnect
             self.setup_all_config_roles()
 
+    def unload_kazcog(self):
+        """ Unload managed roles. """
+        logger.debug("Unloading managed roles...")
+        for role_name, mr in self.managed_roles.items():
+            for cmd in mr.commands:  # type: commands.Command
+                if cmd.parent is not None:
+                    parent = cmd.parent  # type: commands.GroupMixin
+                else:
+                    parent = self.bot
+                rmret = parent.remove_command(cmd.name)
+
+                if rmret is not None:
+                    logger.debug("Unloaded command {} for role {}".format(cmd.name, role_name))
+                else:
+                    logger.warning("Failed to unload command {} for role {}"
+                        .format(cmd.name, role_name))
+        self.managed_roles = {}
+
+    # @commands.command(pass_context=True)
+    # @admin_only()
+    # async def rolemanager_test_unload(self, ctx: commands.Context):
+    #     self.unload_kazcog()
+    #     await self.bot.send_message(ctx.message.channel,
+    #         "Attempting to unload all RoleManager commands... (requires restart to reload)")
+    #     await self.send_output(
+    #     "[WARNING] RoleManager roles unloaded (requires restart to reload)")
+
     def add_managed_role(
             self,
             role_name: str,
@@ -280,6 +308,7 @@ class RoleManager(KazCog):
         make_command = group.command if group else commands.command
         jc = make_command(name=join_name, aliases=join_aliases, **kwargs)(mr_join)
         lc = make_command(name=leave_name, aliases=leave_aliases, **kwargs)(mr_leave)
+        mr.commands = (jc, lc)
 
         # set up the cog that the commands are associated to (in the bot help, etc.)
         if not cog_instance:
