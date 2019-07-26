@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class ManagedRole:
-    def __init__(self, bot: discord.Client, *,
+    def __init__(self, bot: discord.Client, server: discord.Server, *,
                  name: str,
                  join_msg: str=None,
                  leave_msg: str=None,
@@ -29,6 +29,7 @@ class ManagedRole:
                  checks=tuple()
                  ):
         self.bot = bot
+        self.server = server
         self.name = name
         self._join_msg = join_msg or "You have joined the {} role.".format(self.name)
         self._leave_msg = leave_msg or "You have left the {} role.".format(self.name)
@@ -42,6 +43,10 @@ class ManagedRole:
         self.leave_aliases = leave_aliases
         self.checks = checks
         self.commands = None  # type: Tuple[commands.Command]
+
+    @property
+    def role(self) -> discord.Role:
+        return get_named_role(self.server, self.name)
 
     def reply_dest(self, ctx: commands.Context) -> discord.Object:
         return ctx.message.author if self.pm else ctx.message.channel
@@ -73,22 +78,20 @@ class ManagedRole:
             # no output channel message - lack of delete isn't critical
 
     async def do_join(self, ctx: commands.Context):
-        role = get_named_role(ctx.message.server, self.name)
-
-        if role not in ctx.message.author.roles:
-            await self.bot.add_roles(ctx.message.author, role)
-            logger.info("join: Gave role {} to user {}".format(self.name, ctx.message.author))
+        member = self.server.get_member(ctx.message.author.id)  # in case it's via PMs
+        if self.role not in member.roles:
+            await self.bot.add_roles(member, self.role)
+            logger.info("join: Gave role {} to user {}".format(self.name, member))
             await self.bot.send_message(self.reply_dest(ctx), self.join_message(ctx))
         else:
             await self.bot.send_message(self.reply_dest(ctx), self.join_error(ctx))
         await self.delete_message(ctx)
 
     async def do_leave(self, ctx: commands.Context):
-        role = get_named_role(ctx.message.server, self.name)
-
-        if role in ctx.message.author.roles:
-            await self.bot.remove_roles(ctx.message.author, role)
-            logger.info("leave: Removed role {} from user {}".format(self.name, ctx.message.author))
+        member = self.server.get_member(ctx.message.author.id)  # in case it's via PMs
+        if self.role in member.roles:
+            await self.bot.remove_roles(member, self.role)
+            logger.info("leave: Removed role {} from user {}".format(self.name, member))
             await self.bot.send_message(self.reply_dest(ctx), self.leave_message(ctx))
         else:
             await self.bot.send_message(self.reply_dest(ctx), self.leave_error(ctx))
@@ -297,8 +300,10 @@ class RoleManager(KazCog):
         logger.info("Adding managed role {}".format(role_name))
 
         mr = ManagedRole(
-            bot=self.bot, name=role_name, join_msg=join_msg, leave_msg=leave_msg,
-            join_err=join_err, leave_err=leave_err, join_doc=join_doc, leave_doc=leave_doc,
+            bot=self.bot, server=self.server, name=role_name,
+            join_msg=join_msg, leave_msg=leave_msg,
+            join_err=join_err, leave_err=leave_err,
+            join_doc=join_doc, leave_doc=leave_doc,
             delete=delete, pm=pm, checks=checks
         )
         mr_join, mr_leave = mr.get_command_functions()
