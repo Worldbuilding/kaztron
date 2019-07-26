@@ -316,7 +316,7 @@ class RoleManager(KazCog):
             except KeyError:
                 logger.warning("Group '{}' does not exist: making dummy group."
                     .format(command_name))
-                self._make_dummy_group(current_group, command_name)
+                current_group = self._make_dummy_group(current_group, command_name)
             except AttributeError:
                 raise discord.ClientException(
                     ("Cannot group role management command: parent "
@@ -333,10 +333,11 @@ class RoleManager(KazCog):
             raise discord.ClientException("Configuration error for managed role '{}': {}"
                 .format(name, e.args[0]))
 
-    def _make_dummy_group(self, parent: commands.GroupMixin, name: str):
+    def _make_dummy_group(self, parent: commands.GroupMixin, name: str) -> commands.GroupMixin:
         async def anonymous_group(dummy_self, ctx: commands.Context):
             await self.bot.say(get_group_help(ctx))
 
         current_group = parent.group(
             name=name, invoke_without_command=True, pass_context=True)(anonymous_group)
         current_group.instance = self
+        return current_group
