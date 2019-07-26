@@ -101,7 +101,7 @@ class ModTools(KazCog):
         self.scheduler.cancel_all(self.task_update_tempbans)
 
     @ready_only
-    async def on_member_joined(self, member: discord.Member):
+    async def on_member_join(self, member: discord.Member):
         await self._update_tempbans()
 
     @commands.command(pass_context=True)

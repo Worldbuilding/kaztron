@@ -290,7 +290,7 @@ class KazCog:
 
     @property
     def rolemanager(self):
-        from kaztron.rolemanager import RoleManager
+        from kaztron.rolemanager import RoleManager  # for type annotation/IDE inference
         if not self._roleman_cache:
             self._roleman_cache = self.bot.get_cog('RoleManager')
         return self._roleman_cache  # type: RoleManager
