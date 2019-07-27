@@ -29,10 +29,25 @@ class BadgeManager(KazCog):
         BadgeManager lets users give each other badges for contribution to each others' projects
         and to the community.
 
-        Badges can be given in the {{badge_channel}} channel. Check the pins in this channel for
-        instructions. {{name}} will detect all messages in this channel and let you know when it
-        detects that you've given a badge. **Check the {{name}} response to make sure your badge
-        registered properly.**
+        Badges can be given in the {{badge_channel}} channel. {{name}} will detect all messages in
+        this channel and let you know when it detects that you've given a badge. **Check the
+        {{name}} response to make sure your badge registered properly.**
+
+        The badge format is:
+
+        ```
+        To: @user
+        For: :badgeEmoji: Description of badge
+        ```
+
+        in *one single message*, where
+
+        * `@user` is a **mention** of the user you want to give the badge to.
+        * `:badgeEmoji:` is one of the badge emoji, currently consisting of the Guild, Writing,
+          Worldbuilding, Idea, Critique, Art, Resource or Community emoji.
+        * `Description of badge` is a textual description of why you're giving the badge.
+
+        You may also use bold, italic or underline formatting around the `To:` and `For:` fields.
 
         You can also edit or delete your old message, and {{name}} will detect the change and update
         its badge list accordingly.
@@ -217,9 +232,9 @@ class BadgeManager(KazCog):
               description: The page number to access, if a user has more than 1 page of badges.
               default: last page (most recent)
         examples:
-            - command: .badge @JaneDoe
+            - command: .badges @JaneDoe
               description: List all of JaneDoe's badges (most recent, if there are multiple pages).
-            - command: .checkin badge @JaneDoe 4
+            - command: .badges @JaneDoe 4
               description: List the 4th page of JaneDoe's badges.
         """
         user = user  # type: discord.Member  # for IDE type checking
