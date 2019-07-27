@@ -210,9 +210,9 @@ class ModNotes(KazCog):
         db_group = c.query_user_group(db_user)
         db_records = c.query_user_records(db_group)
 
-        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
+        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, align_end=True)
         if page is not None:
-            records_pages.page = max(1, min(records_pages.total_pages, page))
+            records_pages.page = max(0, min(records_pages.total_pages - 1, page - 1))
 
         await self.show_record_page(
             ctx.message.channel,
