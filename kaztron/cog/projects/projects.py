@@ -988,7 +988,7 @@ class ProjectsManager(KazCog):
               description: The name of another existing genre. Any projects using the old genre
                 will be updated to this genre. Use quotation marks if the name contains spaces.
         examples:
-            - command: .project admin genre remove "High Fantasy" Fantasy
+            - command: .project admin genre rem "High Fantasy" Fantasy
               description: Remove the "High Fantasy" genre, and replace any projects using that
                 genre with the "Fantasy" genre.
         """
@@ -1126,7 +1126,7 @@ class ProjectsManager(KazCog):
                 project type will be updated to this one. Use quotation marks if the name contains
                 spaces.
         examples:
-            - command: .project admin type remove "Game Script" Script
+            - command: .project admin type rem "Game Script" Script
               description: Remove the "Game Script" genre, and replace any projects using that
                 genre with the "Script" genre.
         """
