@@ -14,7 +14,7 @@ from kaztron.theme import solarized
 from kaztron.utils.checks import mod_channels, mod_only
 from kaztron.utils.converter import MemberConverter2
 from kaztron.utils.datetime import format_datetime
-from kaztron.utils.discord import check_mod, user_mention, Limits
+from kaztron.utils.discord import check_mod, user_mention, Limits, get_command_prefix
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import split_chunks_on
@@ -79,6 +79,19 @@ class BadgeManager(KazCog):
 
     async def add_badge(self, message: discord.Message, suppress_errors=False) \
             -> Optional[model.Badge]:
+
+        # Check if this seems like a command (usually badge commands for the badge channel)
+        class FakeContext:
+            def __init__(self, bot, msg):
+                self.bot = bot
+                self.message = msg
+        # noinspection PyTypeChecker
+        prefix = get_command_prefix(FakeContext(self.bot, message))
+        msg_init = message.content.strip()
+        if msg_init.startswith(prefix) and\
+                (len(msg_init) == len(prefix) or not msg_init[len(prefix)].isspace()):
+            logger.warning("Skipping badge parsing: message appears to be a command.")
+            return
 
         # Parsing
         badges = [b for b in model.BadgeType if b.pattern.search(message.content)]
