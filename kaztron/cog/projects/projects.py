@@ -116,10 +116,12 @@ class ProjectsManager(KazCog):
                 - description
             - admin:
                 - genre:
+                    - list
                     - add
                     - edit
                     - rem
                 - type:
+                    - list
                     - add
                     - edit
                     - rem
@@ -855,7 +857,7 @@ class ProjectsManager(KazCog):
     async def set(self, ctx: commands.Context):
         """!kazhelp
         description: Command group for project set commands. See also {{!project new}} and
-            {{!project edit}}.
+            {{!project wizard}}.
         """
         await self.bot.say("{}".format(get_group_help(ctx)))
 

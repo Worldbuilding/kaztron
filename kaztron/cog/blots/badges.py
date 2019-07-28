@@ -234,7 +234,8 @@ class BadgeManager(KazCog):
             Check a user's badges.
 
             TIP: If you want to give a badge, leave a properly formatted message in
-            {{badge_channel}}. See {{%BadgeManager}} or `.help BadgeManager` for more information.
+            {{badge_channel}}. See the top of the {{%BadgeManager}} page (web manual) or
+            `.help BadgeManager` (in-bot help) for more information.
         parameters:
             - name: user
               type: "@mention"

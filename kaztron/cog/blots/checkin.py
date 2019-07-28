@@ -39,6 +39,7 @@ class CheckInManager(KazCog):
             - type
             - list
             - report
+            - delta
             - query
             - exempt
         - milestone:

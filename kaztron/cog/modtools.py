@@ -56,6 +56,7 @@ class ModTools(KazCog):
         hence. Use {{!tempban}} in order to immediately apply and enforce a new tempban. (Using
         {{!notes add}} to add a "temp" record will not enforce it until the next hourly check.)
     contents:
+        - report
         - up
         - down
         - tempban
