@@ -756,8 +756,9 @@ class Spotlight(KazCog):
                 # don't convert this to _get_app - don't want the error msgs from that
                 app = self.applications[app_index]
             except IndexError:
+                # app_str for non-showcase, app's data for showcase format
                 app_str = self.UNKNOWN_APP_STR
-                app = SpotlightApp([], self.bot)
+                app = SpotlightApp(["", "Unknown", "", "", app_str], self.bot)
             else:
                 app_str = app.discord_str()
 
