@@ -43,8 +43,8 @@ questions = {
     'pitch': "Give an elevator pitch (about 50 words) for your project!"
 }
 
-aboutme_keys = ['bio', 'genre', 'type', 'url']
-aboutme_start_msg = "**Author Info Wizard\n\n" \
+aboutme_keys = ['about', 'genre', 'type', 'url']
+aboutme_start_msg = "**Author Info Wizard**\n\n" \
                     "Set up your public author/user profile! Anyone can look this information up. "\
                     "If you don't want to change the old value, type `skip`. " \
                     "To cancel this wizard, type `.project cancel`."
@@ -53,8 +53,8 @@ aboutme_end_msg = "Your profile is set up! If you'd like to re-run this wizard t
                   "changes to your profile, use `.project aboutme`."
 
 aboutme_questions = {
-    'bio': "Write a short bio about yourself (~50 words) by "
-           "continuing this sentence: \"The author is ...\"\n\n(You can also type `blank`.)",
+    'about': "Write a short bio about yourself (~50 words) by "
+             "continuing this sentence: \"The author is ...\"\n\n(You can also type `blank`.)",
     'genre': lambda: "What genre do you prefer? Available genres: {}."
                      .format(', '.join(o.name for o in q.query_genres())),
     'type': lambda: ("What kind of work do you primarily do? Available types: {}."

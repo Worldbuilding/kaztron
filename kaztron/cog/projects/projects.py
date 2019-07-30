@@ -1,7 +1,7 @@
 import datetime
 import logging
 from textwrap import indent
-from typing import Tuple, Iterable, Dict
+from typing import Tuple, Iterable, Dict, Union, Callable
 
 import discord
 from discord.ext import commands
@@ -167,7 +167,7 @@ class ProjectsManager(KazCog):
                 'msg_success': "Genre changed to {project.genre.name} "
                                "for project '{project.title}'",
                 'msg_err': "Unknown genre: {value}",
-                'msg_none': "Available genres: {}"
+                'msg_none': lambda: "Available genres: {}"
                             .format(', '.join(o.name for o in q.query_genres()))
             },
             'subgenre':  {
@@ -181,7 +181,7 @@ class ProjectsManager(KazCog):
                 'msg_success': "Project type changed to {project.type.name} "
                                "for project '{project.title}'",
                 'msg_err': "Unknown project type: {value}",
-                'msg_none': "Available project types: {}"
+                'msg_none': lambda: "Available project types: {}"
                             .format(', '.join(o.name for o in q.query_genres()))
             },
             'pitch': {
@@ -219,7 +219,7 @@ class ProjectsManager(KazCog):
 
     @staticmethod
     def make_project_setter(attr_name: str, msg_help: str,
-                            msg_success: str, msg_err: str, msg_none: str=None):
+                            msg_success: str, msg_err: str, msg_none: Union[str, Callable]=None):
         """
         :param attr_name: Name of the attribute to set on the Project model object.
         :param msg_help: Help message.
@@ -228,7 +228,8 @@ class ProjectsManager(KazCog):
         :param msg_err: Format of message to send on invalid value passed. Variables "project"
             and "value" are available.
         :param msg_none: Format of message to send on no value passed. Variable "project"
-            is available. Optional; if not passed, None values are not allowed.
+            is available. May also be a function taking no arguments (for dynamic messages),
+            returning such a format. Optional; if not passed, None values are not allowed.
         :return:
         """
         async def setter(self: ProjectsManager, ctx: commands.Context, *, new_value: str=None):
@@ -246,7 +247,9 @@ class ProjectsManager(KazCog):
                     q.update_user_from_projects(project.user)
                     await update_user_roles(self.bot, self.server, [project.user])
                 else:
-                    if msg_none:
+                    if callable(msg_none):
+                        msg = msg_none().format(project=project)
+                    elif msg_none:
                         msg = msg_none.format(project=project)
                     else:
                         raise commands.MissingRequiredArgument("new_value")
@@ -839,7 +842,8 @@ class ProjectsManager(KazCog):
                     project = q.update_project(wizard)
             elif name == 'author':
                 with q.transaction():
-                    q.update_user(wizard)
+                    user = q.update_user(wizard)
+                    await update_user_roles(self.bot, self.server, [user])
             else:
                 project = None
                 logger.error("Unknown wizard type {!r}???".format(name))
