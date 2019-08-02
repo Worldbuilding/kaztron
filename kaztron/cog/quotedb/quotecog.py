@@ -44,7 +44,7 @@ class QuoteCog(KazCog):
         members' funniest moments so that you can revisit them time and time again.
     contents:
         - quote:
-            - find
+            - get
             - list
             - add
             - grab
@@ -200,8 +200,8 @@ class QuoteCog(KazCog):
               type: number
               optional: true
               description: >
-                The ID number of the quote to find (starting from 1), as shown by the {{!quote}},
-                {{!quote find}} and {{!quote list}} commands.
+                The ID number of the quote to find (starting from 1), as shown by the {{!quote}} and
+                {{!quote list}} commands.
         examples:
             - command: .quote @JaneDoe#0921
               description: Find a random quote by JaneDoe.
@@ -402,7 +402,7 @@ class QuoteCog(KazCog):
             - name: number
               type: number
               description: The ID number of the quote to delete (starting from 1), as shown by the
-                {{!quote}}, {{!quote find}} and {{!quote list}} commands.
+                {{!quote}}, {{!quote get}} and {{!quote list}} commands.
         examples:
             - command: .quote del 4
               description: Delete the 4th quote attributed to you.
