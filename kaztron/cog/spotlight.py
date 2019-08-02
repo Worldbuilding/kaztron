@@ -1,3 +1,4 @@
+import asyncio
 import random
 import re
 import time
@@ -1161,12 +1162,18 @@ class Spotlight(KazCog):
             return None
 
     def _schedule_upcoming_reminder(self):
+        async def inner():
+            logger.debug("Waiting on task_upcoming_reminder to finish cancelling...")
+            await self.scheduler.wait_all(self.task_upcoming_reminder)
+            logger.debug("Done, scheduling next reminder...")
+            queue_item = self._get_next_reminder()
+            if queue_item is not None:
+                start_time = datetime.utcfromtimestamp(queue_item['start'])
+                reminder_time = start_time - self.queue_reminder_offset
+                self.scheduler.schedule_task_at(self.task_upcoming_reminder, reminder_time)
+
         self.scheduler.cancel_all(self.task_upcoming_reminder)
-        queue_item = self._get_next_reminder()
-        if queue_item is not None:
-            start_time = datetime.utcfromtimestamp(queue_item['start'])
-            reminder_time = start_time - self.queue_reminder_offset
-            self.scheduler.schedule_task_at(self.task_upcoming_reminder, reminder_time)
+        asyncio.get_event_loop().create_task(inner())
 
     @task(is_unique=True)
     async def task_upcoming_reminder(self):
