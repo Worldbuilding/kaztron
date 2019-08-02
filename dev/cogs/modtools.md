@@ -1,6 +1,6 @@
 ---
 title: "ModTools"
-last_updated: 05 August 2018
+last_updated: 02 August 2019
 summary: "Miscellaneous tools for moderators."
 ---
 
@@ -11,7 +11,40 @@ This module will automatically enforce modnotes of type "temp", at startup and e
 hence. Use <a href="./modtools.html#tempban">tempban</a> in order to immediately apply and enforce a new tempban. (Using
 <a href="./modnotes.html#notes-add">notes add</a> to add a "temp" record will not enforce it until the next hourly check.)
 
-## 1. up
+## 1. report
+{: #report }
+
+Report an incident to the moderators confidentially.
+
+Please remember to mention **who** is involved and **where** it's happening (i.e. the
+channel). Your name and the time at which you sent your report are automatically
+recorded.
+
+{% include important.html content='This will send notifications to mods. Please use only for incidents that need
+to be handled in a time-sensitive manner. For non-time-sensitive situations, ask in the
+#meta channel (or ask there for an available mod to PM, if it&#x27;s confidential).' %}
+
+**Usage**: `.report <text>`
+
+**Arguments**
+
+&lt;text&gt;
+: string. The text you want to send the mod team. Make sure to mention the **who** and **where** (channel).
+
+
+
+
+**Details**
+
+Channels
+: PM only.
+
+
+**Example**
+
+* `.report There's a heated discussion about politics in #worldbuilding, mostly between BlitheringIdiot and AggressiveDebater, that might need a mod to intervene.`
+
+## 2. up
 {: #up }
 
 This command colours the moderator's username by applying a special role to it. This
@@ -26,7 +59,7 @@ Members
 : Moderators, Administrators.
 
 
-## 2. down
+## 3. down
 {: #down }
 
 Uncolours a moderator's username.
@@ -41,7 +74,7 @@ Members
 : Moderators, Administrators.
 
 
-## 3. tempban
+## 4. tempban
 {: #tempban }
 
 Tempban a user.
@@ -89,23 +122,21 @@ Channels
 * `.tempban @BlitheringIdiot#1234 Was being a blithering idiot.` - Issues a 7-day ban.
 * `.tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight blithering idiot only.` - Issues a 3-day ban.
 
-## 4. whois
+## 5. whois
 {: #whois }
 
-Finds a Discord user from their ID, name, or name with discriminator.
+Finds a Discord user from their ID, name, or name with discriminator. If modnotes is
+enabled, will also search the name and alias fields of modnotes users.
 
 If an exact match isn't found, then this tool will do a substring search on all visible
 users' names and nicknames.
-
-{% include warning.html content='If the user is in the channel where you use this command, the user will receive
-a notification.' %}
 
 **Usage**: `.whois <user>`
 
 **Arguments**
 
 &lt;user&gt;
-: string. An ID number, name, name with discriminator, etc. of a user to find.
+: string. An ID number, name, name with discriminator, etc. of a user to find. If this contains spaces, use quotation marks.
 
 
 
@@ -126,7 +157,7 @@ Channels
 * `.whois JaneDoe#0921` - Find a user exactly matching @JaneDoe#0921.
 * `.whois JaneDoe` - Find a user whose name matches JaneDoe, or if not found, a user whose name or nickname contains JaneDoe.
 
-## 5. wb
+## 6. wb
 {: #wb }
 
 Show a "Please talk about worldbuilding" image.

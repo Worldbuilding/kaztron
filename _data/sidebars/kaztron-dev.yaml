@@ -109,7 +109,7 @@ entries:
       output: web, pdf
 
     - title: Quotes Database
-      url: /dev/cogs/quotedb.html
+      url: /dev/cogs/quotecog.html
       output: web, pdf
 
     - title: Reminders
@@ -125,7 +125,7 @@ entries:
       output: web, pdf
 
     - title: Writing Sprints
-      url: /dev/cogs/sprint.html
+      url: /dev/cogs/writingsprint.html
       output: web, pdf
 
   - title: Moderator Tools Reference

@@ -1,6 +1,6 @@
 ---
 title: "ModNotes"
-last_updated: 05 August 2018
+last_updated: 02 August 2019
 summary: "Store moderation notes about users."
 ---
 
@@ -49,23 +49,9 @@ Channels
 ### 1.1. notes finduser
 {: #notes-finduser }
 
-Find a user in the modnotes database.
+Deprecated as of version 2.2. Use <a href="./modtools.html#whois">whois</a>.
 
-This command searches both the name and aliases fields.
-
-**Usage**: `.notes finduser <search_term> [page=1]`
-
-**Arguments**
-
-&lt;search_term&gt;
-: @user. Part of a user's name to find. Searches both the canonical name and aliases. If this contains spaces, use quotation marks.
-
-
-[page]
-: number. Optional. The page number to show, if there are more than 1 page of notes. Default: 1
-
-
-
+**Usage**: `.notes finduser`
 
 **Details**
 
@@ -76,10 +62,6 @@ Members
 Channels
 : Mod channels.
 
-
-**Example**
-
-* `.notes finduser Indium` - This would match, for example, a user called "IndiumPhosphide".
 
 ### 1.2. notes add (a)
 {: #notes-add }

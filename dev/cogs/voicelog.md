@@ -1,6 +1,6 @@
 ---
 title: "VoiceLog"
-last_updated: 05 August 2018
+last_updated: 02 August 2019
 summary: "Voice chat support features. No commands."
 ---
 
@@ -18,8 +18,8 @@ This cog has no commands. It is fully configured in the config.json file (see
 
 This feature replicates the join/part logging available in TeamSpeak, mumble and similar,
 mainly to avoid the "wait, who joined?" and "who'd we lose?" conversations while in voice
-chat on Discord. KazTronTest will log voice join and parts in #voice
-like this:
+chat on Discord. TestKaz will log voice join and parts in the associated text channel like
+this:
 
 ```
 [07:40] KazTron: JaneDoe has joined voice channel #general

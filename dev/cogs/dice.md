@@ -1,6 +1,6 @@
 ---
 title: "Dice"
-last_updated: 05 August 2018
+last_updated: 02 August 2019
 summary: "Various dice rolls and other randomness-based commands."
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: "RoleManager"
-last_updated: 05 August 2018
+last_updated: 02 August 2019
 summary: "Allows the creation of commands that allow users to join and leave specific roles on"
 ---
 
@@ -27,7 +27,7 @@ To add checks like `mod_only()`, pass a list of checks as a `checks` keyword arg
 
 ```python
 try:
-    roleman.add_managed_role(
+    self.rolemanager.add_managed_role(
         role_name="Sprinters",
         join_name="follow",
         leave_name="unfollow",
@@ -57,8 +57,8 @@ except discord.ClientException:
 * `role_name`: The role to manage.
 * `join_name`: The join command name. If `group` is passed, this command is a subcommand of
     that group.
-* `leave_name`: The leave command name. If `group` is passed, this command is a subcommand of
-    that group.
+* `leave_name`: The leave command name. If `group` is passed, this command is a subcommand
+    of that group.
 * `join_aliases`: Optional. A sequence of join command aliases.
 * `leave_aliases`: Optional. An sequence of leave command aliases.
 * `join_msg`: Message to send when the user successfully joins the role.
@@ -84,16 +84,16 @@ It is also possible to do this in the `config.json` file. In this case, the comm
 always appear in `.help` under RoleManager. Please see `config.example.json` for an example
 of the structure, and refer to section above for documentation on the parameters.
 
-## 1. checkin
-{: #checkin }
+## 1. onduty
+{: #onduty }
 
-**Usage**: `.checkin`
+**Usage**: `.onduty`
 
 <pre>[MOD ONLY] Mark self as on-duty and willing to receive notifications about events needing moderator attention.</pre>
 
-## 2. checkout
-{: #checkout }
+## 2. offduty
+{: #offduty }
 
-**Usage**: `.checkout`
+**Usage**: `.offduty`
 
 <pre>[MOD ONLY] Mark self as off-duty. You will not receive notifications regarding events needing moderator attention.</pre>

@@ -1,10 +1,10 @@
 ---
-title: "Core"
-last_updated: 05 August 2018
-summary: "Essential internal KazTronTest functionality, plus bot information and control commands."
+title: "CoreCog"
+last_updated: 02 August 2019
+summary: "Essential internal TestKaz functionality, plus bot information and control commands."
 ---
 
-Essential KazTronTest functionality: core setup and configuration tasks, general-purpose error
+Essential TestKaz functionality: core setup and configuration tasks, general-purpose error
 handling for other cogs and commands, etc. It also includes commands for general bot
 information and control. The Core cog cannot be disabled.
 
@@ -13,11 +13,11 @@ information and control. The Core cog cannot be disabled.
 
 Provides bot info and useful links.
 
-This command provides the version of the KazTronTest instance currently running, the latest
+This command provides the version of the TestKaz instance currently running, the latest
 changelog summary, and links to documentation, the GitHub repository, and other
 resources for operators and moderators.
 
-{% include tip.html content='*For mods.* If KazTronTest ever seems unresponsive, try this command first.' %}
+{% include tip.html content='*For mods.* If TestKaz ever seems unresponsive, try this command first.' %}
 
 **Usage**: `.info`
 
@@ -30,7 +30,7 @@ Members
 ## 2. request (bug, issue)
 {: #request }
 
-Submit a bug report or feature request to the KazTronTest bot team.
+Submit a bug report or feature request to the TestKaz bot team.
 
 **Usage**: `.[request|bug|issue] <content>`
 

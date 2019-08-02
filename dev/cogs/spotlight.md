@@ -1,6 +1,6 @@
 ---
 title: "Spotlight"
-last_updated: 05 August 2018
+last_updated: 02 August 2019
 summary: "Management of the World Spotlight community feature: applications, upcoming, reminders and timing."
 ---
 
@@ -48,7 +48,7 @@ To join the World Spotlight Audience, use `.spotlight join`.</pre>
 
 Start the World Spotlight. For use by the Spotlight Host.
 
-KazTronTest will announce the start of your World Spotlight and start counting down
+TestKaz will announce the start of your World Spotlight and start counting down
 your remaining time. You will get periodic reminders about the time remaining, as well
 as an announcement about the end of your World Spotlight.
 
@@ -259,7 +259,7 @@ The currently selected application will be added. Use <a href="./spotlight.html#
 
 **Details**
 
-{% include note.html content='KazTronTest will not take any action on the scheduled date. The date is used to order
+{% include note.html content='TestKaz will not take any action on the scheduled date. The date is used to order
 the queue and as an informational tool to the moderators responsible for the
 World Spotlight.' %}
 
@@ -298,7 +298,7 @@ Change the scheduled date of a World Spotlight in the queue.
 
 **Details**
 
-{% include note.html content='KazTronTest will not take any action on the scheduled date. The date is used to order
+{% include note.html content='TestKaz will not take any action on the scheduled date. The date is used to order
 the queue and as an informational tool to the moderators responsible for the
 World Spotlight.' %}
 
