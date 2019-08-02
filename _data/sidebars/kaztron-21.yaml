@@ -3,7 +3,7 @@
 entries:
 - title: sidebar
   product: KazTron
-  version: 2.1
+  version: 2.1.3
   head_image: kaztron.png
   folders:
 
@@ -42,6 +42,18 @@ entries:
 
     - title: Manuals for previous releases
       url: /versions.html
+      output: web, pdf
+
+    - title: Release Notes - v2.1.3
+      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.1.3
+      output: web, pdf
+
+    - title: Release Notes - v2.1.2
+      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.1.2
+      output: web, pdf
+
+    - title: Release Notes - v2.1.1
+      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.1.1
       output: web, pdf
 
     - title: Release Notes - v2.1
