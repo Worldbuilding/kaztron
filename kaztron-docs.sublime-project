@@ -5,10 +5,10 @@
 			"path": "."
 		},
         {
-            "path": "../KazTron"
+            "path": "../../KazTron"
         },
         {
-            "path": "../KazTron-21"
+            "path": "../../KazTron-21"
         }
 	]
 }
