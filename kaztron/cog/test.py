@@ -1,9 +1,13 @@
+import datetime
+import logging
+
 import discord
 from discord.ext import commands
 
-from kaztron import KazCog
+from kaztron import KazCog, task
 from kaztron.utils.embeds import EmbedSplitter
 
+logger = logging.getLogger(__name__)
 
 class TestCog(KazCog):
     @commands.command(pass_context=True)
@@ -55,6 +59,18 @@ class TestCog(KazCog):
             es.add_field(name=str(i) + " C", value="CCC "*256+'DDD '*32, inline=False)
 
         await self.send_message(ctx.message.channel, full_text, embed=es, split='line')
+
+    @commands.command(pass_context=True)
+    async def schedulein(self, ctx: commands.Context, time: int):
+        await self.send_message(ctx.message.channel, "OK")
+        self.scheduler.cancel_all(self.task_test)
+        start_time = datetime.datetime.utcnow()
+        reminder_time = start_time + datetime.timedelta(seconds=time)
+        self.scheduler.schedule_task_at(self.task_test, reminder_time)
+
+    @task(is_unique=True)
+    async def task_test(self):
+        await self.send_public("THIS IS A MESSAGE.")
 
 
 def setup(bot):

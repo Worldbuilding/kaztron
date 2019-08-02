@@ -1,9 +1,10 @@
 import asyncio
 import logging
+from asyncio import Event
 
 from collections.abc import Hashable
 from datetime import datetime, timedelta
-from typing import Callable, Union, Dict, Awaitable, Any, List, Sequence, Mapping
+from typing import Callable, Union, Dict, Awaitable, Any, List, Sequence, Mapping, Optional
 
 import discord
 from discord.ext import commands
@@ -98,6 +99,7 @@ class TaskInstance:
         self.instance = instance
         self.timestamp = timestamp
         self.async_task = None
+        self.stopped_event = Event()
         self.args = tuple(args) if args else ()
         self.kwargs = dict(kwargs.items()) if kwargs else {}
 
@@ -110,6 +112,19 @@ class TaskInstance:
     def is_current(self):
         """ Return True if called from within this task. """
         return self.async_task is asyncio.Task.current_task()
+
+    def is_active(self):
+        """
+        Returns True if this task instance is currently active or running. Returns False is the
+        task completed or stopped.
+        """
+        return not self.stopped_event.is_set()
+
+    async def wait(self):
+        """ Wait for the task to complete (or stop for any reason, e.g. cancel or error). """
+        if self.is_current():
+            raise RuntimeError("Cannot wait on task from within the same task: deadlock.")
+        await self.stopped_event.wait()
 
     # noinspection PyBroadException
     async def run(self):
@@ -252,9 +267,14 @@ class Scheduler:
         return task_inst
 
     def _del_task(self, task_inst: TaskInstance):
-        del self.tasks[task_inst.task][task_inst.timestamp]
-        if not self.tasks[task_inst.task]:
-            del self.tasks[task_inst.task]  # avoids leaking memory on a transient task object
+        try:
+            del self.tasks[task_inst.task][task_inst.timestamp]
+            if not self.tasks[task_inst.task]:
+                del self.tasks[task_inst.task]  # avoids leaking memory on a transient task object
+        except KeyError:
+            logger.warning("Could not delete task - race condition? {} {}".format(
+                task_inst.task.__name__, task_inst.timestamp
+            ))
 
     def schedule_task_at(self, task: Task, dt: datetime,
                          *, args: Sequence[Any]=(), kwargs: Mapping[str, Any]=None,
@@ -363,6 +383,7 @@ class Scheduler:
             self._del_task(task_inst)
             if count > 1:
                 logger.info("Recurring task {} ran {:d} times".format(task_id, count))
+            task_inst.stopped_event.set()
 
     def get_instances(self, task: Task) -> List[TaskInstance]:
         try:
@@ -370,9 +391,46 @@ class Scheduler:
         except KeyError:
             return []
 
+    async def wait_all(self, task: Optional[task]=None, timeout: Optional[float]=None):
+        """
+        Wait for all scheduled tasks of this type to complete running (or be stopped). This method
+        will never return if any of the currently running task instances are infinitely repeating,
+        unless these tasks are cancelled or raise an error.
+
+        If called within a task, this method will ignore the current task (because that's a deadlock
+        and you're silly to try it!).
+
+        To wait on a single task instance, call TaskInstance.wait() instead.
+
+        :param task: Task to wait on. If None, wait on all tasks.
+        :param timeout: Number of seconds to wait before returning.
+        :return:
+        """
+        if task is not None and task not in self.tasks:
+            return
+        if task is not None:
+            if task not in self.tasks:
+                return
+            futures = tuple(ti.wait() for ti in self.tasks[task].values() if not ti.is_current())
+            if futures:  # in case the only one is the currently running task
+                await asyncio.wait(futures, timeout=timeout)
+
+        else:  # wait on all
+            if not self.tasks:
+                return
+            futures = []
+            for task_map in self.tasks.values():
+                futures.extend(ti.wait() for ti in task_map.values() if not ti.is_current())
+            if futures:  # in case the only one is the currently running task
+                await asyncio.wait(futures, timeout=timeout)
+
     def cancel_task(self, instance: TaskInstance):
         """
-        Cancel a specific instance of a scheduled task.
+        Request cancellation of a specific instance of a scheduled task.
+
+        This method will not immediately stop and delete the task. The cancellation will be queued
+        in the asyncio event loop. You can await instance.wait() if you need to be sure the
+        cancellation has completed.
 
         :param instance: The task instance (returned by :meth:`~.schedule_task_at` and
         :meth:`~.schedule_task_in`) to cancel.
@@ -390,9 +448,13 @@ class Scheduler:
 
     def cancel_all(self, task: Task=None):
         """
-        Cancel all future-scheduled tasks, either of a specific task method (if specified) or
-        globally. This method will not cancel the currently running task (since that would
-        immediately interrupt it!).
+        Request cancellation of all future-scheduled tasks, either of a specific task method (if
+        specified) or globally. This method will not cancel the currently running task (since that
+        would immediately interrupt it!).
+
+        This method will not immediately stop and delete the task. The cancellation will be queued
+        in the asyncio event loop. You can await the wait_all() method if you need to be sure the
+        cancellation has completed.
 
         :param task: If specified, cancel only instances of this task method.
         """
