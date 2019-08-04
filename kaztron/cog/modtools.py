@@ -46,7 +46,7 @@ class ModToolsConfig(SectionView):
 
 class ModTools(KazCog):
     """!kazhelp
-
+    category: Moderator
     brief: Miscellaneous tools for moderators.
     description: |
         Various tools for moderators to help them in their day-to-day! Some commands are

@@ -122,7 +122,7 @@ class ManagedRole:
 
 class RoleManager(KazCog):
     """!kazhelp
-
+    category: Commands
     description: |
         Allows the creation of commands that allow users to join and leave specific roles on
         their own through bot commands.

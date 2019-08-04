@@ -21,6 +21,7 @@ class VoiceLogConfig(SectionView):
 
 class VoiceLog(KazCog):
     """!kazhelp
+    category: Automation
     description: Voice chat support features. No commands.
     jekyll_description: |
 

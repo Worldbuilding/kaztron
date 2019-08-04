@@ -37,6 +37,7 @@ class ModNotesConfig(SectionView):
 
 class ModNotes(KazCog):
     """!kazhelp
+    category: Moderator
     brief: Store moderation notes about users.
     description: |
         The ModNotes cog implements the storage of records for use by moderators in the course

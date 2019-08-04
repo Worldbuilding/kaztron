@@ -9,6 +9,7 @@ from kaztron.utils.embeds import EmbedSplitter
 
 logger = logging.getLogger(__name__)
 
+
 class TestCog(KazCog):
     @commands.command(pass_context=True)
     async def embedsplitter(self, ctx):

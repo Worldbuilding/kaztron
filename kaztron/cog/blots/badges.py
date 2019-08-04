@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class BadgeManager(KazCog):
     """!kazhelp
+    category: Commands
     brief: Give users badges for community contributions. Part of Inkblood Writing Guild BLOTS.
     description: |
         BadgeManager lets users give each other badges for contribution to each others' projects

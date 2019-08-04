@@ -18,7 +18,7 @@ class DiceConfig(SectionView):
 
 class Dice(KazCog):
     """!kazhelp
-
+    category: Commands
     brief: Various dice rolls and other randomness-based commands.
     description:
     contents:

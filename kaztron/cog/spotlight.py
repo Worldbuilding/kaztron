@@ -214,7 +214,7 @@ class SpotlightApp:
 
 class Spotlight(KazCog):
     """!kazhelp
-
+    category: Commands
     brief: |
         Management of the {{spotlight_name}} community feature: applications, upcoming, reminders
         and timing.

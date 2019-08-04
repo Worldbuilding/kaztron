@@ -65,7 +65,7 @@ class ReminderState(SectionView):
 
 class Reminders(KazCog):
     """!kazhelp
-
+    category: Commands
     brief: Get reminders for later.
     description: |
         The Reminder cog allows you to ask the bot to send you a reminder message in a certain

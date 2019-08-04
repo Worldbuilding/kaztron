@@ -33,6 +33,7 @@ class UserStatsConfig(SectionView):
 
 class UserStats(KazCog):
     """!kazhelp
+    category: Moderator
     brief: Collect and analyse activity statistics.
     description: |
         Collects user activity statistics.

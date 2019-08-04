@@ -38,6 +38,7 @@ class QuoteConfig(SectionView):
 
 class QuoteCog(KazCog):
     """!kazhelp
+    category: Commands
     brief: Capture the best moments on the server!
     description: |
         The Quotes Database helps you capture the best moments on the server! Store your fellow

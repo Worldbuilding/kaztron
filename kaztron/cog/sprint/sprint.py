@@ -38,6 +38,7 @@ def format_seconds(seconds: float, timespec='seconds'):
 
 class WritingSprint(KazCog):
     """!kazhelp
+    category: Commands
     brief: Hold writing sprints, where a group of writers get together to work on their writing
         projects for a fixed amount of time and compete on word count.
     contents:

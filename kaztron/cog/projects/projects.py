@@ -40,6 +40,7 @@ class ProjectsState(SectionView):
 
 class ProjectsManager(KazCog):
     """!kazhelp
+    category: Commands
     brief: Share your projects with other members!
     description: |
         The Projects module lets members share their projects with each other! With this module,
