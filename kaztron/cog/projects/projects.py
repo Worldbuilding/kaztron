@@ -103,7 +103,7 @@ class ProjectsManager(KazCog):
             - unfollow
             - followable
             - new
-            - wizard
+            - edit
             - aboutme
             - cancel
             - delete
@@ -643,7 +643,7 @@ class ProjectsManager(KazCog):
         self.cog_state.wizards = self.wizard_manager
 
     @project.command(pass_context=True, ignore_extra=False)
-    async def wizard(self, ctx: commands.Context):
+    async def edit(self, ctx: commands.Context):
         """!kazhelp
         description: |
             Edit your active project using the wizard.
@@ -706,7 +706,7 @@ class ProjectsManager(KazCog):
         description: |
             Cancel any open wizard.
 
-            Wizards are started by commands like {{!project new}}, {{!project wizard}} and
+            Wizards are started by commands like {{!project new}}, {{!project edit}} and
             {{!project aboutme}}.
         examples:
             - command: .project cancel
@@ -862,7 +862,7 @@ class ProjectsManager(KazCog):
     async def set(self, ctx: commands.Context):
         """!kazhelp
         description: Command group for project set commands. See also {{!project new}} and
-            {{!project wizard}}.
+            {{!project edit}}.
         """
         await self.bot.say("{}".format(get_group_help(ctx)))
 
