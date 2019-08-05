@@ -1,6 +1,9 @@
 ---
+category: 2.2
+version: v2.2b3
+subcategory: Automation
 title: "Welcome"
-last_updated: 02 August 2019
+last_updated: 05 August 2019
 summary: "Welcomes new users to the server and logs users joining/leaving."
 ---
 

@@ -1,6 +1,9 @@
 ---
+category: 2.2
+version: v2.2b3
+subcategory: Commands
 title: "RoleManager"
-last_updated: 02 August 2019
+last_updated: 05 August 2019
 summary: "Allows the creation of commands that allow users to join and leave specific roles on"
 ---
 

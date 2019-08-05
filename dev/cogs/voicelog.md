@@ -1,6 +1,9 @@
 ---
+category: 2.2
+version: v2.2b3
+subcategory: Automation
 title: "VoiceLog"
-last_updated: 02 August 2019
+last_updated: 05 August 2019
 summary: "Voice chat support features. No commands."
 ---
 
@@ -18,7 +21,7 @@ This cog has no commands. It is fully configured in the config.json file (see
 
 This feature replicates the join/part logging available in TeamSpeak, mumble and similar,
 mainly to avoid the "wait, who joined?" and "who'd we lose?" conversations while in voice
-chat on Discord. TestKaz will log voice join and parts in the associated text channel like
+chat on Discord. KazTronQA will log voice join and parts in the associated text channel like
 this:
 
 ```

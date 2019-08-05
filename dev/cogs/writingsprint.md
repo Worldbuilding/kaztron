@@ -1,6 +1,9 @@
 ---
+category: 2.2
+version: v2.2b3
+subcategory: Commands
 title: "WritingSprint"
-last_updated: 02 August 2019
+last_updated: 05 August 2019
 summary: "Hold writing sprints, where a group of writers get together to work on their writing projects for a fixed amount of time and compete on word count."
 ---
 

@@ -1,6 +1,9 @@
 ---
+category: 2.2
+version: v2.2b3
+subcategory: Moderator
 title: "ModTools"
-last_updated: 02 August 2019
+last_updated: 05 August 2019
 summary: "Miscellaneous tools for moderators."
 ---
 

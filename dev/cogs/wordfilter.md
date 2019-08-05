@@ -1,6 +1,9 @@
 ---
+category: 2.2
+version: v2.2b3
+subcategory: Moderator
 title: "WordFilter"
-last_updated: 02 August 2019
+last_updated: 05 August 2019
 summary: "Watch for words or expressions in user messages, and either warn moderators or auto-delete messages on detection."
 ---
 
