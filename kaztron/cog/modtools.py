@@ -46,7 +46,7 @@ class ModToolsConfig(SectionView):
 
 class ModTools(KazCog):
     """!kazhelp
-
+    category: Moderator
     brief: Miscellaneous tools for moderators.
     description: |
         Various tools for moderators to help them in their day-to-day! Some commands are
@@ -56,6 +56,7 @@ class ModTools(KazCog):
         hence. Use {{!tempban}} in order to immediately apply and enforce a new tempban. (Using
         {{!notes add}} to add a "temp" record will not enforce it until the next hourly check.)
     contents:
+        - report
         - up
         - down
         - tempban
@@ -293,49 +294,64 @@ class ModTools(KazCog):
               description: Find a user whose name matches JaneDoe, or if not found, a user whose
                 name or nickname contains JaneDoe.
         """
-        match_user = self._whois_match(ctx, user)
-        search_users = self._whois_search(ctx, user)
+
+        # execute searches
+        match_user = self._whois_match(ctx, user)  # exact match
+        search_users = self._whois_search(ctx, user)  # partial match
         st = user[:Limits.NAME]
-        if self.cog_modnotes:
+        if self.cog_modnotes:  # search modnotes
             notes_users = self.notes.search_users(st)
-            notes_map = {self.server.get_member(u.discord_id): u for u in notes_users}
+            notes_map = {}
+            notes_orphans = []
+            for u in notes_users:
+                member = self.server.get_member(u.discord_id)
+                if member is not None:
+                    notes_map[member] = u
+                else:
+                    notes_orphans.append(u)
             title_fmt = 'whois {} (with modnotes)'
             field_name = 'Partial and usernote matches'
         else:
             notes_map = {}
+            notes_orphans = []
             title_fmt = 'whois {} (NO MODNOTES)'
             field_name = 'Partial matches'
 
-        members = list(set(search_users) | set(notes_map.keys()))
+        # prepare the results listing (str_data)
+        members = list(set(search_users) | set(notes_map.keys()) - {None})
         str_data = []
         for m in members:
-            try:
+            try:  # prioritise modnote results
                 u = notes_map[m]
                 str_data.append(self._whois_notes_info(m, u, st))
-            except KeyError:
-                str_data.append(self._whois_info(m))
+            except KeyError:  # if no modnote result, show the userlist result
+                str_data.append(self._whois_info(m, await self._whois_find_notes_id(m)))
+        for u in notes_orphans:
+            str_data.append(self._whois_notes_info(None, u, st))
         str_data.sort(key=lambda t: t[0])
 
-        # prepare output embed
-        es = EmbedSplitter(
-            title=title_fmt.format(user),
-            timestamp=datetime.utcnow(),
-            auto_truncate=True,
-            repeat_header=False
-        )
+        # prepare output
+        out = ["**" + title_fmt.format(user) + "**"]
         if match_user:
-            es.add_field(name="Exact match", value=self._whois_info(match_user)[1])
+            out.append("")
+            out.append("**Exact match**")
+            out.append(self._whois_info(match_user, await self._whois_find_notes_id(match_user))[1])
         if str_data:
-            es.add_field(
-                name=field_name,
-                value='\n'.join(t[1] for t in str_data[:50])
-            )
+            out.append("")
+            out.append("**{}**".format(field_name))
+            for t in str_data[:50]:
+                out.append("→ " + t[1])
+            out.append("")
+
             if len(str_data) > 50:
-                es.set_footer(text="{:d}/{:d} results (too many matches)"
-                    .format(50, len(search_users)))
+                out.append("_{:d}/{:d} results (too many matches)_".format(50, len(search_users)))
             else:
-                es.set_footer(text="{:d} results".format(len(search_users)))
-        await self.send_message(ctx.message.channel, embed=es)
+                out.append("_{:d} results_".format(len(str_data) + (1 if match_user else 0)))
+
+        if len(out) == 1:
+            out.append("No results")
+
+        await self.send_message(ctx.message.channel, "\n".join(out), split='line')
 
     @staticmethod
     def _whois_match(ctx, user: str) -> Optional[Member]:
@@ -360,16 +376,30 @@ class ModTools(KazCog):
         return members
 
     @staticmethod
-    def _whois_info(member: discord.Member):
+    def _whois_info(member: discord.Member, notes_id: int=None):
         key = member.nick if member.nick else member.name
-        info = "{0.mention} (`{0!s}` - nick: `{0.nick}` - id: `{0.id}`)".format(member)
+        if notes_id is not None:
+            info = "{0.mention} (`{0!s}` - nick: `{0.nick}` - notes `*{1}` - id: `{0.id}`)"\
+                .format(member, notes_id)
+        else:
+            info = "{0.mention} (`{0!s}` - nick: `{0.nick}` - id: `{0.id}`)".format(member)
         return key.lower(), info
 
-    def _whois_notes_info(self, member: discord.Member, user: model.User, search_term: str):
+    async def _whois_find_notes_id(self, member: discord.Member):
+        if self.cog_modnotes:
+            db_user = await self.notes.query_user(self.bot, member.id)
+            return db_user.user_id
+        else:
+            return None
+
+    def _whois_notes_info(self,
+                          member: Optional[discord.Member],
+                          user: model.User,
+                          search_term: str):
         matched_alias = self._find_match_field(user, search_term)
-        info = ("{0.mention} (matched {2}: {3} - kazID `*{1.user_id}` - canonical name {1.name} - "
+        info = ("{0} (matched {2}: `{3}` - notes `*{1.user_id}` - canonical name `{1.name}` - "
                 "id: `{1.discord_id}`)").format(
-            member, user,
+            member.mention if member else '`{}`'.format(user.name), user,
             'alias' if matched_alias else 'canonical name',
             matched_alias.name if matched_alias else user.name
         )

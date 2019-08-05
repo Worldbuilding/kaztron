@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class CheckInManager(KazCog):
     """!kazhelp
+    category: Commands
     brief: Manage check-ins for Inkblood's BLOTS programme.
     description: |
         This module allows {{name}} to manage user check-ins for Inkblood's BLOTS programme, and
@@ -39,6 +40,7 @@ class CheckInManager(KazCog):
             - type
             - list
             - report
+            - delta
             - query
             - exempt
         - milestone:

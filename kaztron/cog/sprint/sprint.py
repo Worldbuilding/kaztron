@@ -38,6 +38,7 @@ def format_seconds(seconds: float, timespec='seconds'):
 
 class WritingSprint(KazCog):
     """!kazhelp
+    category: Commands
     brief: Hold writing sprints, where a group of writers get together to work on their writing
         projects for a fixed amount of time and compete on word count.
     contents:
@@ -813,7 +814,7 @@ class WritingSprint(KazCog):
 
     @sprint.command(pass_context=True, ignore_extra=False, no_pm=True, aliases=['wc', 'c'])
     @in_channels_cfg('sprint', 'channel')
-    async def wordcount(self, ctx, count: int):
+    async def wordcount(self, ctx, wordcount: int):
         """!kazhelp
         description:
             Report your wordcount at the end of a sprint.
@@ -831,6 +832,9 @@ class WritingSprint(KazCog):
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
 
+        if wordcount < 0:
+            raise commands.BadArgument("wordcount must be a nonnegative integer.")
+
         user = ctx.message.author
 
         if user.id not in self.sprint_data.start:
@@ -839,9 +843,9 @@ class WritingSprint(KazCog):
             return
 
         if state is SprintState.PREPARE:
-            await self.update_initial_wordcount(user, count)
+            await self.update_initial_wordcount(user, wordcount)
         elif state is SprintState.SPRINT or state is SprintState.COLLECT_RESULTS:
-            await self.update_final_wordcount(user, count)
+            await self.update_final_wordcount(user, wordcount)
 
     @sprint.command(pass_context=True, ignore_extra=False)
     @in_channels_cfg('sprint', 'channel', allow_pm=True)

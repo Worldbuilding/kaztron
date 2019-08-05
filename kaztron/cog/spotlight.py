@@ -1,3 +1,4 @@
+import asyncio
 import random
 import re
 import time
@@ -213,7 +214,7 @@ class SpotlightApp:
 
 class Spotlight(KazCog):
     """!kazhelp
-
+    category: Commands
     brief: |
         Management of the {{spotlight_name}} community feature: applications, upcoming, reminders
         and timing.
@@ -756,8 +757,9 @@ class Spotlight(KazCog):
                 # don't convert this to _get_app - don't want the error msgs from that
                 app = self.applications[app_index]
             except IndexError:
+                # app_str for non-showcase, app's data for showcase format
                 app_str = self.UNKNOWN_APP_STR
-                app = SpotlightApp([], self.bot)
+                app = SpotlightApp(["", "Unknown", "", "", app_str], self.bot)
             else:
                 app_str = app.discord_str()
 
@@ -1160,12 +1162,18 @@ class Spotlight(KazCog):
             return None
 
     def _schedule_upcoming_reminder(self):
+        async def inner():
+            logger.debug("Waiting on task_upcoming_reminder to finish cancelling...")
+            await self.scheduler.wait_all(self.task_upcoming_reminder)
+            logger.debug("Done, scheduling next reminder...")
+            queue_item = self._get_next_reminder()
+            if queue_item is not None:
+                start_time = datetime.utcfromtimestamp(queue_item['start'])
+                reminder_time = start_time - self.queue_reminder_offset
+                self.scheduler.schedule_task_at(self.task_upcoming_reminder, reminder_time)
+
         self.scheduler.cancel_all(self.task_upcoming_reminder)
-        queue_item = self._get_next_reminder()
-        if queue_item is not None:
-            start_time = datetime.utcfromtimestamp(queue_item['start'])
-            reminder_time = start_time - self.queue_reminder_offset
-            self.scheduler.schedule_task_at(self.task_upcoming_reminder, reminder_time)
+        asyncio.get_event_loop().create_task(inner())
 
     @task(is_unique=True)
     async def task_upcoming_reminder(self):
@@ -1206,7 +1214,7 @@ class Spotlight(KazCog):
         try:
             return get_members_with_role(self.server, host_role)[0]
         except IndexError:
-            logger.warning("reminder: Cannot find user with host role!")
+            logger.warning("Cannot find user with host role!")
             return None
 
     @spotlight.command(ignore_extra=False, pass_context=True)
@@ -1228,21 +1236,25 @@ class Spotlight(KazCog):
                                           "Use `.spotlight stop` to end it early.")
 
         host = self.get_host()
-        host_mention = host.mention if host else "<Error: Cannot find host>"
+        host_mention = host.mention if host is not None else "<Error: Cannot find host>"
         audience_mention = get_named_role(self.server, self.role_audience_name).mention
         mod_mention = get_named_role(self.server, self.role_mods_name).mention \
             if self.role_mods_name else ""
         duration_s = format_timedelta(timedelta(seconds=self.duration), timespec="minutes")
 
-        msg = ("**{1}'s {0} is now starting!** It will last {3}. " 
-               "The host can use `.spotlight stop` to end it early. {2}").format(
-            self.feature_name, host_mention, audience_mention, duration_s
-        )
-        await self.bot.send_message(self.channel_spotlight, msg)
-        await self.send_output("{3} **{1}'s {0} has started.**"
-            .format(self.feature_name, host_mention, audience_mention, mod_mention))
+        if host:
+            msg = ("**{1}'s {0} is now starting!** It will last {3}. " 
+                   "The host can use `.spotlight stop` to end it early. {2}").format(
+                self.feature_name, host_mention, audience_mention, duration_s
+            )
+            await self.bot.send_message(self.channel_spotlight, msg)
+            await self.send_output("{3} **{1}'s {0} has started.**"
+                .format(self.feature_name, host_mention, audience_mention, mod_mention))
 
-        self._start_spotlight()
+            self._start_spotlight()
+        else:
+            await self.send_output("{0} **Error** Cannot start spotlight: cannot find host!"
+                .format(mod_mention))
 
         try:
             await self.bot.delete_message(ctx.message)
@@ -1361,10 +1373,11 @@ class Spotlight(KazCog):
         await self.bot.send_message(self.channel_spotlight, msg)
         await self.send_output(log_msg)
 
-        logger.info("Removing host role from {}".format(host.nick if host.nick else host.name))
+        logger.info("Removing host role")
         host_role = get_named_role(self.server, self.role_host_name)
         try:
-            await self.bot.remove_roles(host, host_role)
+            for m in get_members_with_role(self.server, host_role):
+                await self.bot.remove_roles(m, host_role)
         except discord.HTTPException as e:
             logger.exception("While trying to remove host role, an exception occurred")
             await self.send_output("While trying to remove spotlight host role, "

@@ -4,7 +4,7 @@ from datetime import datetime
 import inspect
 import logging
 import re
-from textwrap import shorten, indent, wrap
+from textwrap import shorten, indent
 from typing import Union, Callable, Dict
 
 import discord
@@ -13,6 +13,7 @@ from ruamel.yaml import YAML, YAMLError
 
 from discord.ext import commands
 
+from kaztron.config import get_kaztron_config, SectionView
 from kaztron.utils.checks import CheckId
 from kaztron.utils.discord import get_named_role, get_command_prefix
 from kaztron.utils.logging import exc_log_str
@@ -37,6 +38,9 @@ class CoreHelpParser:
     description field of the commands. It must begin by the string '!kazhelp', followed by YAML-
     formatted data containing the following fields:
 
+    category: Optional. The category this cog belongs to, which may be used by a Jekyll website to
+        sort the documentation site's navigation. Default is "Commands". While this field is free-
+        form, suggested values are "Commands" and "Moderator". COG DOCS ONLY.
     description: String describing what the command does. Should start with an imperative verb.
         This is shown in the full help output for the command, BEFORE the usage/arguments.
         Should be kept reasonable brief (one sentence to one paragraph).
@@ -115,7 +119,7 @@ class CoreHelpParser:
         - command:
           description:
     """
-    cog_fields = {'description', 'jekyll_description', 'brief', 'details',
+    cog_fields = {'category', 'description', 'jekyll_description', 'brief', 'details',
                   'parameters', 'examples', 'users', 'channels', 'contents'}
     cmd_fields = {'description', 'jekyll_description', 'brief', 'details',
                   'parameters', 'examples', 'users', 'channels'}
@@ -231,6 +235,7 @@ class CoreHelpParser:
             fields = self.cmd_fields
         else:  # cog
             parsed_data['contents'] = []
+            parsed_data['category'] = 'Commands'
             fields = self.cog_fields
 
         # parse the help YAML
@@ -517,13 +522,30 @@ class DiscordHelpFormatter(commands.HelpFormatter):
         )
 
 
+class HelpSectionView(SectionView):
+    """
+    Configuration for the "help" section, for help formatting both in-bot and Jekyll export.
+
+    * jekyll_release_field: front matter variable for the "release" data (usually major+minor
+      version). Can be used to categorise the docs for different versions of the bot. Default is
+      "release".
+    * jekyll_version_field: front matter variable for the "version" data (full version info).
+      Default "version".
+    * jekyll_category_field: front matter variable for the cog-defined "category" field, which can
+      be used to categorise cogs in the manual. Default "category".
+    """
+    jekyll_release_field: str
+    jekyll_version_field: str
+    jekyll_category_field: str
+
+
 class JekyllHelpFormatter:
     """
     Handles formatting of the help documentation in a markdown format compatible with Jekyll.
     This class is meant to be used "on-line" (i.e. with the bot connected to Discord) in order to
     be able to resolve live information such as allowed channels.
     """
-    slugify_re = re.compile('[^A-Za-z0-9\-]')
+    slugify_re = re.compile('[^A-Za-z0-9-]')
 
     def __init__(self, parser: CoreHelpParser, bot: commands.Bot):
         self.parser = parser
@@ -533,6 +555,10 @@ class JekyllHelpFormatter:
         self.cog = None  # type: KazCog
         self.section = []
         self.context = None  # type: commands.Context
+
+        config = get_kaztron_config()
+        config.set_section_view('help', HelpSectionView)
+        self.config: HelpSectionView = config.help
 
     def format(self, cog: KazCog, context: commands.Context) -> str:
         self.cog = cog
@@ -562,8 +588,16 @@ class JekyllHelpFormatter:
         return ret_val
 
     def _format_front_matter(self, data: dict):
+        import kaztron
+
         parts = []
         parts.append('---')
+        parts.append('{field}: {rel}'.format(
+            field=self.config.jekyll_release_field, rel=kaztron.__release__))
+        parts.append('{field}: v{version}'.format(
+            field=self.config.jekyll_version_field, version=kaztron.__version__))
+        parts.append('{field}: {category}'.format(
+            field=self.config.jekyll_category_field, category=data['category']))
         parts.append('title: "{title}"'.format(title=type(self.cog).__name__))
         parts.append('last_updated: {date}'.format(date=datetime.now().strftime('%d %B %Y')))
         if data['brief']:

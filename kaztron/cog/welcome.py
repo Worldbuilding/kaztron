@@ -17,6 +17,7 @@ class WelcomeConfig(SectionView):
 
 class Welcome(KazCog):
     """!kazhelp
+    category: Automation
     brief: Welcomes new users to the server and logs users joining/leaving.
     description: |
         The Welcome cog welcomes new users to the server in the {{welcome_channel}} channel. This

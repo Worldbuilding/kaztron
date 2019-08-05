@@ -3,7 +3,8 @@ from collections import OrderedDict
 from .kazcog import KazCog
 from .scheduler import Scheduler, TaskInstance, task
 
-__version__ = "2.2b2"
+__release__ = "2.2"  # release stream, usually major.minor only
+__version__ = "2.2b3"
 
 bot_info = {
     "version": __version__,
@@ -33,6 +34,11 @@ cfg_defaults = {
         "date_format": "%Y-%m-%d",
         "datetime_format": "%Y-%m-%d %H:%M",
         "datetime_seconds_format": "%Y-%m-%d %H:%M:%S"
+    },
+    "help": {
+        "jekyll_release_field": "release",
+        "jekyll_version_field": "version",
+        "jekyll_category_field": "category"
     },
     "logging": {
         "level": "INFO",

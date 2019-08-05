@@ -31,6 +31,7 @@ class WordFilterState(SectionView):
 
 class WordFilter(KazCog):
     """!kazhelp
+    category: Moderator
     brief: "Watch for words or expressions in user messages, and either warn moderators or
         auto-delete messages on detection."
     description: "Watch for words or expressions in user messages, and either warn moderators or

@@ -14,7 +14,7 @@ from kaztron.theme import solarized
 from kaztron.utils.checks import mod_channels, mod_only
 from kaztron.utils.converter import MemberConverter2
 from kaztron.utils.datetime import format_datetime
-from kaztron.utils.discord import check_mod, user_mention, Limits
+from kaztron.utils.discord import check_mod, user_mention, Limits, get_command_prefix
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import split_chunks_on
@@ -24,15 +24,31 @@ logger = logging.getLogger(__name__)
 
 class BadgeManager(KazCog):
     """!kazhelp
+    category: Commands
     brief: Give users badges for community contributions. Part of Inkblood Writing Guild BLOTS.
     description: |
         BadgeManager lets users give each other badges for contribution to each others' projects
         and to the community.
 
-        Badges can be given in the {{badge_channel}} channel. Check the pins in this channel for
-        instructions. {{name}} will detect all messages in this channel and let you know when it
-        detects that you've given a badge. **Check the {{name}} response to make sure your badge
-        registered properly.**
+        Badges can be given in the {{badge_channel}} channel. {{name}} will detect all messages in
+        this channel and let you know when it detects that you've given a badge. **Check the
+        {{name}} response to make sure your badge registered properly.**
+
+        The badge format is:
+
+        ```
+        To: @user
+        For: :badgeEmoji: Description of badge
+        ```
+
+        in *one single message*, where
+
+        * `@user` is a **mention** of the user you want to give the badge to.
+        * `:badgeEmoji:` is one of the badge emoji, currently consisting of the Guild, Writing,
+          Worldbuilding, Idea, Critique, Art, Resource or Community emoji.
+        * `Description of badge` is a textual description of why you're giving the badge.
+
+        You may also use bold, italic or underline formatting around the `To:` and `For:` fields.
 
         You can also edit or delete your old message, and {{name}} will detect the change and update
         its badge list accordingly.
@@ -64,6 +80,19 @@ class BadgeManager(KazCog):
 
     async def add_badge(self, message: discord.Message, suppress_errors=False) \
             -> Optional[model.Badge]:
+
+        # Check if this seems like a command (usually badge commands for the badge channel)
+        class FakeContext:
+            def __init__(self, bot, msg):
+                self.bot = bot
+                self.message = msg
+        # noinspection PyTypeChecker
+        prefix = get_command_prefix(FakeContext(self.bot, message))
+        msg_init = message.content.strip()
+        if msg_init.startswith(prefix) and\
+                (len(msg_init) == len(prefix) or not msg_init[len(prefix)].isspace()):
+            logger.warning("Skipping badge parsing: message appears to be a command.")
+            return
 
         # Parsing
         badges = [b for b in model.BadgeType if b.pattern.search(message.content)]
@@ -206,7 +235,8 @@ class BadgeManager(KazCog):
             Check a user's badges.
 
             TIP: If you want to give a badge, leave a properly formatted message in
-            {{badge_channel}}. See {{%BadgeManager}} or `.help BadgeManager` for more information.
+            {{badge_channel}}. See the top of the {{%BadgeManager}} page (web manual) or
+            `.help BadgeManager` (in-bot help) for more information.
         parameters:
             - name: user
               type: "@mention"
@@ -217,9 +247,9 @@ class BadgeManager(KazCog):
               description: The page number to access, if a user has more than 1 page of badges.
               default: last page (most recent)
         examples:
-            - command: .badge @JaneDoe
+            - command: .badges @JaneDoe
               description: List all of JaneDoe's badges (most recent, if there are multiple pages).
-            - command: .checkin badge @JaneDoe 4
+            - command: .badges @JaneDoe 4
               description: List the 4th page of JaneDoe's badges.
         """
         user = user  # type: discord.Member  # for IDE type checking

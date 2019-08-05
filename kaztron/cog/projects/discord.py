@@ -84,7 +84,8 @@ async def update_user_roles(bot: discord.Client, server: discord.Server, users: 
         member = server.get_member(u.discord_id)
         desired_roles = set()
         for taxon in {u.genre, u.type} - {None}:
-            desired_roles.add(get_role(server, taxon.role_id))
+            if taxon.role_id is not None:
+                desired_roles.add(get_role(server, taxon.role_id))
         new_roles = (set(member.roles) - project_roles) | desired_roles
         await bot.replace_roles(member, *new_roles)
 
