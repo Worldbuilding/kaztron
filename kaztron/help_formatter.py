@@ -534,7 +534,8 @@ class HelpSectionView(SectionView):
     * jekyll_category_field: front matter variable for the cog-defined "category" field, which can
       be used to categorise cogs in the manual. Default "category".
     """
-    jekyll_release_field: str
+    jekyll_manual_title_field: str
+    jekyll_manual_id_field: str
     jekyll_version_field: str
     jekyll_category_field: str
 
@@ -559,6 +560,7 @@ class JekyllHelpFormatter:
         config = get_kaztron_config()
         config.set_section_view('help', HelpSectionView)
         self.config: HelpSectionView = config.help
+        self.name = config.core.name
 
     def format(self, cog: KazCog, context: commands.Context) -> str:
         self.cog = cog
@@ -592,9 +594,13 @@ class JekyllHelpFormatter:
 
         parts = []
         parts.append('---')
-        parts.append('{field}: {rel}'.format(
-            field=self.config.jekyll_release_field, rel=kaztron.__release__))
-        parts.append('{field}: v{version}'.format(
+        parts.append('{field}: {name}-{version}-manual'.format(
+            field=self.config.jekyll_manual_id_field,
+            name=self._slugify(self.name.lower()),
+            version=kaztron.__version__))
+        parts.append('{field}: {name} Manual'.format(
+            field=self.config.jekyll_manual_title_field, name=self.name))
+        parts.append('{field}: {version}'.format(
             field=self.config.jekyll_version_field, version=kaztron.__version__))
         parts.append('{field}: {category}'.format(
             field=self.config.jekyll_category_field, category=data['category']))
