@@ -5,7 +5,6 @@ from discord.ext import commands
 
 from kaztron import errors, KazCog
 from kaztron.config import SectionView
-from kaztron.utils.checks import in_channels
 from kaztron.utils.discord import channel_mention
 from kaztron.utils.logging import message_log_str
 
@@ -27,11 +26,6 @@ class Dice(KazCog):
         - rollf
     """
     cog_config: DiceConfig
-    ch_allowed_list = (
-        KazCog.config.dice.channel_dice,
-        KazCog.config.discord.channel_test,
-        KazCog.config.discord.channel_output
-    )
     MAX_CHOICES = 20
 
     def __init__(self, bot):
@@ -45,8 +39,7 @@ class Dice(KazCog):
         await super().on_ready()
         self.ch_dice = self.cog_config.channel_dice
 
-    @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
-    @in_channels(ch_allowed_list)
+    @commands.command(pass_context=True, ignore_extra=False, no_pm=False, aliases=['rolls'])
     async def roll(self, ctx, dice: str):
         """!kazhelp
 
@@ -86,8 +79,7 @@ class Dice(KazCog):
             logger.info("Rolled dice: {:d}d{:d} = {!r} (sum={})"
                         .format(num_rolls, num_sides, result, total))
 
-    @commands.command(pass_context=True, ignore_extra=False)
-    @in_channels(ch_allowed_list)
+    @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
     async def rollf(self, ctx):
         """!kazhelp
         description: Rolls four dice for the FATE tabletop roleplaying game system.
