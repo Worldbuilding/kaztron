@@ -202,6 +202,12 @@ class CoreCog(kaztron.KazCog):
             logger.warning("Couldn't extract channel context from previous error - "
                            "is args[0] not a message?")
 
+    bad_argument_map = {
+        'Converting to "int" failed.': 'Argument(s) must be a whole number (0, 1, 2, -1, etc.).',
+        'Converting to "float" failed.': 'Argument(s) must be a whole or decimal number '
+                                         '(0, 1, 2, 3.14, -2.71, etc.)'
+    }
+
     async def on_command_error(self, exc, ctx, force=False):
         """
         Handles all command errors (see the ``discord.ext.commands.errors`` module).
@@ -323,6 +329,11 @@ class CoreCog(kaztron.KazCog):
             exc_msg = exc.args[0] if len(exc.args) > 0 else '(No error message).'
             msg = "Bad argument passed in command: {}\n{}".format(cmd_string, exc_msg)
             logger.warning(msg)
+
+            # do some user-friendliness message remapping
+            exc_msg = self.bad_argument_map[exc_msg]\
+                            if exc_msg in self.bad_argument_map else exc_msg
+
             await self.bot.send_message(ctx.message.channel, author_mention +
                 ("Invalid argument(s): {}\n\n**Usage:** `{}`\n\n"
                  "Use `{}` for help.")
