@@ -1050,11 +1050,12 @@ class WritingSprint(KazCog):
             raise ModOnlyError("Only moderators can reset stats.")
 
         if member == 'global':
-            logger.info("Clearing global stats...")
+            logger.info("Clearing overall global stats...")
             stats = self.load_stats()
             stats.clear_overall()
             self.save_stats(stats)
 
+            logger.info("Clearing weekly global stats...")
             now = datetime.utcnow()
             w_stats = self.load_weekly_stats(now)
             w_stats.clear_overall()
@@ -1065,11 +1066,12 @@ class WritingSprint(KazCog):
             self.save_stats(SprintUserStats())
             await self.bot.say("Cleared all stats.")
         else:
-            logger.info("Clearing stats for {}...".format(member.nick or member.name))
+            logger.info("Clearing overall stats for {}...".format(member.nick or member.name))
             stats = self.load_stats()
             stats.clear_user(member)
             self.save_stats(stats)
 
+            logger.info("Clearing weekly stats for {}...".format(member.nick or member.name))
             now = datetime.utcnow()
             w_stats = self.load_weekly_stats(now)
             w_stats.clear_user(member)
