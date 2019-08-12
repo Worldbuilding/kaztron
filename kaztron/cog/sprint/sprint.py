@@ -1053,7 +1053,7 @@ class WritingSprint(KazCog):
         elif user is None:
             member = ctx.message.author
         else:
-            raise commands.BadArgument("Invalid user argument")
+            raise commands.BadArgument("Invalid user format")
 
         if not check_mod(ctx) and not member == ctx.message.author:
             raise ModOnlyError("Only moderators can reset stats.")

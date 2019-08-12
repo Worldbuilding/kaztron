@@ -42,7 +42,7 @@ class CoreHelpParser:
         sort the documentation site's navigation. Default is "Commands". While this field is free-
         form, suggested values are "Commands" and "Moderator". COG DOCS ONLY.
     description: String describing what the command does. Should start with an imperative verb.
-        This is shown in the full help output for the command, BEFORE the usage/arguments.
+        This is shown in the full help output for the command, BEFORE the usage/parameters.
         Should be kept reasonable brief (one sentence to one paragraph).
     brief: Optional. Brief help, shown in command listings. If not specified, the first line of
         description is used.
@@ -450,7 +450,7 @@ class DiscordHelpFormatter(commands.HelpFormatter):
     def _build_detailed_info(self, data: dict):
         sections = []
         if data['parameters']:
-            sections.append(self._make_title("ARGUMENTS"))
+            sections.append(self._make_title("PARAMETERS"))
             sections.append(self._build_parameters(data))
         if data['details'] or data['users'] or data['channels']:
             sections.append(self._make_title("DETAILS"))
@@ -704,7 +704,7 @@ class JekyllHelpFormatter:
     def _build_detailed_info(self, data: dict):
         sections = []
         if data['parameters']:
-            sections.append(self._make_header("Arguments"))
+            sections.append(self._make_header("Parameters"))
             sections.append(self._build_parameters(data))
         if data['details'] or data['users'] or data['channels']:
             sections.append(self._make_header("Details"))

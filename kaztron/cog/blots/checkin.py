@@ -220,7 +220,7 @@ class CheckInManager(KazCog):
         description: |
             Check or set project type for check-ins.
 
-            If no argument is provided, checks your project type. If an argument is provided, sets
+            If no parameter is provided, checks your project type. If a parameter is provided, sets
             the project type to the specified value.
 
             This command determines the unit for the word_count you enter when you check in. If your

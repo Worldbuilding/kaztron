@@ -64,13 +64,13 @@ class Dice(KazCog):
             return
 
         if num_rolls <= 0:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("You have to roll at least 1 die.")
         elif num_sides <= 1:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("Dice must have at least 2 sides.")
         elif num_sides > 100 or num_rolls > 100:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("The limit for dice number and sides is 100 each.")
         else:
             result = [random.randint(1, num_sides) for _ in range(num_rolls)]
@@ -109,13 +109,13 @@ class Dice(KazCog):
         """
         choices = list(map(str.strip, choices.split(",")))
         if "" in choices:
-            logger.warning("choose(): argument empty")
+            logger.warning("argument empty")
             await self.bot.say("I cannot decide if there's an empty choice.")
         elif len(choices) < 2:
-            logger.warning("choose(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("I need something to choose from.")
         elif len(choices) > self.MAX_CHOICES:
-            logger.warning("choose(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("I don't know, that's too much to choose from! "
                 "I can't handle more than {:d} choices!".format(self.MAX_CHOICES))
         else:
