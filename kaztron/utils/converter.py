@@ -84,7 +84,9 @@ class NaturalInteger(commands.Converter):
 
     NOTE: The spaces convention may not be very useful, as with most command arguments, the space is
     used to separate arguments. These numbers would need to be enclosed in quotes by the user, or
-    input as the final keyword argument to the command, or manually parsed.
+    input as the final KEYWORD argument to the command, or manually parsed.
+
+    NOTE: Other conventions, such as those that group by 4 digits, are currently not supported.
 
     There is naturally an ambiguity when it comes to decimal numbers, as the first 2 locales use
     each other's thousands separators. In the case that only one thousand separator is present, this

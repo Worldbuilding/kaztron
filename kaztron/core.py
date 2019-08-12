@@ -204,6 +204,8 @@ class CoreCog(kaztron.KazCog):
 
     bad_argument_map = {
         'Converting to "int" failed.': 'Argument(s) must be a whole number (0, 1, 2, -1, etc.).',
+        'Converting to "NaturalInteger" failed.':
+                    'Argument(s) must be a whole number (0, 1, 2, -1, etc.).',
         'Converting to "float" failed.': 'Argument(s) must be a whole or decimal number '
                                          '(0, 1, 2, 3.14, -2.71, etc.)'
     }

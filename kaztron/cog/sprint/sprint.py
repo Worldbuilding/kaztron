@@ -59,6 +59,9 @@ class WritingSprint(KazCog):
 
     INLINE = True  # makes DISP_EMBEDS prettier
     MAX_LEADERS = 5
+    WORDCOUNT_MIN = 0
+    WORDCOUNT_MAX = 100000000
+    MAX_WPM = 200
 
     DISP_COLORS = {
         SprintState.PREPARE: solarized.cyan,
@@ -638,11 +641,9 @@ class WritingSprint(KazCog):
             raise commands.BadArgument("The duration must be between {:.1f} and {:.1f} minutes"
                 .format(self.duration_min/60, self.duration_max/60))
 
-        if delay_s > self.delay_max:
-            raise commands.BadArgument("The delay can't be longer than {:.1f} minutes"
-                .format(self.delay_max/60))
-        elif delay_s < self.delay_min:
-            delay_s = self.delay_min
+        if delay_s < self.delay_min or delay_s > self.delay_max:
+            raise commands.BadArgument("The delay must be between {:.1f} and {:.1f} minutes"
+                .format(self.delay_min/60, self.delay_max/60))
 
         logger.info("Creating new sprint: {0:.2f} minutes starting in {1:.2f} minutes..."
             .format(duration, delay))
@@ -741,15 +742,17 @@ class WritingSprint(KazCog):
             - command: .w j 12044
               description: Join the sprint with an initial wordcount of 12,044 words.
         """
-        wordcount = wordcount  # type: int
+
         state = self.get_state()
         if state is SprintState.IDLE:
             raise SprintNotRunningError()
         elif state is SprintState.COLLECT_RESULTS:
             raise SprintRunningError()
 
-        if wordcount < 0:
-            raise commands.BadArgument("wordcount must be a nonnegative integer.")
+        wordcount = wordcount  # type: int
+        if wordcount < self.WORDCOUNT_MIN or wordcount > self.WORDCOUNT_MAX:
+            raise commands.BadArgument("wordcount must be between {:d} and {:d}."
+                .format(self.WORDCOUNT_MIN, self.WORDCOUNT_MAX))
 
         user = ctx.message.author
 
@@ -833,7 +836,7 @@ class WritingSprint(KazCog):
             raise SprintNotRunningError()
 
         if wordcount < 0:
-            raise commands.BadArgument("wordcount must be a nonnegative integer.")
+            raise commands.BadArgument("wordcount can't be negative.")
 
         user = ctx.message.author
 
@@ -841,6 +844,11 @@ class WritingSprint(KazCog):
             logger.warning("Cannot set wordcount: user {} not in sprint".format(user.name))
             await self.bot.say(self.DISP_STRINGS['wordcount_error'].format(mention=user.mention))
             return
+
+        max_sprint_delta = self.MAX_WPM * self.sprint_data.duration / 60
+        if abs(wordcount - self.sprint_data.start[user.id]) > max_sprint_delta:
+            raise commands.UserInputError("Whoops, that seems too fast! "
+                                          "Did you mistype your wordcount?")
 
         if state is SprintState.PREPARE:
             await self.update_initial_wordcount(user, wordcount)
