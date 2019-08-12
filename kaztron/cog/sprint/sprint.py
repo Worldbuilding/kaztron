@@ -387,7 +387,8 @@ class WritingSprint(KazCog):
         """
         await self._reset_sprint_tasks()
 
-        old_participants = self._format_wordcount_list(self.sprint_data.start)
+        founder = self.sprint_data.founder
+        participants_strlist = self._format_wordcount_list(self.sprint_data.start)
         self.set_state(SprintState.IDLE)
         self.sprint_data = SprintData()
         self._save_sprint()
@@ -395,10 +396,10 @@ class WritingSprint(KazCog):
         self._update_roles()
         await self._display_embed(
             self.channel, self.DISP_EMBEDS['stop'],
-            founder=self.sprint_data.founder.mention if self.sprint_data.founder else "None",
+            founder=founder.mention if founder else "None",
             notif=self.role_sprint_mention,
             msg=msg if msg else "",
-            participants='\n'.join(old_participants)
+            participants='\n'.join(participants_strlist)
         )
 
         await remove_role_from_all(self.bot, self.channel.server, self.role_sprint)
