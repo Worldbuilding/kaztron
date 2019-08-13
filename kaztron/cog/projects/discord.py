@@ -55,7 +55,7 @@ def get_project_embed(project: m.Project, user_info=True, desc=True) -> discord.
 
 def get_role(server: discord.Server, role_arg: str) -> discord.Role:
     """
-    Get a role from a passed argument (name, mention or ID).
+    Get a role from a passed command parameter (name, mention or ID).
     :return:
     """
     try:

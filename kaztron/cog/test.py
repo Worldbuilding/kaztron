@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class TestCog(KazCog):
+
     @commands.command(pass_context=True)
     async def embedsplitter(self, ctx):
         es = EmbedSplitter(auto_truncate=True, title="asdfjkl ", description="short and stout ")

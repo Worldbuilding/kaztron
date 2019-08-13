@@ -404,7 +404,7 @@ class ProjectsManager(KazCog):
             - name: search
               type: string with keywords ("genre", "type", "title")
               description: What to search. Text entered here will search the body text (that is,
-                title + elevator pitch + description). You can include keyword arguments ("genre",
+                title + elevator pitch + description). You can include keyword parameters ("genre",
                 "type" and "title") at the **beginning** of the search string (see examples).
             - name: genre (keyword)
               type: string
@@ -953,7 +953,7 @@ class ProjectsManager(KazCog):
         examples:
             - command: .project admin genre edit Fantasy "High Fantasy"
               description: Rename the Fantasy genre to High Fantasy (and remove the role, if it
-                had one - if you want to keep a role you MUSt specify it as a third argument).
+                had one - if you want to keep a role you *must* specify it as a third parameter).
         """
         genre = None  # type: m.Genre
         with q.transaction() as _:
@@ -1089,7 +1089,7 @@ class ProjectsManager(KazCog):
         examples:
             - command: .project admin type edit "Short Story" Anthology
               description: Rename the Short Story type to Anthology (and remove the role, if it
-                had one - if you want to keep a role you MUSt specify it as a third argument).
+                had one - if you want to keep a role you MUSt specify it as a third parameter).
         """
         p_type = None  # type: m.ProjectType
         with q.transaction():

@@ -426,10 +426,10 @@ class WordFilter(KazCog):
         cmd_string = message_log_str(ctx.message)
 
         if isinstance(exc, commands.TooManyArguments):
-            msg = "Too many arguments passed in command: {}".format(cmd_string)
+            msg = "Too many parameters passed in command: {}".format(cmd_string)
             logger.warning(msg)
             await self.bot.send_message(ctx.message.channel,
-                ("Too many arguments.\n\n**Usage:** `{} <warn|del> \"<filter text>\"`\n\n"
+                ("Too many parameters.\n\n**Usage:** `{} <warn|del> \"<filter text>\"`\n\n"
                  "Did you forget quotation marks around the filter text? "
                  "Use `{}` for instructions.")
                     .format(get_command_str(ctx), get_help_str(ctx)))

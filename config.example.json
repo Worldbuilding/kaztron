@@ -39,6 +39,12 @@
       "discord": "INFO"
     }
   },
+  "help": {
+    "jekyll_manual_title_field": "kaz-manual-title",
+    "jekyll_manual_id_field": "kaz-manual-id",
+    "jekyll_version_field": "kaz-version",
+    "jekyll_category_field": "kaz-cog-category"
+  },
   "rolemanager": {
     "user_roles": {
       "role_name1": {

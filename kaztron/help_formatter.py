@@ -42,7 +42,7 @@ class CoreHelpParser:
         sort the documentation site's navigation. Default is "Commands". While this field is free-
         form, suggested values are "Commands" and "Moderator". COG DOCS ONLY.
     description: String describing what the command does. Should start with an imperative verb.
-        This is shown in the full help output for the command, BEFORE the usage/arguments.
+        This is shown in the full help output for the command, BEFORE the usage/parameters.
         Should be kept reasonable brief (one sentence to one paragraph).
     brief: Optional. Brief help, shown in command listings. If not specified, the first line of
         description is used.
@@ -450,7 +450,7 @@ class DiscordHelpFormatter(commands.HelpFormatter):
     def _build_detailed_info(self, data: dict):
         sections = []
         if data['parameters']:
-            sections.append(self._make_title("ARGUMENTS"))
+            sections.append(self._make_title("PARAMETERS"))
             sections.append(self._build_parameters(data))
         if data['details'] or data['users'] or data['channels']:
             sections.append(self._make_title("DETAILS"))
@@ -534,7 +534,8 @@ class HelpSectionView(SectionView):
     * jekyll_category_field: front matter variable for the cog-defined "category" field, which can
       be used to categorise cogs in the manual. Default "category".
     """
-    jekyll_release_field: str
+    jekyll_manual_title_field: str
+    jekyll_manual_id_field: str
     jekyll_version_field: str
     jekyll_category_field: str
 
@@ -559,6 +560,7 @@ class JekyllHelpFormatter:
         config = get_kaztron_config()
         config.set_section_view('help', HelpSectionView)
         self.config: HelpSectionView = config.help
+        self.name = config.core.name
 
     def format(self, cog: KazCog, context: commands.Context) -> str:
         self.cog = cog
@@ -592,9 +594,13 @@ class JekyllHelpFormatter:
 
         parts = []
         parts.append('---')
-        parts.append('{field}: {rel}'.format(
-            field=self.config.jekyll_release_field, rel=kaztron.__release__))
-        parts.append('{field}: v{version}'.format(
+        parts.append('{field}: {name}-{version}-manual'.format(
+            field=self.config.jekyll_manual_id_field,
+            name=self._slugify(self.name.lower()),
+            version=kaztron.__version__))
+        parts.append('{field}: {name} Manual'.format(
+            field=self.config.jekyll_manual_title_field, name=self.name))
+        parts.append('{field}: {version}'.format(
             field=self.config.jekyll_version_field, version=kaztron.__version__))
         parts.append('{field}: {category}'.format(
             field=self.config.jekyll_category_field, category=data['category']))
@@ -698,7 +704,7 @@ class JekyllHelpFormatter:
     def _build_detailed_info(self, data: dict):
         sections = []
         if data['parameters']:
-            sections.append(self._make_header("Arguments"))
+            sections.append(self._make_header("Parameters"))
             sections.append(self._build_parameters(data))
         if data['details'] or data['users'] or data['channels']:
             sections.append(self._make_header("Details"))

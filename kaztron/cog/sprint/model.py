@@ -140,7 +140,11 @@ class SprintUserStats:
         self.overall = SprintStats()
 
     def clear_user(self, user: discord.User):
-        del self.users[user.id]
+        """ Clear a user's stats. If user doesn't exist, does nothing. """
+        try:
+            del self.users[user.id]
+        except KeyError:
+            logger.warning('Cannot clear stats for {}: no stats for user'.format(user.id))
 
     def to_dict(self):
         return {

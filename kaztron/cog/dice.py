@@ -5,7 +5,6 @@ from discord.ext import commands
 
 from kaztron import errors, KazCog
 from kaztron.config import SectionView
-from kaztron.utils.checks import in_channels
 from kaztron.utils.discord import channel_mention
 from kaztron.utils.logging import message_log_str
 
@@ -27,11 +26,6 @@ class Dice(KazCog):
         - rollf
     """
     cog_config: DiceConfig
-    ch_allowed_list = (
-        KazCog.config.dice.channel_dice,
-        KazCog.config.discord.channel_test,
-        KazCog.config.discord.channel_output
-    )
     MAX_CHOICES = 20
 
     def __init__(self, bot):
@@ -45,8 +39,7 @@ class Dice(KazCog):
         await super().on_ready()
         self.ch_dice = self.cog_config.channel_dice
 
-    @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
-    @in_channels(ch_allowed_list)
+    @commands.command(pass_context=True, ignore_extra=False, no_pm=False, aliases=['rolls'])
     async def roll(self, ctx, dice: str):
         """!kazhelp
 
@@ -71,13 +64,13 @@ class Dice(KazCog):
             return
 
         if num_rolls <= 0:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("You have to roll at least 1 die.")
         elif num_sides <= 1:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("Dice must have at least 2 sides.")
         elif num_sides > 100 or num_rolls > 100:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("The limit for dice number and sides is 100 each.")
         else:
             result = [random.randint(1, num_sides) for _ in range(num_rolls)]
@@ -86,8 +79,7 @@ class Dice(KazCog):
             logger.info("Rolled dice: {:d}d{:d} = {!r} (sum={})"
                         .format(num_rolls, num_sides, result, total))
 
-    @commands.command(pass_context=True, ignore_extra=False)
-    @in_channels(ch_allowed_list)
+    @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
     async def rollf(self, ctx):
         """!kazhelp
         description: Rolls four dice for the FATE tabletop roleplaying game system.
@@ -117,13 +109,13 @@ class Dice(KazCog):
         """
         choices = list(map(str.strip, choices.split(",")))
         if "" in choices:
-            logger.warning("choose(): argument empty")
+            logger.warning("argument empty")
             await self.bot.say("I cannot decide if there's an empty choice.")
         elif len(choices) < 2:
-            logger.warning("choose(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("I need something to choose from.")
         elif len(choices) > self.MAX_CHOICES:
-            logger.warning("choose(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("I don't know, that's too much to choose from! "
                 "I can't handle more than {:d} choices!".format(self.MAX_CHOICES))
         else:

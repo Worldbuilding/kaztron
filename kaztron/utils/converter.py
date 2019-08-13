@@ -15,7 +15,7 @@ class NaturalDateConverter(commands.Converter):
     def convert(self):
         date = utils_dt.parse(self.argument)
         if date is None:
-            raise commands.BadArgument("Argument {!r} could not be parsed as a date string"
+            raise commands.BadArgument("Parameter {!r} could not be parsed as a date string"
                 .format(self.argument))
         return date
 
@@ -82,9 +82,11 @@ class NaturalInteger(commands.Converter):
     * 1 000 000 (spaces as thousands separators)
     * 1000000 (Python integer literal)
 
-    NOTE: The spaces convention may not be very useful, as with most command arguments, the space is
-    used to separate arguments. These numbers would need to be enclosed in quotes by the user, or
-    input as the final keyword argument to the command, or manually parsed.
+    NOTE: The spaces convention may not be very useful, as with most command parameters, the space
+    is used to separate parameters. These numbers would need to be enclosed in quotes by the user,
+    or input as the final KEYWORD argument to the command, or manually parsed.
+
+    NOTE: Other conventions, such as those that group by 4 digits, are currently not supported.
 
     There is naturally an ambiguity when it comes to decimal numbers, as the first 2 locales use
     each other's thousands separators. In the case that only one thousand separator is present, this
@@ -112,7 +114,7 @@ class NaturalInteger(commands.Converter):
         if (len(commas_split) > 1 and len(periods_split) > 1)\
                 or (len(commas_split) == 2 and len(commas_split[1]) != 3)\
                 or (len(periods_split) == 2 and len(periods_split[1]) != 3):
-            raise commands.BadArgument("Argument {!r} must be an integer, not a decimal number."
+            raise commands.BadArgument("Parameter {!r} must be an integer, not a decimal number."
                 .format(n_str))
         if any(len(c) != 3 for c in commas_split[1:])\
                 or any(len(c) != 3 for c in periods_split[1:])\

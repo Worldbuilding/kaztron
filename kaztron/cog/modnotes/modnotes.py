@@ -363,7 +363,7 @@ class ModNotes(KazCog):
                     if timestamp is None:  # dateparser failed to parse
                         raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
-                    raise commands.BadArgument("Several `timestamp`` arguments (+ synonyms) found.")
+                    raise commands.BadArgument("Several `timestamp`` parameters/synonyms found.")
             elif key.lower() in self.KW_EXPIRE:
                 if not is_expires_set:
                     is_expires_set = True  # to detect multiple args
@@ -374,7 +374,7 @@ class ModNotes(KazCog):
                         if expires is None:  # dateparser failed to parse
                             raise commands.BadArgument("Invalid timespec: '{}'".format(arg))
                 else:
-                    raise commands.BadArgument("Several `expires` arguments (+ synonyms) found.")
+                    raise commands.BadArgument("Several `expires` parameters/synonyms found.")
 
         # if any attachments, include a URL to it in the note
         if ctx.message.attachments:
@@ -634,7 +634,7 @@ class ModNotes(KazCog):
                 msg_format = "Updated user {0} - removed alias '{1}'"
 
         else:
-            raise commands.BadArgument("Argument 1 of `.notes alias` must be `add` or `rem`")
+            raise commands.BadArgument("Parameter 1 of `.notes alias` must be `add` or `rem`")
 
         await self.bot.say(msg_format.format(self.format_display_user(db_user), alias_s))
 
@@ -757,7 +757,7 @@ class ModNotes(KazCog):
             msg = "Bad argument passed in command: {}".format(cmd_string)
             logger.warning(msg)
             await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
-                (" Invalid argument(s). Did you mean `.notes add`?"
+                (" Invalid parameter(s). Did you mean `.notes add`?"
                  "\n\n**Usage:** `{}`\n\nUse `{}` for help.")
                     .format(usage_str, get_help_str(ctx)))
             # No need to log user errors to mods
@@ -766,7 +766,7 @@ class ModNotes(KazCog):
             msg = "Too many arguments passed in command: {}".format(cmd_string)
             logger.warning(msg)
             await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
-                (" Too many arguments. Did you mean `.notes add`?\n\n"
+                (" Too many parameters. Did you mean `.notes add`?\n\n"
                  "**Usage:** `{}`\n\nUse `{}` for help.")
                     .format(usage_str, get_help_str(ctx)))
         else:
@@ -778,7 +778,7 @@ class ModNotes(KazCog):
         if isinstance(exc, commands.TooManyArguments):
             logger.warning("Too many args: {}".format(exc, cmd_string))
             await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
-                " Too many arguments. Note that you can only `{}` two users at a time."
+                " Too many parameters. Note that you can only `{}` two users at a time."
                 .format(get_command_str(ctx)))
         else:
             await self.on_error_query_user(exc, ctx)
@@ -789,7 +789,7 @@ class ModNotes(KazCog):
         if isinstance(exc, commands.TooManyArguments):
             logger.warning("Too many args: {}".format(exc, cmd_string))
             await self.bot.send_message(ctx.message.channel, ctx.message.author.mention +
-                " Too many arguments. "
+                " Too many parameters. "
                 "Note that you can only `{}` *one* user from its group at a time."
                     .format(get_command_str(ctx)))
         else:

@@ -36,9 +36,10 @@ cfg_defaults = {
         "datetime_seconds_format": "%Y-%m-%d %H:%M:%S"
     },
     "help": {
-        "jekyll_release_field": "release",
-        "jekyll_version_field": "version",
-        "jekyll_category_field": "category"
+        "jekyll_manual_title_field": "kaz-manual-title",
+        "jekyll_manual_id_field": "kaz-manual-id",
+        "jekyll_version_field": "kaz-version",
+        "jekyll_category_field": "kaz-cog-category"
     },
     "logging": {
         "level": "INFO",

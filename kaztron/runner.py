@@ -1,17 +1,15 @@
 import asyncio
-import functools
 import logging
 import random
 import sys
 import time
-from types import MethodType
 
 from discord.ext import commands
-from discord.ext.commands import HelpFormatter
 
 import kaztron
 from kaztron import KazCog
 from kaztron.config import get_kaztron_config, KaztronConfig, get_runtime_config
+from kaztron.discord_patches import apply_patches
 from kaztron.help_formatter import CoreHelpParser, DiscordHelpFormatter
 from kaztron.scheduler import Scheduler
 
@@ -26,68 +24,6 @@ class ErrorCodes:
     EXTENSION_LOAD = 7
     RETRY_MAX_ATTEMPTS = 8
     CFG_FILE = 17
-
-
-def patch_smart_quotes_hack(client: commands.Bot):
-    """
-    Patch to convert smart quotes to ASCII quotes when processing commands in discord.py
-
-    Because iOS by default is stupid and inserts smart quotes, and not everyone configures their
-    mobile device to be SSH-friendly. WTF, Apple, way to ruin basic input expectations across your
-    *entire* OS.
-    """
-    old_process_commands = client.process_commands
-    conversion_map = {
-        '\u00ab': '"',
-        '\u00bb': '"',
-        '\u2018': '\'',
-        '\u2019': '\'',
-        '\u201a': '\'',
-        '\u201b': '\'',
-        '\u201c': '"',
-        '\u201d': '"',
-        '\u201e': '"',
-        '\u201f': '"',
-        '\u2039': '\'',
-        '\u203a': '\'',
-        '\u2042': '"'
-    }
-
-    @functools.wraps(client.process_commands)
-    async def new_process_commands(self, message, *args, **kwargs):
-        for f, r in conversion_map.items():
-            message.content = message.content.replace(f, r)
-        return await old_process_commands(message, *args, **kwargs)
-    # noinspection PyArgumentList
-    client.process_commands = MethodType(new_process_commands, client)
-
-
-def patch_command_logging_hack():
-    """
-    Patch to consistently log command invocations prior to running.
-
-    We chose to use this instead of the "on_command" event because said event would be added to the
-    event loop and consistently executed after the command itself has started or even completed,
-    making the command log line rather less useful.
-    """
-    try:  # if already patched, return
-        # noinspection PyProtectedMember
-        _ = commands.Command._kt_command_logging_hack
-        return
-    except AttributeError:
-        pass  # not already patched, carry on
-
-    from kaztron.utils.logging import message_log_str
-
-    cmd_logger = logging.getLogger("kaztron.commands")
-    commands.Command._kt_old_invoke = commands.Command.invoke
-
-    async def new_invoke(self, ctx):
-        cmd_logger.info("{!s}: {}".format(self, message_log_str(ctx.message)))
-        await self._kt_old_invoke(ctx)
-
-    commands.Command.invoke = new_invoke
-    commands.Command._kt_command_logging_hack = True
 
 
 def run(loop: asyncio.AbstractEventLoop):
@@ -109,8 +45,7 @@ def run(loop: asyncio.AbstractEventLoop):
         formatter=DiscordHelpFormatter(kaz_help_parser, show_check_failure=True),
         description='This an automated bot for the /r/worldbuilding discord server',
         pm_help=True)
-    patch_smart_quotes_hack(client)
-    patch_command_logging_hack()
+    apply_patches(client)
 
     # KazTron-specific extension classes
     client.scheduler = Scheduler(client)

@@ -279,7 +279,7 @@ class QuoteCog(KazCog):
             - command: .quote add @JaneDoe#0921 Ready for the mosh pit, shaka brah.
         """
         if len(message) > Quote.MAX_MESSAGE_LEN:
-            raise ValueError("That quote is too long! Maximum length {:d} characters."
+            raise commands.UserInputError("That quote is too long! Maximum length {:d} characters."
                 .format(Quote.MAX_MESSAGE_LEN))
         quote = c.store_quote(
             user=c.query_user(self.server, user),
@@ -350,8 +350,9 @@ class QuoteCog(KazCog):
                 '\n'.join(a['url'] for a in ctx.message.attachments)
             )
 
-        if len(message_text) > Limits.EMBED_FIELD_VALUE:
-            raise ValueError("That quote is too long! Maximum length 1024 characters.")
+        if len(message_text) > Quote.MAX_MESSAGE_LEN:
+            raise commands.UserInputError("That quote is too long! Maximum length {:d} characters."
+                .format(Quote.MAX_MESSAGE_LEN))
 
         quote = c.store_quote(
             user=c.query_user(self.server, grabbed_message.author.id),
@@ -477,7 +478,7 @@ class QuoteCog(KazCog):
             try:
                 number = int(number)
             except ValueError:
-                raise commands.BadArgument("Cannot convert number to int")
+                raise commands.BadArgument("The number of the quote to delete is required.")
 
             if number < 1 or number > len_recs:
                 logger.warning("Invalid index {:d}".format(number))
@@ -518,7 +519,7 @@ class QuoteCog(KazCog):
 
             elif isinstance(root_exc, orm.exc.NoResultFound):
                 logger.warning("No quotes found: {!s}. For {}".format(root_exc, cmd_string))
-                await self.bot.send_message(ctx.message.channel, "No quotes found.")
+                await self.bot.send_message(ctx.message.channel, "No matching quotes found.")
 
             else:
                 await self.core.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
