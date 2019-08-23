@@ -310,8 +310,9 @@ class ModNotes(KazCog):
               default: now
               description: "Set the note's time (e.g. of an incident). The timespec is \\"smart\\",
                 and can accept a date/time (`3 Dec 2017 5PM` - default timezone is UTC), or relative
-                times (`10 minutes ago`, `in 2 days`, `now`). Quotation marks required. Do not use
-                days of the week (e.g. Monday)."
+                times (`10 minutes ago`, `in 2 days`, `now`). For relative times, make sure to use
+                the keywords `ago` or `in`, or the result might not be as expected. Quotation marks
+                required. Do not use days of the week (e.g. Monday)."
             - name: "expires|expire|ends|end"
               type: timespec
               optional: true
@@ -524,7 +525,7 @@ class ModNotes(KazCog):
     async def purge(self, ctx, note_id: NaturalInteger):
         """!kazhelp
         description: |
-            Permanently destroy a removed now.
+            Permanently destroy a removed note.
 
             NOTE: This function intentionally does not include a mass purge, to prevent broad data
             loss, accidental or malicious.
