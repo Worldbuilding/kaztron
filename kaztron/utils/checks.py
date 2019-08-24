@@ -121,6 +121,7 @@ def in_channels(channel_id_list: List[str], allow_pm=False, delete_on_fail=False
 
 
 def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delete_on_fail=False, *,
+                    include_mods=False, include_admins=False, include_bot=False,
                     check_id=CheckId.C_LIST):
     """
     Command check decorator. Only allow this command to be run in specific channels (as specified
@@ -128,13 +129,16 @@ def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delet
 
     The configuration can point to either a single channel ID string or a list of channel ID
     strings.
-
+l
     :param config_section: The KaztronConfig section to access
     :param config_name: The KaztronConfig key containing the list of channel IDs
     :param allow_pm: Allow this command in PMs, as well as the configured channels
     :param delete_on_fail: If this check fails, delete the original message. This option does not
         delete the message itself, but throws an UnauthorizedChannelDelete error to allow an
         ``on_command_error`` handler to take appropriate action.
+    :param include_mods: Also include mod channels.
+    :param include_admin: Also include admin channels.
+    :param include_bot: Also include bot and test channels.
 
     :raise UnauthorizedChannelError:
     :raise UnauthorizedChannelDelete:
@@ -144,6 +148,14 @@ def in_channels_cfg(config_section: str, config_name: str, allow_pm=False, delet
 
     if isinstance(config_channels, str):
         config_channels = [config_channels]
+
+    if include_mods:
+        config_channels.extend(config.get('discord', 'mod_channels'))
+    if include_admins:
+        config_channels.extend(config.get('discord', 'admin_channels'))
+    if include_bot:
+        config_channels.append(config.get('discord', 'channel_test'))
+        config_channels.append(config.get('discord', 'channel_public'))
 
     return in_channels(config_channels, allow_pm, delete_on_fail, check_id=check_id)
 

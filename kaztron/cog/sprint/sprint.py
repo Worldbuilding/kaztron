@@ -1023,7 +1023,7 @@ class WritingSprint(KazCog):
         )
 
     @sprint.command(name="statreset", pass_context=True, ignore_extra=False)
-    @in_channels_cfg('sprint', 'channel', allow_pm=True)
+    @in_channels_cfg('sprint', 'channel', allow_pm=True, include_mods=True)
     async def stats_reset(self, ctx, user: str=None):
         """!kazhelp
         description: |
