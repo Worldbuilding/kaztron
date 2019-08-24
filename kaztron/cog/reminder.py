@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import reduce
 from typing import List
 
@@ -161,13 +161,21 @@ class Reminders(KazCog):
             raise commands.BadArgument("message")
 
         timestamp = datetime.utcnow()
+        max_timestamp = timestamp + timedelta(weeks=521)
         # first one allows "10 minutes" as a future input, second is a fallback
-        timespec = dt_parse('in ' + timespec_s, future=True) or dt_parse(timespec_s, future=True)
+        try:
+            timespec = dt_parse('in '+timespec_s, future=True) or dt_parse(timespec_s, future=True)
+        except ValueError:
+            # usu raised by datetime, for range issues
+            # the parser will usually return None if parsing fails
+            raise commands.BadArgument("range")
 
         if timespec is None:
             raise commands.BadArgument("timespec", timespec_s[:64])
         elif timespec <= timestamp:
             raise commands.BadArgument("past")
+        elif timespec >= max_timestamp:
+            raise commands.BadArgument("range")
         reminder = ReminderData(
             user_id=ctx.message.author.id, timestamp=timestamp, remind_time=timespec, msg=msg
         )
@@ -189,15 +197,20 @@ class Reminders(KazCog):
         if isinstance(exc, commands.BadArgument) and exc.args[0] == 'timespec':
             logger.error("Passed unknown timespec: {}".format(exc.args[1]))
             await self.bot.say(
-                "Sorry, I don't understand the timespec '{}'".format(exc.args[1])
+                ctx.message.author.mention +
+                " Sorry, I don't understand the timespec '{}'".format(exc.args[1])
+            )
+        elif isinstance(exc, commands.BadArgument) and exc.args[0] == 'range':
+            await self.bot.say(
+                ctx.message.author.mention + " Oops, that's too far in the future!"
             )
         elif isinstance(exc, commands.BadArgument) and exc.args[0] == 'past':
             await self.bot.say(
-                "Oops! You can't set a reminder in the past!"
+                ctx.message.author.mention + " Oops! You can't set a reminder in the past!"
             )
         elif isinstance(exc, commands.BadArgument) and exc.args[0] == 'message':
             await self.bot.say(
-                "You need to specify a message for your reminder! "
+                ctx.message.author.mention + " You need to specify a message for your reminder! "
                 "Separate it from the timespec with a colon *and* space: "
                 "`.reminder in 10 minutes: message`"
             )
