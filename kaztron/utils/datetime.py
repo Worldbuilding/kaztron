@@ -34,7 +34,7 @@ def parse(timespec: str, future=False, **kwargs) -> Optional[datetime]:
         dt = dateparser.parse(timespec, settings=settings)
         if dt is None:  # not parsable
             return dt
-        elif dt > datetime.utcnow():
+        elif dt > dateparser.parse('now', settings=settings):
             return dt
         else:
             settings['PREFER_DATES_FROM'] = 'future'

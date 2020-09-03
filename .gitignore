@@ -3,6 +3,7 @@ config.json
 config-*.json
 state.json
 state-*.json
+test.json
 client_secret.json
 *.sublime-*
 *.sqlite
