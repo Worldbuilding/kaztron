@@ -4,44 +4,56 @@ import random
 from discord.ext import commands
 
 from kaztron import errors, KazCog
-from kaztron.config import get_kaztron_config
-from kaztron.utils.checks import in_channels
+from kaztron.config import SectionView
 from kaztron.utils.discord import channel_mention
 from kaztron.utils.logging import message_log_str
 
 logger = logging.getLogger(__name__)
 
 
-class DiceCog(KazCog):
-    config = get_kaztron_config()
-    ch_allowed_list = (
-        config.get('dice', 'channel_dice'),
-        config.get("discord", "channel_test"),
-        config.get("discord", "channel_output")
-    )
+class DiceConfig(SectionView):
+    channel_dice: str
+
+
+class Dice(KazCog):
+    """!kazhelp
+    category: Commands
+    brief: Various dice rolls and other randomness-based commands.
+    description:
+    contents:
+        - choose
+        - roll
+        - rollf
+    """
+    cog_config: DiceConfig
     MAX_CHOICES = 20
 
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'dice', DiceConfig)
+        self.cog_config.set_converters('channel_dice',
+            lambda cid: self.validate_channel(cid),
+            lambda _: None)
         self.ch_dice = None
 
     async def on_ready(self):
-        self.ch_dice = self.validate_channel(self.config.get('dice', 'channel_dice'))
         await super().on_ready()
+        self.ch_dice = self.cog_config.channel_dice
 
-
-    @commands.command(pass_context=True, ignore_extra=False, aliases=['rolls'])
-    @in_channels(ch_allowed_list)
+    @commands.command(pass_context=True, ignore_extra=False, no_pm=False, aliases=['rolls'])
     async def roll(self, ctx, dice: str):
+        """!kazhelp
+
+        description: Rolls dice.
+        details: "Rolls an `m`-sided die `n` times, and reports the rolls and total."
+        parameters:
+            - name: dice
+              type: string
+              description: "`ndm` format, where `n` is the number of dice to roll,
+                and `m` is the number of sides on each die. Do not add spaces."
+        examples:
+            - command: .roll 2d6
+              description: Roll three six-sided dice.
         """
-        Rolls dice.
-
-        Rolls a <sides>-sided die <num> times, and reports the rolls and total.
-
-        Example: `.rolls 3d6` rolls three six-sided dice.
-        """
-        logger.info("roll: {}".format(message_log_str(ctx.message)))
-
         try:
             num_rolls, num_sides = map(int, dice.split('d'))
         except ValueError:
@@ -52,13 +64,13 @@ class DiceCog(KazCog):
             return
 
         if num_rolls <= 0:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("You have to roll at least 1 die.")
         elif num_sides <= 1:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("Dice must have at least 2 sides.")
         elif num_sides > 100 or num_rolls > 100:
-            logger.warning("rolls(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("The limit for dice number and sides is 100 each.")
         else:
             result = [random.randint(1, num_sides) for _ in range(num_rolls)]
@@ -67,15 +79,11 @@ class DiceCog(KazCog):
             logger.info("Rolled dice: {:d}d{:d} = {!r} (sum={})"
                         .format(num_rolls, num_sides, result, total))
 
-    @commands.command(pass_context=True, ignore_extra=False)
-    @in_channels(ch_allowed_list)
+    @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
     async def rollf(self, ctx):
+        """!kazhelp
+        description: Rolls four dice for the FATE tabletop roleplaying game system.
         """
-        Rolls four dice for the FATE tabletop roleplaying game system.
-
-        Arguments: None
-        """
-        logger.info("roll: {}".format(message_log_str(ctx.message)))
         dice = (-1, -1, 0, 0, 1, 1)
         str_map = {-1: '-', 0: '0', 1: '+'}
         roll_results = [random.choice(dice) for _ in range(4)]
@@ -86,25 +94,28 @@ class DiceCog(KazCog):
 
     @commands.command(pass_context=True, ignore_extra=False, no_pm=False)
     async def choose(self, ctx, *, choices: str):
-        """
-        Need some help making a decision? Let the bot choose for you!
+        """!kazhelp
 
-        Arguments:
-        * choices - Two or more choices, separated by commas `,`.
-
-        Examples:
-        `.choose a, b, c`
+        brief: Randomly choose from a list of items.
+        description: |
+            Need some help making a decision? Let the bot choose for you! This command
+            randomly chooses from a list of items.
+        parameters:
+            - name: choices
+              type: string
+              description: Two or more choices, separated by commas `,`.
+        examples:
+            - command: .choose a, b, c
         """
-        logger.info("choose: {}".format(message_log_str(ctx.message)))
         choices = list(map(str.strip, choices.split(",")))
         if "" in choices:
-            logger.warning("choose(): argument empty")
+            logger.warning("argument empty")
             await self.bot.say("I cannot decide if there's an empty choice.")
         elif len(choices) < 2:
-            logger.warning("choose(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("I need something to choose from.")
         elif len(choices) > self.MAX_CHOICES:
-            logger.warning("choose(): arguments out of range")
+            logger.warning("arguments out of range")
             await self.bot.say("I don't know, that's too much to choose from! "
                 "I can't handle more than {:d} choices!".format(self.MAX_CHOICES))
         else:
@@ -136,4 +147,4 @@ class DiceCog(KazCog):
 
 
 def setup(bot):
-    bot.add_cog(DiceCog(bot))
+    bot.add_cog(Dice(bot))

@@ -2,9 +2,9 @@
 import functools
 
 from sqlalchemy import *
-from sqlalchemy import event
+from sqlalchemy import event, orm
 # noinspection PyUnresolvedReferences
-from sqlalchemy.orm import relationship, sessionmaker, Query
+from sqlalchemy.orm import relationship, sessionmaker, Query, aliased
 # noinspection PyUnresolvedReferences
 from sqlalchemy.orm import exc as orm_exc
 # noinspection PyUnresolvedReferences
@@ -13,6 +13,9 @@ from sqlalchemy import exc as core_exc
 from sqlalchemy.ext.declarative import declarative_base  # DON'T REMOVE THIS - import into module
 # noinspection PyProtectedMember
 from sqlalchemy.engine import Engine
+
+# noinspection PyUnresolvedReferences
+from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
 
 def make_sqlite_engine(filename):
@@ -30,7 +33,15 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.close()
 
 
-def make_error_handler_decorator(session, logger):
+def make_error_handler_decorator(session_callback, logger):
+    """
+
+    :param session_callback: Signature session_callback(*args, **kwargs) -> Session. Should retrieve
+    the session being used by the wrapped function. Args, kwargs are the args to the wrapped
+    function (possibly useful to extract `self` if the wrapped function is a method).
+    :param logger:
+    :return:
+    """
     # noinspection PyShadowingNames
     def on_error_rollback(func):
         """
@@ -43,10 +54,35 @@ def make_error_handler_decorator(session, logger):
                 return func(*args, **kwargs)
             except Exception as e:
                 logger.error('Error ({!s}) - rolling back'.format(e))
-                session.rollback()
+                session_callback(*args, **kwargs).rollback()
                 raise
         return db_safe_exec
     return on_error_rollback
+
+
+def make_transaction_manager(session_callback, logger):
+    """
+    :param session_callback: Signature session_callback(*args, **kwargs) -> Session. Should retrieve
+    the session being used by the wrapped function. Args, kwargs are the args to the wrapped
+    function (possibly useful to extract `self` if the wrapped function is a method).
+    :param logger:
+    :return: A context manager that wraps a single transaction.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def transaction_scope():
+        """Provide a transactional scope around a series of operations."""
+        session = session_callback()  # type: orm.Session
+        try:
+            yield session
+            session.commit()
+        except Exception as e:
+            logger.error('Error ({!s}) - rolling back'.format(e))
+            session.rollback()
+            raise
+
+    return transaction_scope
 
 
 def format_like(s: str, escape='\\') -> str:

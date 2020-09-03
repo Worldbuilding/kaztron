@@ -1,17 +1,17 @@
 import asyncio
-import functools
 import logging
 import random
 import sys
 import time
-from types import MethodType
 
 from discord.ext import commands
 
 import kaztron
 from kaztron import KazCog
-from kaztron.config import get_kaztron_config, KaztronConfig
-from kaztron.logging import get_logging_info
+from kaztron.config import get_kaztron_config, KaztronConfig, get_runtime_config
+from kaztron.discord_patches import apply_patches
+from kaztron.help_formatter import CoreHelpParser, DiscordHelpFormatter
+from kaztron.scheduler import Scheduler
 
 logger = logging.getLogger("kaztron.bootstrap")
 
@@ -26,53 +26,36 @@ class ErrorCodes:
     CFG_FILE = 17
 
 
-def patch_smart_quotes_hack(client: commands.Bot):
-    """
-    Patch to convert smart quotes to ASCII quotes when processing commands in discord.py
-
-    Because iOS by default is stupid and inserts smart quotes, and not everyone configures their
-    mobile device to be SSH-friendly. WTF, Apple, way to ruin basic input expectations across your
-    *entire* OS.
-    """
-    old_process_commands = client.process_commands
-    conversion_map = {
-        '\u00ab': '"',
-        '\u00bb': '"',
-        '\u2018': '\'',
-        '\u2019': '\'',
-        '\u201a': '\'',
-        '\u201b': '\'',
-        '\u201c': '"',
-        '\u201d': '"',
-        '\u201e': '"',
-        '\u201f': '"',
-        '\u2039': '\'',
-        '\u203a': '\'',
-        '\u2042': '"'
-    }
-
-    @functools.wraps(client.process_commands)
-    async def new_process_commands(self, message, *args, **kwargs):
-        for f, r in conversion_map.items():
-            message.content = message.content.replace(f, r)
-        return await old_process_commands(message, *args, **kwargs)
-    # noinspection PyArgumentList
-    client.process_commands = MethodType(new_process_commands, client)
-
-
 def run(loop: asyncio.AbstractEventLoop):
     """
     Run the bot once.
     """
     config = get_kaztron_config()
-    client = commands.Bot(command_prefix='.',
+    state = get_runtime_config()
+    kaztron.KazCog.static_init(config, state)
+
+    # custom help formatters
+    kaz_help_parser = CoreHelpParser({
+        'name': config.core.get('name')
+    })
+
+    # create bot instance (+ some custom hacks)
+    client = commands.Bot(
+        command_prefix='.',
+        formatter=DiscordHelpFormatter(kaz_help_parser, show_check_failure=True),
         description='This an automated bot for the /r/worldbuilding discord server',
         pm_help=True)
-    patch_smart_quotes_hack(client)
+    apply_patches(client)
+
+    # KazTron-specific extension classes
+    client.scheduler = Scheduler(client)
+    client.kaz_help_parser = kaz_help_parser
+
+    # Load core extension (core + rolemanager)
+    client.load_extension("kaztron.core")
 
     # Load extensions
     startup_extensions = config.get("core", "extensions")
-    client.load_extension("kaztron.cog.core")
     for extension in startup_extensions:
         logger.debug("Loading extension: {}".format(extension))
         # noinspection PyBroadException
@@ -111,7 +94,7 @@ def run(loop: asyncio.AbstractEventLoop):
         #
         # Original code Copyright (c) 2015-2016 Rapptz. MIT licence.
         pending = asyncio.Task.all_tasks(loop=loop)
-        gathered = asyncio.gather(*pending, loop=loop)
+        gathered = asyncio.gather(*pending, loop=loop, return_exceptions=True)
         # noinspection PyBroadException
         try:
             gathered.cancel()
@@ -120,7 +103,7 @@ def run(loop: asyncio.AbstractEventLoop):
         except Exception:
             pass
         # END CONTRIB
-        KazCog._state.write()
+        KazCog.state.write()
 
 
 def run_reboot_loop(loop: asyncio.AbstractEventLoop):
@@ -167,6 +150,7 @@ def get_daemon_context(config: KaztronConfig):
     import grp
     from pathlib import Path
 
+    # noinspection PyPackageRequirements
     from daemon import DaemonContext, pidfile
 
     bot_dir = Path(sys.modules['__main__'].__file__).resolve().parent

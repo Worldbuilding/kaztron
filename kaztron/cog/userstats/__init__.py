@@ -1,4 +1,4 @@
-from kaztron.cog.userstats.userstats import UserStats
+from .userstats import UserStats
 
 
 def setup(bot):

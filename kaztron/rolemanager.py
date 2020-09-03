@@ -1,12 +1,12 @@
 import copy
 import logging
-from typing import Iterable
+from typing import Iterable, Tuple
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
-from kaztron.utils.checks import mod_only
+from kaztron.utils.checks import mod_only, admin_only
 from kaztron.utils.discord import get_named_role, get_group_help
 from kaztron.utils.logging import message_log_str
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class ManagedRole:
-    def __init__(self, bot: discord.Client, *,
+    def __init__(self, bot: discord.Client, server: discord.Server, *,
                  name: str,
                  join_msg: str=None,
                  leave_msg: str=None,
@@ -29,6 +29,7 @@ class ManagedRole:
                  checks=tuple()
                  ):
         self.bot = bot
+        self.server = server
         self.name = name
         self._join_msg = join_msg or "You have joined the {} role.".format(self.name)
         self._leave_msg = leave_msg or "You have left the {} role.".format(self.name)
@@ -41,6 +42,11 @@ class ManagedRole:
         self.join_aliases = join_aliases
         self.leave_aliases = leave_aliases
         self.checks = checks
+        self.commands = None  # type: Tuple[commands.Command]
+
+    @property
+    def role(self) -> discord.Role:
+        return get_named_role(self.server, self.name)
 
     def reply_dest(self, ctx: commands.Context) -> discord.Object:
         return ctx.message.author if self.pm else ctx.message.channel
@@ -72,24 +78,20 @@ class ManagedRole:
             # no output channel message - lack of delete isn't critical
 
     async def do_join(self, ctx: commands.Context):
-        logger.debug("join({}): {}".format(self.name, message_log_str(ctx.message)[:256]))
-        role = get_named_role(ctx.message.server, self.name)
-
-        if role not in ctx.message.author.roles:
-            await self.bot.add_roles(ctx.message.author, role)
-            logger.info("join: Gave role {} to user {}".format(self.name, ctx.message.author))
+        member = self.server.get_member(ctx.message.author.id)  # in case it's via PMs
+        if self.role not in member.roles:
+            await self.bot.add_roles(member, self.role)
+            logger.info("join: Gave role {} to user {}".format(self.name, member))
             await self.bot.send_message(self.reply_dest(ctx), self.join_message(ctx))
         else:
             await self.bot.send_message(self.reply_dest(ctx), self.join_error(ctx))
         await self.delete_message(ctx)
 
     async def do_leave(self, ctx: commands.Context):
-        logger.debug("leave({}): {}".format(self.name, message_log_str(ctx.message)[:256]))
-        role = get_named_role(ctx.message.server, self.name)
-
-        if role in ctx.message.author.roles:
-            await self.bot.remove_roles(ctx.message.author, role)
-            logger.info("leave: Removed role {} from user {}".format(self.name, ctx.message.author))
+        member = self.server.get_member(ctx.message.author.id)  # in case it's via PMs
+        if self.role in member.roles:
+            await self.bot.remove_roles(member, self.role)
+            logger.info("leave: Removed role {} from user {}".format(self.name, member))
             await self.bot.send_message(self.reply_dest(ctx), self.leave_message(ctx))
         else:
             await self.bot.send_message(self.reply_dest(ctx), self.leave_error(ctx))
@@ -119,14 +121,130 @@ class ManagedRole:
 
 
 class RoleManager(KazCog):
+    """!kazhelp
+    category: Commands
+    description: |
+        Allows the creation of commands that allow users to join and leave specific roles on
+        their own through bot commands.
+
+        See the on-line documentation for more information.
+    jekyll_description: |
+        This cog provides generalised capabilities for creating commands that allow users to add and
+        remove themselves from a role, using custom command names. This allows users to opt into
+        certain features, events or programmes on the Discord server, such as getting notifications
+        for special-interest news or live events.
+
+        These commands can be defined either via the config file, or programmatically (e.g. from
+        within a cog). They **cannot** dynamically be defined via commands.
+
+        ## Programmatic
+
+        Within a `KazCog`-derived cog class, it is possible to access `self.roleman` anytime after
+        calling `super().on_ready()` in the `on_ready()` event.
+
+        An example is shown below. In this example, the current cog has a command group called
+        `sprint` already defined. The commands `.sprint follow` and `.sprint unfollow` would allow
+        any user to join and leave the "Sprinters" role (this role must already be configured on the
+        Discord server).
+
+        To add checks like `mod_only()`, pass a list of checks as a `checks` keyword argument to
+        `add_managed_role()`.
+
+        ```python
+        try:
+            self.rolemanager.add_managed_role(
+                role_name="Sprinters",
+                join_name="follow",
+                leave_name="unfollow",
+                join_msg="You will now receive notifications when others start a sprint. "
+                         "You can stop getting notifications by using the `.w unfollow` command.",
+                leave_msg="You will no longer receive notifications when others start a sprint. "
+                          "You can get notifications again by using the `.w follow` command.",
+                join_err="Oops! You're already receiving notifications for sprints. "
+                         "Use the `.w unfollow` command to stop getting notifications.",
+                leave_err="Oops! You're not currently getting notifications for sprints. "
+                          "Use the `.w follow` command if you want to start getting notifications.",
+                join_doc="Get notified when sprints are happening.",
+                leave_doc="Stop getting notifications about sprints.\\n\\n"
+                          "You will still get notifications for sprints you have joined.",
+                delete=True,
+                pm=True,
+                group=self.sprint,
+                cog_instance=self,
+                ignore_extra=False
+            )
+        except discord.ClientException:
+            logger.warning("add_managed_role failed - this is fine on bot reconnect")
+        ```
+
+        ### Arguments
+
+        * `role_name`: The role to manage.
+        * `join_name`: The join command name. If `group` is passed, this command is a subcommand of
+            that group.
+        * `leave_name`: The leave command name. If `group` is passed, this command is a subcommand
+            of that group.
+        * `join_aliases`: Optional. A sequence of join command aliases.
+        * `leave_aliases`: Optional. An sequence of leave command aliases.
+        * `join_msg`: Message to send when the user successfully joins the role.
+        * `leave_msg`: Message to send when the user successfully leaves the role.
+        * `join_err`: Message when the user tries to join but is already member of the role.
+        * `leave_err`: Message when the user tries to leave but is not a role member.
+        * `join_doc`: Help string for the join command.
+        * `leave_doc`: Help string for the leave command.
+        * `delete`: Optional. If True, delete the requesting command. Default: True.
+        * `pm`: Optional. If True, PM the response to the user. Otherwise, respond in the same
+            channel. Default: True.
+        * `group`: The group to add this command to. Optional.
+        * `cog_instance`: Optional. Cog to group this command under in the help. Default: the
+            RoleManager cog.
+        * `checks`: Check objects to apply to the command
+        * Further keyword arguments can be passed. These will be passed transparently to the
+            `discord.ext.commands.command` decorator. Do not include `name`, `aliases`, or
+            `pass_context`, as these are handled internally.
+
+        ## Configuration file
+
+        It is also possible to do this in the `config.json` file. In this case, the commands will
+        always appear in `.help` under RoleManager. Please see `config.example.json` for an example
+        of the structure, and refer to section above for documentation on the parameters.
+    """
     def __init__(self, bot):
-        super().__init__(bot)
+        super().__init__(bot, 'rolemanager')
+        self.cog_config.set_defaults(user_roles={}, mod_roles={})
         self.managed_roles = {}
 
     async def on_ready(self):
+        await super().on_ready()
         if not self.is_ready:  # first time this is called - not a reconnect
             self.setup_all_config_roles()
-        await super().on_ready()
+
+    def unload_kazcog(self):
+        """ Unload managed roles. """
+        logger.debug("Unloading managed roles...")
+        for role_name, mr in self.managed_roles.items():
+            for cmd in mr.commands:  # type: commands.Command
+                if cmd.parent is not None:
+                    parent = cmd.parent  # type: commands.GroupMixin
+                else:
+                    parent = self.bot
+                rmret = parent.remove_command(cmd.name)
+
+                if rmret is not None:
+                    logger.debug("Unloaded command {} for role {}".format(cmd.name, role_name))
+                else:
+                    logger.warning("Failed to unload command {} for role {}"
+                        .format(cmd.name, role_name))
+        self.managed_roles = {}
+
+    # @commands.command(pass_context=True)
+    # @admin_only()
+    # async def rolemanager_test_unload(self, ctx: commands.Context):
+    #     self.unload_kazcog()
+    #     await self.bot.send_message(ctx.message.channel,
+    #         "Attempting to unload all RoleManager commands... (requires restart to reload)")
+    #     await self.send_output(
+    #     "[WARNING] RoleManager roles unloaded (requires restart to reload)")
 
     def add_managed_role(
             self,
@@ -182,8 +300,10 @@ class RoleManager(KazCog):
         logger.info("Adding managed role {}".format(role_name))
 
         mr = ManagedRole(
-            bot=self.bot, name=role_name, join_msg=join_msg, leave_msg=leave_msg,
-            join_err=join_err, leave_err=leave_err, join_doc=join_doc, leave_doc=leave_doc,
+            bot=self.bot, server=self.server, name=role_name,
+            join_msg=join_msg, leave_msg=leave_msg,
+            join_err=join_err, leave_err=leave_err,
+            join_doc=join_doc, leave_doc=leave_doc,
             delete=delete, pm=pm, checks=checks
         )
         mr_join, mr_leave = mr.get_command_functions()
@@ -193,6 +313,7 @@ class RoleManager(KazCog):
         make_command = group.command if group else commands.command
         jc = make_command(name=join_name, aliases=join_aliases, **kwargs)(mr_join)
         lc = make_command(name=leave_name, aliases=leave_aliases, **kwargs)(mr_leave)
+        mr.commands = (jc, lc)
 
         # set up the cog that the commands are associated to (in the bot help, etc.)
         if not cog_instance:
@@ -205,11 +326,11 @@ class RoleManager(KazCog):
 
     def setup_all_config_roles(self):
         logger.info("Setting up managed roles from configuration")
-        user_role_map = self.config.get('role_man', 'user_roles', {})
+        user_role_map = self.cog_config.user_roles
         for name, args in user_role_map.items():
             self.setup_config_role(name, args)
 
-        mod_role_map = self.config.get('role_man', 'mod_roles', {})
+        mod_role_map = self.cog_config.mod_roles
         for name, args in mod_role_map.items():
             self.setup_config_role(name, args, [mod_only()])
 
@@ -229,7 +350,7 @@ class RoleManager(KazCog):
             except KeyError:
                 logger.warning("Group '{}' does not exist: making dummy group."
                     .format(command_name))
-                self._make_dummy_group(current_group, command_name)
+                current_group = self._make_dummy_group(current_group, command_name)
             except AttributeError:
                 raise discord.ClientException(
                     ("Cannot group role management command: parent "
@@ -246,14 +367,11 @@ class RoleManager(KazCog):
             raise discord.ClientException("Configuration error for managed role '{}': {}"
                 .format(name, e.args[0]))
 
-    def _make_dummy_group(self, parent: commands.GroupMixin, name: str):
+    def _make_dummy_group(self, parent: commands.GroupMixin, name: str) -> commands.GroupMixin:
         async def anonymous_group(dummy_self, ctx: commands.Context):
             await self.bot.say(get_group_help(ctx))
 
         current_group = parent.group(
             name=name, invoke_without_command=True, pass_context=True)(anonymous_group)
         current_group.instance = self
-
-
-def setup(bot):
-    bot.add_cog(RoleManager(bot))
+        return current_group

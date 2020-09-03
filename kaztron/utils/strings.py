@@ -53,6 +53,20 @@ def split_code_chunks_on(str_: str, maxlen: int, split_char='\n', lang: str=None
     return ["{}{}{}".format(head, part, tail) for part in raw_parts]
 
 
+def natural_split(str_: str, maxlen: int, ellipsis_='[…]') -> List[str]:
+    """
+    If the string is too long, split into chunks of up to maxlen along word boundaries, with
+    ellipsis_ at the beginning and end of continued chunks.
+    """
+    chunks = []
+    remainder = str_
+    while remainder:
+        # add current field
+        chunks.append(natural_truncate(remainder, maxlen=maxlen, ellipsis_=ellipsis_))
+        remainder = remainder[len(chunks[-1]):]
+    return chunks
+
+
 def natural_truncate(str_: str, maxlen: int, ellipsis_='[…]') -> str:
     """
     If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis_
@@ -61,7 +75,7 @@ def natural_truncate(str_: str, maxlen: int, ellipsis_='[…]') -> str:
     maxlen_net = maxlen - len(ellipsis_)
     if len(str_) > maxlen:
             trunc_str = str_[:maxlen_net]
-            match = re.search(r'\W.*?$', trunc_str)
+            match = re.search(r'\W[^\W]*?$', trunc_str)
             if match:
                 return str_[:match.start() + 1] + ellipsis_
             else:
@@ -99,4 +113,10 @@ def parse_keyword_args(keywords: Iterable[str], args: str) -> (Dict[str, str], s
         matches = _KWARG_RE.match(args)
     return kwargs, args.strip()
 
+
+_count_words_re = re.compile(r'\b\w+?\b')
+
+
+def count_words(s: str) -> int:
+    return len(_count_words_re.findall(s))
 

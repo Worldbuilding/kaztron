@@ -15,7 +15,7 @@ class NaturalDateConverter(commands.Converter):
     def convert(self):
         date = utils_dt.parse(self.argument)
         if date is None:
-            raise commands.BadArgument("Argument {!r} could not be parsed as a date string"
+            raise commands.BadArgument("Parameter {!r} could not be parsed as a date string"
                 .format(self.argument))
         return date
 
@@ -51,10 +51,28 @@ class MemberConverter2(commands.Converter):
         return get_member(self.ctx, self.argument)
 
 
+class BooleanConverter(commands.Converter):
+    """ Convert true/false words to boolean. """
+    true_words = ['true', 'yes', '1', 'enabled', 'enable', 'on', 'y', 'ok', 'confirm']
+    false_words = ['false', 'no', '0', 'disabled', 'disable', 'off', 'n', 'null', 'none', 'cancel']
+
+    def convert(self):
+        arg = self.argument.lower()
+        if arg in self.true_words:
+            return True
+        elif arg in self.false_words:
+            return False
+        else:
+            raise commands.BadArgument("{!r} is not a true/false word.".format(self.argument))
+
+
 class NaturalInteger(commands.Converter):
     """
-    Integer converter that is tolerant of various natural number input conventions (e.g. commas as
-    digit grouping separators).
+    Integer converter that is tolerant of various natural number input conventions:
+
+    * Commas or periods as digit grouping separators
+    * Period or comma as decimal point (identified as an error -> not an integer)
+    * '#' prepended to an integer, for ordinals, IDs and list items.
 
     This converter is tolerant of three common locale conventions, along with normal Python integer
     literals, and attempts a best guess at conversion:
@@ -64,9 +82,11 @@ class NaturalInteger(commands.Converter):
     * 1 000 000 (spaces as thousands separators)
     * 1000000 (Python integer literal)
 
-    NOTE: The spaces convention may not be very useful, as with most command arguments, the space is
-    used to separate arguments. These numbers would need to be enclosed in quotes by the user, or
-    input as the final keyword argument to the command, or manually parsed.
+    NOTE: The spaces convention may not be very useful, as with most command parameters, the space
+    is used to separate parameters. These numbers would need to be enclosed in quotes by the user,
+    or input as the final KEYWORD argument to the command, or manually parsed.
+
+    NOTE: Other conventions, such as those that group by 4 digits, are currently not supported.
 
     There is naturally an ambiguity when it comes to decimal numbers, as the first 2 locales use
     each other's thousands separators. In the case that only one thousand separator is present, this
@@ -82,7 +102,7 @@ class NaturalInteger(commands.Converter):
         as floating-point.
     """
     def convert(self):
-        n_str = self.argument
+        n_str = self.argument.rstrip(',.').strip('#')
         try:
             return int(n_str)
         except ValueError:
@@ -94,14 +114,14 @@ class NaturalInteger(commands.Converter):
         if (len(commas_split) > 1 and len(periods_split) > 1)\
                 or (len(commas_split) == 2 and len(commas_split[1]) != 3)\
                 or (len(periods_split) == 2 and len(periods_split[1]) != 3):
-            raise commands.BadArgument("Argument {!r} must be an integer, not a decimal number."
+            raise commands.BadArgument("Parameter {!r} must be an integer, not a decimal number."
                 .format(n_str))
         if any(len(c) != 3 for c in commas_split[1:])\
                 or any(len(c) != 3 for c in periods_split[1:])\
                 or any(len(c) != 3 for c in n_str.split(' ')[1:]):
-            raise commands.BadArgument("Cannot convert {!r} to an integer.")
+            raise commands.BadArgument("Cannot convert {!r} to an integer.".format(n_str))
 
         try:
             return int(n_str.replace(',', '').replace('.', '').replace(' ', ''))
         except ValueError:
-            raise commands.BadArgument("Cannot convert {!r} to an integer.")
+            raise commands.BadArgument("Cannot convert {!r} to an integer.".format(n_str))

@@ -1,12 +1,12 @@
 import copy
 import enum
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import discord
 from collections import deque
 from functools import total_ordering
-from typing import Dict, Callable, List, Tuple
+from typing import Dict, List, Tuple
 
 from kaztron.driver.stats import MeanVarianceAccumulator
 from kaztron.utils.datetime import utctimestamp
@@ -140,7 +140,11 @@ class SprintUserStats:
         self.overall = SprintStats()
 
     def clear_user(self, user: discord.User):
-        del self.users[user.id]
+        """ Clear a user's stats. If user doesn't exist, does nothing. """
+        try:
+            del self.users[user.id]
+        except KeyError:
+            logger.warning('Cannot clear stats for {}: no stats for user'.format(user.id))
 
     def to_dict(self):
         return {
@@ -157,8 +161,7 @@ class SprintUserStats:
 
 
 class SprintData:
-    def __init__(self, time_callback: Callable[[], float]):
-        self.time_callback = time_callback
+    def __init__(self):
         self.founder = None  # type: discord.Member
         self.members = []  # type: List[discord.Member]
 
@@ -167,11 +170,10 @@ class SprintData:
         self.end = {}  # type: Dict[str, int]
         self.finalized = set()
 
-        # loop times
-        self.start_time = 0  # type: float
-        self.end_time = 0  # type: float
-        self.warn_times = deque()  # type: deque[float]
-        self.finalize_time = 0  # type: float
+        self.start_time = datetime.utcfromtimestamp(0)  # type: datetime
+        self.end_time = datetime.utcfromtimestamp(0)  # type: datetime
+        self.warn_times = deque()  # type: deque[datetime]
+        self.finalize_time = datetime.utcfromtimestamp(0)  # type: datetime
 
     def to_dict(self):
         return {
@@ -180,25 +182,15 @@ class SprintData:
             'start': copy.deepcopy(self.start),
             'end': copy.deepcopy(self.end),
             'finalized': list(self.finalized),
-            'start_time': utctimestamp(self._datetime(self.start_time)) if self.start_time else 0,
-            'end_time': utctimestamp(self._datetime(self.end_time)) if self.end_time else 0,
-            'warn_times': [self._datetime(t).timestamp() for t in self.warn_times],
-            'finalize_time': (
-                utctimestamp(self._datetime(self.finalize_time)) if self.finalize_time else 0
-            ),
+            'start_time': utctimestamp(self.start_time) if self.start_time else 0,
+            'end_time': utctimestamp(self.end_time) if self.end_time else 0,
+            'warn_times': [utctimestamp(t) for t in self.warn_times],
+            'finalize_time': utctimestamp(self.finalize_time) if self.finalize_time else 0,
         }
 
-    def _loop_time(self, timestamp: float) -> float:
-        now_loop = self.time_callback()
-        now_timestamp = utctimestamp(datetime.utcnow())
-        return now_loop + (timestamp - now_timestamp)
-
-    def _datetime(self, loop_time: float) -> datetime:
-        return datetime.utcnow() + timedelta(seconds=loop_time - self.time_callback())
-
     @classmethod
-    def from_dict(cls, time_callback: Callable[[], float], server: discord.Server, data: Dict):
-        self = SprintData(time_callback)
+    def from_dict(cls, server: discord.Server, data: Dict):
+        self = SprintData()
         self.founder = server.get_member(data['founder'])
         member_uids = []
         for u_id in data['members']:
@@ -211,40 +203,27 @@ class SprintData:
         self.start = {u_id: value for u_id, value in data['start'].items() if u_id in member_uids}
         self.end = {u_id: value for u_id, value in data['end'].items() if u_id in member_uids}
         self.finalized = set(data['finalized'])
-        self.start_time = self._loop_time(data['start_time'])
-        self.end_time = self._loop_time(data['end_time'])
-        self.warn_times = deque(self._loop_time(t) for t in data['warn_times'])
-        self.finalize_time = self._loop_time(data['finalize_time'])
+        self.start_time = datetime.utcfromtimestamp(data['start_time'])
+        self.end_time = datetime.utcfromtimestamp(data['end_time'])
+        self.warn_times = deque(datetime.utcfromtimestamp(t) for t in data['warn_times'])
+        self.finalize_time = datetime.utcfromtimestamp(data['finalize_time'])
         return self
 
     @property
-    def start_dt(self):
-        return self._datetime(self.start_time)
-
-    @property
-    def end_dt(self):
-        return self._datetime(self.end_time)
-
-    @property
-    def warn_dts(self):
-        for loop_time in self.warn_times:
-            yield self._datetime(loop_time)
-
-    @property
     def starts_in(self):
-        return self.start_time - self.time_callback()
+        return (self.start_time - datetime.utcnow()).total_seconds()
 
     @property
     def duration(self):
-        return self.end_time - self.start_time
+        return (self.end_time - self.start_time).total_seconds()
 
     @property
     def remaining(self):
-        return min(self.duration, self.end_time - self.time_callback())
+        return min(self.duration, (self.end_time - datetime.utcnow()).total_seconds())
 
     @property
     def remaining_finalize(self):
-        return self.finalize_time - self.time_callback()
+        return (self.finalize_time - datetime.utcnow()).total_seconds()
 
     def get_wordcount(self, user: discord.Member):
         try:

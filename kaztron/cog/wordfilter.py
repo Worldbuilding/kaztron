@@ -1,14 +1,16 @@
 import logging
-from typing import Union
+from typing import Union, List
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog
+from kaztron.config import SectionView
 from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
-from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str
+from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str, \
+    get_group_help
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, split_code_chunks_on, natural_truncate
 
@@ -17,7 +19,69 @@ from kaztron.utils.datetime import format_timestamp
 logger = logging.getLogger(__name__)
 
 
+class WordFilterConfig(SectionView):
+    channel_warning: discord.Channel
+
+
+class WordFilterState(SectionView):
+    warn: List[str]
+    delete: List[str]
+    channel: discord.Channel
+
+
 class WordFilter(KazCog):
+    """!kazhelp
+    category: Moderator
+    brief: "Watch for words or expressions in user messages, and either warn moderators or
+        auto-delete messages on detection."
+    description: "Watch for words or expressions in user messages, and either warn moderators or
+        auto-delete messages on detection."
+    jekyll_description: |
+        The WordFilter cog is a moderation tool. It watches all messages on the server for the use
+        of certain words, expressions or other strings. The bot has two separate lists of filter
+        strings, both fully configurable using bot commands:
+
+        * `del` list: Any messages that match will be auto-deleted. Moderators are notified.
+        * `warn` list: Moderators are notified of the matching message.
+
+        Moderator notifications are output to either {{output_channel}} or {{warn_channel}}; this
+        can be switched using the {{!filter switch}} command.
+
+        ## Filter string syntax
+
+        The special character `%` will match a word boundary (any non-letter character).
+        Each word/expression in the list can be matched in four  different ways:
+
+        * `foo` : Matches any sub-string `foo`, even if inside a word; for example, the words
+          `foobar`, `zoboomafoo`, and `afoot` inside a message will all be caught.
+        * `%foo` : Matches any word that *starts* with `foo`. For example, `fooing` will match, but
+          `zoboomafoo` will *not* match.
+        * `foo%` : Matches any word that *ends* with `foo`. For example, `zoboomafoo` will match,
+          but *not* `foobar`.
+        * `%foo%` : Matches whole words only.
+
+        You can also refer to the table below to see examples of which method will catch which
+        sub-strings.
+
+        |           | foo | %foo | foo% | %foo% |
+        |:----------|:---:|:----:|:----:|:-----:|
+        | foo       | <i class="fas fa-check text-success"></i> |<i class="fas fa-check text-success"></i> |<i class="fas fa-check text-success"></i> |<i class="fas fa-check text-success"></i> |
+        | foobar    | <i class="fas fa-check text-success"></i> | <i class="fas fa-check text-success"></i> | | |
+        | barfoo    |<i class="fas fa-check text-success"></i> | | <i class="fas fa-check text-success"></i> | |
+        | barfoobar | <i class="fas fa-check text-success"></i> | | | |
+
+        TIP: Filters are always case insensitive.
+    contents:
+        - filter:
+            - list
+            - add
+            - rem
+            - rnum
+            - switch
+        - switch
+    """
+    cog_config: WordFilterConfig
+    cog_state: WordFilterState
 
     display_filter_types = ['warn', 'del']
 
@@ -49,13 +113,18 @@ class WordFilter(KazCog):
     }
 
     def __init__(self, bot):
-        super().__init__(bot)
-        self.state.set_defaults(
-            'filter',
+        super().__init__(bot, 'filter', WordFilterConfig, WordFilterState)
+        self.cog_state.set_defaults(
             warn=[],
             delete=[],
-            channel=self.config.get('filter', 'channel_warning')
+            channel=self.cog_config.channel_warning
         )
+        self.cog_config.set_converters('channel_warning',
+            lambda cid: self.validate_channel(cid),
+            lambda _: None)
+        self.cog_state.set_converters('channel',
+            lambda cid: self.validate_channel(cid),
+            lambda c: str(c.id))
         self._load_filter_rules()
         self.channel_warning = None
         self.channel_current = None
@@ -63,30 +132,30 @@ class WordFilter(KazCog):
     def _load_filter_rules(self):
         for filter_type, engine in self.engines.items():
             logger.debug("Reloading {} rules".format(filter_type))
-            engine.load_rules(self.state.get("filter", filter_type, []))
+            engine.load_rules(self.cog_state.get(filter_type))
 
     async def on_ready(self):
         """
         Load information from the server.
         """
-        dest_warning_id = self.config.get('filter', 'channel_warning')
-        self.channel_warning = self.validate_channel(dest_warning_id)
+        await super().on_ready()
+        self.channel_warning = self.cog_config.channel_warning
 
         try:
-            self.channel_current = self.validate_channel(self.state.get('filter', 'channel'))
+            self.channel_current = self.cog_state.channel
         except ValueError:
-            self.channel_current = self.channel_warning
-            self.state.set('filter', 'channel', str(self.channel_warning.id))
+            self.cog_state.channel = self.channel_current = self.channel_warning
 
-        await super().on_ready()
+    def export_kazhelp_vars(self):
+        return {'warn_channel': '#' + self.channel_warning.name}
 
     @ready_only
     async def on_message(self, message):
         """
         Message handler. Check all non-mod messages for filtered words.
         """
-        is_mod = check_role(self.config.get("discord", "mod_roles", []) +
-                            self.config.get("discord", "admin_roles", []), message)
+        is_mod = check_role(self.config.discord.get("mod_roles", []) +
+                            self.config.discord.get("admin_roles", []), message)
         is_pm = isinstance(message.channel, discord.PrivateChannel)
         if not is_mod and not is_pm:
             message_string = str(message.content)
@@ -129,38 +198,51 @@ class WordFilter(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def word_filter(self, ctx):
-        """
-        [MOD ONLY] Manages the filter lists. This feature is used to notify moderators of keywords
-        and phrases in messages, and optionally auto-delete them.
+        """!kazhelp
+        description: |
+            Command group to manages the filter lists. This module watches for words or expressions
+            in user messages, and either warn moderators or auto-delete messages on detection.
 
-        All commands permit single-letter mnemonics for convenience, e.g. `.filter l` is
-        equivalent to `.filter list`.
+            FOR INFORMATION ON FILTER LISTS AND SYNTAX, SEE `.help WordFilter`.
+
+            TIP: For convenience, all sub-commands support a single-letter shorthand. Check each
+            command's Usage section.
+        jekyll_description: |
+            Command group to manages the filter lists.
+
+            For all sub-commands except {{!filter switch}}, you need to specify the filter list,
+            either `del` (auto-delete list) or `warn` (warn-only list). You can also use the
+            shorthand `d` or `w`.
+
+            TIP: For convenience, all sub-commands support a single-letter shorthand. Check each
+            command's Usage section.
         """
-        command_list = list(self.word_filter.commands.keys())
-        await self.bot.say(('Invalid sub-command. Valid sub-commands are {0!s}. '
-                            'Use `{1}` or `{1} <subcommand>` for instructions.')
-            .format(command_list, get_help_str(ctx)))
+        await self.bot.say(get_group_help(ctx))
 
     @word_filter.command(name="list", pass_context=True, aliases=['l'])
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def filter_list(self, ctx, filter_type: str=None):
+        """!kazhelp
+        description: |
+            Lists the current filters.
+
+            If `filter_type` is not given, lists all filters; otherwise, lists the specified filter.
+        parameters:
+            - name: filter_type
+              optional: True
+              default: both
+              description: "Filter list: `del` or `warn` (shorthand: `d` or `w`)."
+        examples:
+            - command: .filter list
+              description: Shows both auto-warn and auto-delete lists.
+            - command: .filter list warn
+              description: Shows warn filter list.
+            - command: .filter list del
+              description: Shows auto-delete filter list.
+            - command: .filter l w
+              description: "Shorthand version of `.filter list warn`."
         """
-        [MOD ONLY] Lists the current filters.
-
-        If `filter_type` is not given, lists all filters; otherwise, lists the specified filter.
-
-        Examples:
-
-        .filter list - Shows both auto-warn and auto-delete lists.
-        .filter list warn - Shows warn filter list.
-        .filter list del - Shows auto-delete filter list.
-
-        You can use single-letter mnemonics for convenience:
-
-        .filter l w - Shows warn filter list.
-        """
-        logger.info("filter_list: {}".format(message_log_str(ctx.message)))
         if filter_type is None:  # not passed - list both
             await ctx.invoke(self.filter_list, 'del')
             await ctx.invoke(self.filter_list, 'warn')
@@ -172,7 +254,7 @@ class WordFilter(KazCog):
 
             logger.info("filter_list: listing '{}' list for {}"
                 .format(validated_type, ctx.message.author))
-            filter_list = self.state.get("filter", validated_type)
+            filter_list = self.cog_state.get(validated_type)
             if filter_list:
                 list_str = format_list(filter_list)
             else:
@@ -188,32 +270,34 @@ class WordFilter(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def add(self, ctx, filter_type: str, word: str):
+        """!kazhelp
+        description: |
+            Adds a new filter word/expression.
+        parameters:
+            - name: filter_type
+              description: "Filter list: `del` or `warn` (shorthand: `d` or `w`)."
+            - name: word
+              type: string
+              description: |
+                The word or expression to filter. **If it has spaces, use quotation marks.** See
+                {{%WordFilter}} (or `.help WordFilter` in-bot) for information on matching syntax.
+        examples:
+            - command: ".filter add warn %word%"
+              description: 'Adds "word" (as an exact word match) to the auto-warning list.'
+            - command: '.filter add del "%pink flamingo%"'
+              description: 'Add "pink flamingo" (exact expression) to the auto-delete list.'
+            - command: 'filter a w %talk'
+              description: 'Shorthand. Add "%talk" to the warning list - this will match any words
+                that start with "talk".'
         """
-        [MOD ONLY] Add a new filter word/expression.
-
-        Arguments:
-        * filter_type: The list to add to. One of ["warn", "del"] (shorthand: ["w", "d"])
-        * word: The word or expression to match. USE QUOTATION MARKS AROUND IT IF MULTI-WORD.
-          You can use '%' at the beginning or end of the expression to match word boundaries
-          otherwise substring matching is done).
-
-        Examples:
-
-        `.filter add warn %word%` - Adds "word" (as an exact word match) to the auto-warning list.
-        `.filter add del "%pink flamingo%"` - Add "pink flamingo" (exact expression) to the auto-
-                delete list.
-        `.filter a w %talk` - Shorthand. Add "%talk" to the warning list - this will match any words
-                that start with "talk".
-        """
-        logger.info("add: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed
             return
         else:
-            # not a copy - can modify directly
-            self.state.get("filter", validated_type).append(word)
-            self.state.write()
+            filter_list = self.cog_state.get(validated_type)
+            filter_list.append(word)
+            self.cog_state.set(validated_type, filter_list)
 
             logger.info("add: {}: Added {!r} to the {} list."
                 .format(ctx.message.author, word, validated_type))
@@ -225,29 +309,31 @@ class WordFilter(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def rem(self, ctx, filter_type: str, word: str):
+        """!kazhelp
+        description: |
+            Remove a filter word/expression by word.
+        parameters:
+            - name: filter_type
+              description: "Filter list: `del` or `warn` (shorthand: `d` or `w`)."
+            - name: word
+              type: string
+              description: |
+                The word or expression to remove. **If it has spaces, use quotation marks.**
+        examples:
+            - command: ".filter rem warn %word%"
+              description: 'Remove "%word%" from the auto-warning list.'
+            - command: '.filter r d "%pink flamingo%"'
+              description: 'Shorthand. Remove "%pink flamingo%" from the auto-delete list.'
         """
-        [MOD ONLY] Remove a filter word/expression by word.
-
-        Arguments:
-        * filter_type: The list to remove from. One of ["warn", "del"] (shorthand: ["w", "d"])
-        * word: The word or expression to remove from the filter list. If it has spaces, use
-          quotation marks.
-
-        Examples:
-
-        `.filter rem warn %word%` - Remove "%word%" from the auto-warning list.
-        `.filter rem del "%pink flamingo%"` - Remove "%pink flamingo%" from the auto-delete list.
-        """
-        logger.info("add: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed
             return
         else:
-            filter_list = self.state.get("filter", validated_type)
+            filter_list = self.cog_state.get(validated_type)
             try:
-                # not a copy - can modify directly
                 filter_list.remove(word)
+                self.cog_state.set(validated_type, filter_list)
             except ValueError:
                 err_msg = "No such item in filter list {}: {}".format(validated_type, word)
                 logger.error("rem: " + err_msg)
@@ -255,8 +341,6 @@ class WordFilter(KazCog):
                 return
 
             else:  # no exceptions
-                self.state.write()
-
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, word, validated_type))
                 await self.bot.say("Removed `{}` from the {} list."
@@ -268,32 +352,35 @@ class WordFilter(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def rnum(self, ctx, filter_type: str, index: int):
+        """!kazhelp
+        description: |
+            Remove a filter word/expression by list index.
+        parameters:
+            - name: filter_type
+              description: "Filter list: `del` or `warn` (shorthand: `d` or `w`)."
+            - name: index
+              type: number
+              description: |
+                The index number of the filter to remove. You can get this index number using the
+                {{!filter list}} command.
+        examples:
+            - command: '.filter rnum del 5'
+              description: 'Removes the 5th rule in the auto-delete filter.'
+            - command: '.filter rnum w 3'
+              description: 'Shorthand. Removes the 3rd rule in the warning-only filter.'
         """
-        [MOD ONLY] Remove a filter word/expression by list index.
-
-        Arguments:
-        * filter_type: One of warn, del, w, d
-        * index: The index number of the filter to remove. You can get this index number using the
-          list command.
-
-        Examples:
-
-        `.filter rnum del 5` - Removes the 5th rule in the auto-delete filter.
-        `.filter r w 3` - Shorthand. Removes the 3rd rule in the warning-only filter.
-        """
-        logger.info("rnum: {}".format(message_log_str(ctx.message)))
         validated_type = await self.validate_filter_type(filter_type)
         if validated_type is None:
             # error messages and logging already managed
             return
         else:
             cfg_index = index - 1
-            filter_list = self.state.get("filter", validated_type)
+            filter_list = self.cog_state.get(validated_type)
             try:
                 # not a copy - can modify directly
                 del_value = filter_list[cfg_index]
                 del filter_list[cfg_index]
-
+                self.cog_state.set(validated_type, filter_list)
             except IndexError:
                 err_msg = "Index out of range: {:d}".format(index)
                 logger.error("rem: " + err_msg)
@@ -301,8 +388,6 @@ class WordFilter(KazCog):
                 return
 
             else:  # no exceptions
-                self.state.write()
-
                 logger.info("rem: {}: Removed {!r} from the {} list."
                     .format(ctx.message.author, del_value, validated_type))
                 await self.bot.say("Removed `{}` from the {} list."
@@ -314,14 +399,12 @@ class WordFilter(KazCog):
     @mod_only()
     @mod_channels(delete_on_fail=True)
     async def filter_switch(self, ctx):
-        """
-        [MOD ONLY] Change the bot output channel for wordfilter warnings.
+        """!kazhelp
+        description: |
+            Change the bot output channel for WordFilter warnings.
 
-        Switches between the configured filter warning channel and the general bot output channel
-        (#mods and #bot_output at time of writing).
+            Switches between the {{output_channel}} and {{warn_channel}} channels.
         """
-        logger.info("switch: {}".format(message_log_str(ctx.message)))
-
         if self.channel_current is None and self.channel_warning is None:
             logger.warning("switch invoked before bot ready state???")
             await self.bot.say("Sorry, I'm still booting up. Try again in a few seconds.")
@@ -331,8 +414,7 @@ class WordFilter(KazCog):
             self.channel_current = self.channel_out
         else:
             self.channel_current = self.channel_warning
-        self.state.set('filter', 'channel', str(self.channel_current.id))
-        self.state.write()
+        self.cog_state.channel = self.channel_current
 
         logger.info("switch(): Changed filter warning channel to #{}"
             .format(self.channel_current.name))
@@ -344,10 +426,10 @@ class WordFilter(KazCog):
         cmd_string = message_log_str(ctx.message)
 
         if isinstance(exc, commands.TooManyArguments):
-            msg = "Too many arguments passed in command: {}".format(cmd_string)
+            msg = "Too many parameters passed in command: {}".format(cmd_string)
             logger.warning(msg)
             await self.bot.send_message(ctx.message.channel,
-                ("Too many arguments.\n\n**Usage:** `{} <warn|del> \"<filter text>\"`\n\n"
+                ("Too many parameters.\n\n**Usage:** `{} <warn|del> \"<filter text>\"`\n\n"
                  "Did you forget quotation marks around the filter text? "
                  "Use `{}` for instructions.")
                     .format(get_command_str(ctx), get_help_str(ctx)))
@@ -358,7 +440,9 @@ class WordFilter(KazCog):
     @commands.command(name='switch', pass_context=True)
     @mod_only()
     async def switch_deprecated(self, ctx):
-        """ DEPRECATED. """
+        """!kazhelp
+        description: DEPRECATED.
+        """
         await self.bot.say('This command is deprecated. Use `.filter switch` instead.')
 
     async def validate_filter_type(self, filter_type) -> Union[str, None]:

@@ -1,7 +1,6 @@
 # Project-specific files
 config.json
 config-*.json
-dict.json
 state.json
 state-*.json
 client_secret.json
@@ -22,6 +21,7 @@ temp.csv.gz
 # User-specific stuff:
 .idea/**/workspace.xml
 .idea/**/tasks.xml
+.idea/deployment.xml
 .idea/dictionaries
 
 # Sensitive or high-churn files:
@@ -73,7 +73,6 @@ fabric.properties
 # ======
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
 *$py.class
 
 # C extensions

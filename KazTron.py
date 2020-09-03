@@ -7,7 +7,7 @@ import logging
 import kaztron
 from kaztron import runner
 from kaztron.config import get_kaztron_config
-from kaztron.logging import setup_logging, get_logging_info
+from kaztron.logging import setup_logging
 
 # In the loving memory of my time as a moderator of r/worldbuilding network
 # To the future dev, this whole thing is a mess that somehow works. Sorry for the inconvenience.
@@ -24,6 +24,7 @@ except OSError as e:
 def stop_daemon():
     import os
     import signal
+    # noinspection PyPackageRequirements
     from daemon import pidfile
     print("Reading pidfile...")
     pidf = pidfile.TimeoutPIDLockFile(config.get('core', 'daemon_pidfile'))
