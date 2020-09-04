@@ -4,7 +4,7 @@ from .kazcog import KazCog
 from .scheduler import Scheduler, TaskInstance, task
 
 __release__ = "2.2"  # release stream, usually major.minor only
-__version__ = "2.2b4"
+__version__ = "2.2.0"
 
 bot_info = {
     "version": __version__,
