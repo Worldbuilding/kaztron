@@ -1,0 +1,43 @@
+authors:
+- name: Laogeodritt
+  role: Lead developer (2017&ndash;)
+  github: Laogeodritt
+  reddit: Laogeodritt
+  discord: Laogeobunny
+
+- name: SanguineHaze
+  role: QA, sysadmin (2019&ndash;)
+  reddit: SanguineHaze
+  discord: SanguineHaze
+
+- name: Kazandaki
+  role: Founder, developer (&ndash;2017), namesake
+  reddit: Kazandaki
+  discord: Kazandaki
+
+- name: cxcfme
+  role: Sysadmin (2017&ndash;2020)
+  github: cxcfme
+
+contributors:
+- name: Grine_
+  role: "Quality assurance, guinea pig"
+  links:
+    - title: GitHub
+      icon: "fab fa-github"
+      url: https://github.com/Grine-sudoscience
+- name: Kauyon Kais
+  role: Development
+  links:
+    - title: GitHub
+      icon: "fab fa-github"
+      url: https://github.com/KauyonKais
+- name: Teeteegone
+  role: "KazTron \"cat\" icon artwork"
+  links: []
+- name: Yazuki
+  role: "Quality assurance, guinea pig"
+  links: []
+- name: B.W., Izzy, Nyxlexica, Poison, ThiefOfHope, Zuberan
+  role: Quality assurance
+  links: []

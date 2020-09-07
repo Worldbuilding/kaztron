@@ -1,0 +1,113 @@
+# This is your sidebar TOC. The sidebar code loops through sections here and provides the appropriate formatting.
+
+entries:
+- title: sidebar
+  product: KazTron
+  version: 2.2.0
+  head_image: kaztron.png
+  folders:
+
+  - title: Overview
+    output: web, pdf
+    folderitems:
+
+    - title: Home
+      url: /22/
+      output: web, pdf
+      type: homepage
+
+    - title: How to read this manual
+      url: /22/about-manual.html
+      output: web, pdf
+
+    - title: Known Issues
+      external_url: https://github.com/Worldbuilding/kaztron/issues
+      output: web, pdf
+
+    - title: Troubleshooting
+      url: /22/troubleshooting.html
+      output: web, pdf
+
+  - title: Releases &amp; Development
+    output: web, pdf
+    folderitems:
+
+    - title: GitHub
+      external_url: https://github.com/worldbuilding/kaztron
+      output: web, pdf
+
+    - title: Roadmap
+      external_url: https://github.com/Worldbuilding/kaztron/milestones
+      output: web, pdf
+
+    - title: Manuals for previous releases
+      url: /versions.html
+      output: web, pdf
+
+    - title: Release Notes - v2.2.0
+      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.2.0
+      output: web, pdf
+
+    - title: All releases
+      external_url: https://github.com/Worldbuilding/kaztron/releases
+      output: web, pdf
+
+  - title: Commands Reference
+    output: web, pdf
+    folderitems:
+
+    - title: Core
+      url: /22/cogs/core.html
+      output: web, pdf
+
+    - title: Dice
+      url: /22/cogs/dice.html
+      output: web, pdf
+
+    - title: Spotlight
+      url: /22/cogs/spotlight.html
+      output: web, pdf
+
+    - title: Quotes Database
+      url: /22/cogs/quotedb.html
+      output: web, pdf
+
+    - title: Reminders
+      url: /22/cogs/reminders.html
+      output: web, pdf
+
+    - title: Voice Log
+      url: /22/cogs/voicelog.html
+      output: web, pdf
+
+    - title: Welcome
+      url: /22/cogs/welcome.html
+      output: web, pdf
+
+    - title: Writing Sprints
+      url: /22/cogs/sprint.html
+      output: web, pdf
+
+  - title: Moderator Tools Reference
+    output: web, pdf
+    folderitems:
+
+    - title: Mod Notes
+      url: /22/cogs/modnotes.html
+      output: web, pdf
+
+    - title: Mod Tools
+      url: /22/cogs/modtools.html
+      output: web, pdf
+
+    - title: Role Manager
+      url: /22/cogs/role_man.html
+      output: web, pdf
+
+    - title: User Statistics
+      url: /22/cogs/userstats.html
+      output: web, pdf
+
+    - title: Word Filter
+      url: /22/cogs/wordfilter.html
+      output: web, pdf
