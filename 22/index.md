@@ -13,7 +13,7 @@ This website documents the usage of the various commands, organised by module. N
 
 {% include note.html content="Setting up a copy of KazTron is outside the scope of this manual. For any inquiries, you can get in touch with us via [Reddit modmail](https://www.reddit.com/message/compose?to=%2Fr%2Fworldbuilding&subject=KazTron&message=I%27m%20writing%20to%20you%20about%20KazTron.%0D%0D%3CType%20your%20comments%20here%3E) or the #meta channel of our Discord server." %}
 
-{% include important.html content="KazTron is designed for use on one Discord server at a time. It is not possible to invite it to other servers: you would need to host it yourself on a separate bot account." %}
+{% include important.html content="KazTron is designed for use on one Discord server at a time. It is not possible to invite it to other Discord servers: you would need to host it yourself on a separate bot account and on your own server/VPS." %}
 
 ## How to use KazTron commands
 
@@ -25,8 +25,6 @@ KazTron is always monitoring all text channels for commands. The structure of a 
 
 The prefix, in this case `.`, is how KazTron identifies a command intended for it, versus any normal message. This is followed by the command name, a space, and then any number of arguments separated by spaces (very similarly to command line tools, IRC bots, and IRC NickServ/ChanServ commands). If an argument contains spaces, you should enclose it in quotes to ensure it gets interpreted as a single argument.
 
-{% include note.html content="Some commands are restricted based on user account and text channel&mdash;for example, moderator-only commands or `.roll` only usable in #tabletop." %}
-
 {% include tip.html content="If you see your command message instantly disappear, don't panic&mdash;check your PMs! For *some* commands, this is done to avoid channel spam." %}
 
 ### Examples
@@ -37,7 +35,7 @@ If you want to be notified about World Spotlight events and updates, you can typ
 .spotlight join
 ```
 
-If you want to roll dice, say three 20-sided dice, you could type the following message in the #tabletop channel (this is a channel-restricted command):
+If you want to roll dice, say three 20-sided dice, you could type the following message in any channel:
 
 ```
 .roll 3d20
