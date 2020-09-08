@@ -161,7 +161,8 @@ class ModTools(KazCog):
     async def say(self, ctx: commands.Context, channel: discord.Channel, *, message: str):
         """!kazhelp
 
-        description: Make the bot say something in a channel.
+        description: Make the bot say something in a channel. If the {{%reminders}} cog is enabled,
+            you can also schedule a message at a later time with {{!saylater}}.
         parameters:
             - name: channel
               type: string

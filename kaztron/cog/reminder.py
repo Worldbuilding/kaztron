@@ -3,7 +3,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from functools import reduce
-from typing import List
+from typing import List, Tuple
 
 import discord
 from discord.ext import commands
@@ -11,9 +11,10 @@ from discord.ext import commands
 from kaztron import KazCog, TaskInstance, task
 from kaztron.config import SectionView
 from kaztron.errors import DiscordErrorCodes
+from kaztron.utils.checks import mod_channels, mod_only
 from kaztron.utils.datetime import utctimestamp, format_datetime, format_timedelta, \
     parse as dt_parse
-from kaztron.utils.discord import Limits, user_mention
+from kaztron.utils.discord import Limits, user_mention, channel_mention
 from kaztron.utils.logging import exc_log_str
 from kaztron.utils.strings import format_list
 
@@ -21,16 +22,18 @@ logger = logging.getLogger(__name__)
 
 
 class ReminderData:
-    MSG_LIMIT = Limits.MESSAGE//2
+    MSG_LIMIT = Limits.MESSAGE - 75
 
     def __init__(self,
                  *,
                  user_id: str,
+                 channel_id: str,
                  timestamp: datetime,
                  remind_time: datetime,
                  msg: str
                  ):
         self.user_id = user_id
+        self.channel_id = channel_id
         self.timestamp = timestamp
         self.remind_time = remind_time
         self.message = msg[:self.MSG_LIMIT]
@@ -39,20 +42,25 @@ class ReminderData:
     def to_dict(self):
         return {
             'user_id': self.user_id,
+            'channel_id': self.channel_id,
             'timestamp': utctimestamp(self.timestamp),
             'remind_time': utctimestamp(self.remind_time),
             'message': self.message
         }
 
     def __repr__(self):
-        return "<ReminderData(user_id={}, timestamp={}, remind_time={}, message={!r})>"\
-            .format(self.user_id, self.timestamp.isoformat(' '),
-                    self.remind_time.isoformat(' '), self.message)
+        return "<ReminderData(user_id={}, channel_id={}, "\
+               "timestamp={}, remind_time={}, message={!r})>"\
+            .format(self.user_id, self.channel_id,
+                    self.timestamp.isoformat(' '),
+                    self.remind_time.isoformat(' '),
+                    self.message)
 
     @classmethod
     def from_dict(cls, data: dict):
         return cls(
-            user_id=data['user_id'],
+            user_id=data.get('channel_id', ''),
+            channel_id=data.get('channel_id', ''),
             timestamp=datetime.utcfromtimestamp(data['timestamp']),
             remind_time=datetime.utcfromtimestamp(data['remind_time']),
             msg=data['message']
@@ -73,10 +81,15 @@ class Reminders(KazCog):
 
         IMPORTANT: While we want this module to be useful and reliable, we can't guarantee that
         you'll get the reminder on time. Don't rely on this module for anything critical!
+
+        This cog also allows moderators to schedule messages in-channel at a later time.
     contents:
         - reminder:
             - list
             - clear
+        - saylater:
+            - list
+            - rem
     """
     cog_state: ReminderState
 
@@ -116,6 +129,67 @@ class Reminders(KazCog):
         if not self.reminders:
             self._load_reminders()
 
+    def parse_reminder_args(self, args: str) -> Tuple[datetime, str]:
+        """
+        Parse reminder args.
+
+        :return: (timespec, msg)"""
+        try:
+            timespec_s, msg = re.split(r':\s+|,', args, maxsplit=1)
+        except ValueError:
+            raise commands.BadArgument("message")
+
+        timestamp = datetime.utcnow()
+        max_timestamp = timestamp + timedelta(weeks=521)
+        # first one allows "10 minutes" as a future input, second is a fallback
+        try:
+            timespec = dt_parse('in '+timespec_s, future=True) or dt_parse(timespec_s, future=True)
+        except ValueError:
+            # usually raised by datetime, for range issues
+            # the parser will usually return None if parsing fails
+            raise commands.BadArgument("range")
+
+        if timespec is None:
+            raise commands.BadArgument("timespec", timespec_s[:64])
+        elif timespec <= timestamp:
+            raise commands.BadArgument("past")
+        elif timespec >= max_timestamp:
+            raise commands.BadArgument("range")
+
+        return timespec, msg
+
+    @commands.group(pass_context=True, invoke_without_command=True)
+    @mod_only()
+    @mod_channels()
+    async def saylater(self, ctx: commands.Context, channel: discord.Channel, *, args: str):
+        """!kazhelp
+
+        description: |
+            Schedule a message for the bot to send in-channel later.
+
+            TIP: You should double-check the reminder time, to make sure your timespec was
+            interpreted correctly.
+        parameters:
+            - name: channel
+              description: The channel to post the message in.
+            - name: args
+              description: "Consists of `<timespec>: <message>`. Same as for {{!reminder}}."
+        examples:
+            - command: ".saylater #community-programs at 12:00 UTC:
+                Welcome to our AMA with philosopher Aristotle!"
+        """
+        timespec, msg = self.parse_reminder_args(args)
+        reminder = ReminderData(
+            user_id=ctx.message.author.id, channel_id=channel.id,
+            timestamp=datetime.utcnow(), remind_time=timespec, msg=msg
+        )
+        self.add_reminder(reminder)
+        await self.send_message(ctx.message.channel,
+            "Got it! I'll post that in {} at {} UTC (in {!s}).".format(
+                channel.mention, format_datetime(reminder.remind_time),
+                format_timedelta(reminder.remind_time - datetime.utcnow())
+            ))
+
     @commands.group(pass_context=True, invoke_without_command=True, aliases=['remind'])
     async def reminder(self, ctx: commands.Context, *, args: str):
         """!kazhelp
@@ -154,35 +228,16 @@ class Reminders(KazCog):
             await self.bot.say(("Oops! You already have too many future reminders! "
                          "The limit is {:d} per person.").format(self.MAX_PER_USER))
             return
-
-        try:
-            timespec_s, msg = re.split(r':\s+|,', args, maxsplit=1)
-        except ValueError:
-            raise commands.BadArgument("message")
-
-        timestamp = datetime.utcnow()
-        max_timestamp = timestamp + timedelta(weeks=521)
-        # first one allows "10 minutes" as a future input, second is a fallback
-        try:
-            timespec = dt_parse('in '+timespec_s, future=True) or dt_parse(timespec_s, future=True)
-        except ValueError:
-            # usu raised by datetime, for range issues
-            # the parser will usually return None if parsing fails
-            raise commands.BadArgument("range")
-
-        if timespec is None:
-            raise commands.BadArgument("timespec", timespec_s[:64])
-        elif timespec <= timestamp:
-            raise commands.BadArgument("past")
-        elif timespec >= max_timestamp:
-            raise commands.BadArgument("range")
+        timespec, msg = self.parse_reminder_args(args)
         reminder = ReminderData(
-            user_id=ctx.message.author.id, timestamp=timestamp, remind_time=timespec, msg=msg
+            user_id=ctx.message.author.id, channel_id='',
+            timestamp=datetime.utcnow(), remind_time=timespec, msg=msg
         )
         self.add_reminder(reminder)
-        await self.bot.say("Got it! I'll remind you by PM at {} UTC (in {!s}).".format(
-            format_datetime(reminder.remind_time),
-            format_timedelta(reminder.remind_time - datetime.utcnow())
+        await self.send_message(ctx.message.channel,
+            "Got it! I'll remind you by PM at {} UTC (in {!s}).".format(
+                format_datetime(reminder.remind_time),
+                format_timedelta(reminder.remind_time - datetime.utcnow())
         ))
 
     def add_reminder(self, r: ReminderData):
@@ -221,15 +276,19 @@ class Reminders(KazCog):
     @task(is_unique=False)
     async def task_reminder_expired(self, reminder: ReminderData):
         logger.info("Reminder has expired: {!r}".format(reminder))
-        # because send_message assumes discord.Object is a channel, not user
-        user = discord.utils.get(self.bot.get_all_members(), id=reminder.user_id)
-        await self.bot.send_message(
-            user,
-            "**Reminder** At {} UTC, you asked me to send you a reminder: {}".format(
+
+        # determine the destination (user or channel)
+        if reminder.channel_id:
+            dest = discord.Object(id=reminder.channel_id)
+            message = f"{reminder.message}\n\n*({user_mention(reminder.user_id)})*"
+        else:  # user reminder
+            # can't use discord.Object - send_message would interpret it as a channel, not a user
+            dest = discord.utils.get(self.bot.get_all_members(), id=reminder.user_id)
+            message = "**Reminder** At {} UTC, you asked me to send you a reminder: {}".format(
                 format_datetime(reminder.timestamp),
-                reminder.message
-            )
-        )  # if problem, will raise an exception...
+                reminder.message)
+
+        await self.send_message(dest, message)
 
         # stop scheduled retries and remove the reminder
         try:
