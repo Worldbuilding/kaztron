@@ -4,6 +4,7 @@ config-*.json
 state.json
 state-*.json
 client_secret.json
+test.json
 *.sublime-*
 *.sqlite
 *.orig
