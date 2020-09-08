@@ -59,6 +59,7 @@ class ModTools(KazCog):
         - report
         - up
         - down
+        - say
         - tempban
         - whois
         - wb
@@ -153,6 +154,29 @@ class ModTools(KazCog):
             logger.warning(err_msg)
             await self.bot.say("That command is only available to mods and admins.")
             await self.send_output("[WARNING] " + err_msg)
+
+    @commands.command(pass_context=True)
+    @mod_only()
+    @mod_channels()
+    async def say(self, ctx: commands.Context, channel: discord.Channel, *, message: str):
+        """!kazhelp
+
+        description: Make the bot say something in a channel.
+        parameters:
+            - name: channel
+              type: string
+              description: The channel to say the message in.
+            - name: message
+              type: string
+              description: "The message to say. This will be copied exactly. This includes any
+                formatting, @mentions, commands that OTHER bots might react to, and @everyone/@here
+                (if the bot is allowed to use them)."
+        examples:
+            - command: .say #meta HELLO, HUMANS. I HAVE GAINED SENTIENCE.
+              description: Says the message in the #meta channel.
+        """
+        await self.send_message(channel, message)
+        await self.send_output(f"Said in {channel} ({ctx.message.author.mention}): {message}")
 
     def _get_tempbanned_members_db(self, server: discord.Server) -> List[model.Record]:
         if self.notes:
