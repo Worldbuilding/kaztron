@@ -108,21 +108,22 @@ def format_timedelta(delta: timedelta, timespec="seconds") -> str:
     str_parts = []
 
     timespec_list = ['days', 'hours', 'minutes', 'seconds', 'microseconds']
-    timespec_prio = timespec_list.index(timespec)
+    try:
+        timespec_prio = timespec_list.index(timespec)
 
-    # get a resolution object to round against
-    if timespec == 'days':
-        res = timedelta(days=1)
-    elif timespec == 'hours':
-        res = timedelta(hours=1)
-    elif timespec == 'minutes':
-        res = timedelta(minutes=1)
-    elif timespec == 'seconds':
-        res = timedelta(seconds=1)
-    elif timespec == 'microseconds':
-        res = None
-    else:
-        raise ValueError("Invalid timespec")
+        # get a resolution object to round against
+        if timespec == 'days':
+            res = timedelta(days=1)
+        elif timespec == 'hours':
+            res = timedelta(hours=1)
+        elif timespec == 'minutes':
+            res = timedelta(minutes=1)
+        elif timespec == 'seconds':
+            res = timedelta(seconds=1)
+        elif timespec == 'microseconds':
+            res = None
+    except ValueError:
+            raise ValueError("Invalid timespec {!r}".format(timespec)) from None
 
     # round
     if res:

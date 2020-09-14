@@ -164,6 +164,8 @@ class KazCog:
 
         Variable names must start with a character in the set [A-Za-z0-9_].
 
+        Variable values must be strings.
+
         :return: variable name -> value
         """
         return {}

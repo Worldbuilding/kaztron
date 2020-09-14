@@ -143,6 +143,11 @@
     "datetime_format": "one of: seconds, datetime, date",
     "show_channel": false
   },
+  "reminders": {
+    "max_per_user": 10,
+    "renew_limit": 25,
+    "renew_interval_min": 600
+  },
   "spotlight": {
     "name": "World Spotlight",
     "channel": "Channel ID",
