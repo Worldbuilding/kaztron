@@ -4,6 +4,7 @@ from datetime import datetime
 import inspect
 import logging
 import re
+from functools import reduce
 from textwrap import shorten, indent
 from typing import Union, Callable, Dict
 
@@ -271,13 +272,14 @@ class CoreHelpParser:
     def _validate_params(data: dict):
         validated = []
         for p in data['parameters']:
+            # defaults
             p_v = {
                 # name, description are required: no defaults
                 'optional': False,
                 'default': '',
                 'type': ''
             }
-            p_v.update(p)
+            p_v.update(p)  # overwrite defaults with actual data
             if 'description' not in p or 'name' not in p:
                 raise KeyError("Parameters must have name and description")
             validated.append(p_v)
@@ -287,8 +289,9 @@ class CoreHelpParser:
     def _validate_examples(data: dict):
         validated = []
         for e in data['examples']:
-            e_v = {'description': None}  # command is required - don't default it
-            e_v.update(e)
+            # defaults
+            e_v = {'description': None}  # 'command' key is required - don't set a default
+            e_v.update(e)  # overwrite defaults with actual data
             validated.append(e_v)
         data['examples'] = validated
 
@@ -372,7 +375,7 @@ class CoreHelpParser:
         if cog_name not in self.cog_vars:
             self.cog_vars[cog_name] = cog.export_kazhelp_vars().copy()
 
-        # generate variables - order is important, self.variables should have priority
+        # generate merged variables - order is important, self.variables should have priority
         try:
             variables = self.cog_vars[cog_name].copy()
             variables.update(self.variables)
@@ -400,6 +403,9 @@ class CoreHelpParser:
                 return variables[varname]
             except KeyError:
                 return m.group(0)
+            except TypeError as e:
+                raise TypeError('Variable {:s} is not a string (value={!r})'
+                                .format(varname, variables[varname])) from e
         return self.var_re.sub(subst_var_inner, s)
 
 
@@ -437,14 +443,14 @@ class DiscordHelpFormatter(commands.HelpFormatter):
             else:
                 logger.debug("Parsed !kazhelp for command '{!s}'".format(command))
                 if isinstance(command, commands.Command):
-                    command.description = self._format_links(data['description'])
-                    command.brief = self._format_links(data['brief'] or data['description'])
+                    command.description = self._format_links(self._fix_paragraphs(data['description']))
+                    command.brief = self._format_links(self._fix_paragraphs(data['brief'] or data['description']))
                     command.help = self._format_links(self._build_detailed_info(data))
                     if isinstance(command, commands.GroupMixin):
                         command.help += '\n\n' + self._make_title("SUB-COMMANDS")
                 else:  # cog
                     command.__doc__ = self._format_links(
-                        data['description'] + '\n\n' + self._build_detailed_info(data)
+                        self._fix_paragraphs(data['description']) + '\n\n' + self._build_detailed_info(data)
                     )
 
     def _build_detailed_info(self, data: dict):
@@ -455,7 +461,7 @@ class DiscordHelpFormatter(commands.HelpFormatter):
         if data['details'] or data['users'] or data['channels']:
             sections.append(self._make_title("DETAILS"))
             if data['details']:
-                sections.append(self._format_links(data['details']))
+                sections.append(self._format_links(self._fix_paragraphs(data['details'])))
             if data['users']:
                 sections.append('MEMBERS: {users}'.format(**data))
             if data['channels']:
@@ -467,8 +473,8 @@ class DiscordHelpFormatter(commands.HelpFormatter):
             sections.append(self._build_examples(data))
         return '\n\n'.join(sections)
 
-    @staticmethod
-    def _build_parameters(data: dict):
+    @classmethod
+    def _build_parameters(cls, data: dict):
         strings = []
         for p in data['parameters']:
             p_strings = []
@@ -486,22 +492,22 @@ class DiscordHelpFormatter(commands.HelpFormatter):
             # description
             if is_optional:
                 p_strings.append('Optional.')
-                p_strings.append(p['description'].strip())
+                p_strings.append(cls._fix_paragraphs(p['description'].strip()))
                 if p['default']:
-                    p_strings.append('Default: {}'.format(p['default'].strip()))
+                    p_strings.append('Default: {}'.format(cls._fix_paragraphs(p['default'].strip())))
             else:
-                p_strings.append(p['description'].strip())
+                p_strings.append(cls._fix_paragraphs(p['description'].strip()))
             strings.append(' '.join(p_strings))
         return '\n\n'.join(strings)
 
-    @staticmethod
-    def _build_examples(data: dict):
+    @classmethod
+    def _build_examples(cls, data: dict):
         strings = []
         for e in data['examples']:
             if 'description' in e and e['description']:
                 strings.append('{command}\n    {description}'.format(
                     command=e['command'].strip(),
-                    description=e['description'].strip()
+                    description=cls._fix_paragraphs(e['description'].strip())
                 ))
             else:
                 strings.append(e['command'].strip())
@@ -520,6 +526,23 @@ class DiscordHelpFormatter(commands.HelpFormatter):
             s,
             lambda t, target: '`{}{}`'.format(prefix if t == 'command' else '', target)
         )
+
+    @classmethod
+    def _fix_paragraphs(cls, s: str):
+        """
+        Some YAML will have hardcoded newlines in paragraphs. Fixes those into continuous text,
+        using the assumption (generally correct due to Markdown used in jekyllate) that paragraphs
+        are always identified by a blank line.
+        """
+        def _fix_paragraphs_reducer(s1: str, s2: str):
+            s2 = s2.strip()
+            if s2:  # not empty string/empty line
+                return (s1 + ' ' if (s1 and s1[-1] != '\n') else s1) + s2
+            else:  # empty string/line - we want this to remain as a paragraph break
+                return s1 + '\n\n'
+
+        lines = s.split('\n')
+        return reduce(_fix_paragraphs_reducer, lines, '').strip()
 
 
 class HelpSectionView(SectionView):
