@@ -92,7 +92,11 @@ class ModNotes(KazCog):
 
     @staticmethod
     def format_display_user(db_user: User):
-        return "{} (`*{}`)".format(user_mention(db_user.discord_id), db_user.user_id)
+        return "{} (`*{:04d}`)".format(user_mention(db_user.discord_id), db_user.user_id)
+
+    @staticmethod
+    def format_record_id(id_: int):
+        return "#{:05d}".format(id_)
 
     def _get_user_fields(self, user: User, group: Sequence[User]) -> OrderedDict:
         user_fields = OrderedDict()
@@ -107,7 +111,7 @@ class ModNotes(KazCog):
     def _get_record_fields(self, record: Record, show_user=False, show_grouped_user=False)\
             -> (OrderedDict, OrderedDict):
         record_fields = OrderedDict()
-        rec_title = "Record #{:04d}".format(record.record_id)
+        rec_title = "Record {}".format(self.format_record_id(record.record_id))
         record_fields[rec_title] = format_timestamp(record.timestamp)
         if record.expires:
             expire_str = format_timestamp(record.expires)
@@ -395,8 +399,10 @@ class ModNotes(KazCog):
                       timestamp=timestamp, expires=expires, body=note_contents)
 
         await self.show_record(self.channel_log, record=record, title='New Moderation Record')
-        await self.bot.say("Added note #{:04d} for {}."
-            .format(record.record_id, self.format_display_user(record.user)))
+        await self.bot.say("Added note {} for {}.".format(
+            self.format_record_id(record.record_id),
+            self.format_display_user(record.user))
+        )
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['x', 'expire'])
     @mod_only()
@@ -429,7 +435,7 @@ class ModNotes(KazCog):
         try:
             record = c.update_record(note_id, expires=expires)
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
+            await self.bot.say("Note ID {} does not exist.".format(self.format_record_id(note_id)))
         else:
             await self.show_record(ctx.message.channel,
                 record=record, title='Note expiration updated')
@@ -458,11 +464,11 @@ class ModNotes(KazCog):
             record = c.mark_removed_record(note_id)
             user = record.user
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
+            await self.bot.say("Note ID {} does not exist.".format(self.format_record_id(note_id)))
         else:
             await self.show_record(ctx.message.channel, record=record, title='Note removed')
-            await self.bot.send_message(self.channel_log, "Removed note #{:04d} for {}"
-                .format(note_id, self.format_display_user(user)))
+            await self.bot.send_message(self.channel_log, "Removed note {} for {}"
+                .format(self.format_record_id(note_id), self.format_display_user(user)))
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
@@ -514,10 +520,12 @@ class ModNotes(KazCog):
         try:
             record = c.mark_removed_record(note_id, removed=False)
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
+            await self.bot.say("Note {} does not exist or is not removed.".format(
+                self.format_record_id(note_id)))
         else:
             await self.show_record(ctx.message.channel, record=record, title='Note restored')
-            await self.bot.send_message(self.channel_log, "Note #{:04d} restored".format(note_id))
+            await self.bot.send_message(self.channel_log, "Note {} restored".format(
+                self.format_record_id(note_id)))
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
@@ -542,10 +550,11 @@ class ModNotes(KazCog):
             await self.show_record(ctx.message.channel, record=record, title='Purging...')
             c.delete_removed_record(note_id)
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
+            await self.bot.say("Note {} does not exist or is not removed.".format(
+                self.format_record_id(note_id)))
         else:
-            await self.bot.say("Record #{:04d} purged (user {})."
-                .format(note_id, self.format_display_user(user)))
+            await self.bot.say("Record {} purged (user {})."
+                .format(self.format_record_id(note_id), self.format_display_user(user)))
             # don't send to channel_log, this has no non-admin visibility
 
     @notes.command(pass_context=True, ignore_extra=True)
