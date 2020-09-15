@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 class FuckCog(KazCog):
+    """!kazhelp
+    category: Commands
+    brief: For when {{name}} fucks up.
+    contents:
+        - fuck
+    """
     FUCK_LIST = [
         "https://tenor.com/view/gomen-naka-naori-kenka-ayamaru-gif-11957657",
         "https://tenor.com/view/kaede-girl-senpai-panda-gomen-gif-16026628"
@@ -17,6 +23,10 @@ class FuckCog(KazCog):
 
     @commands.command(pass_context=True)
     async def fuck(self, ctx: commands.Context):
+        """!kazhelp
+
+        brief: Damn it, {{name}}.
+          """
         await self.send_message(ctx.message.channel, random.choice(self.FUCK_LIST))
 
 

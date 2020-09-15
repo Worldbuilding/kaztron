@@ -234,6 +234,7 @@ class Reminders(KazCog):
         - saylater:
             - list
             - rem
+            - clear
     """
     cog_state: ReminderState
     cog_config: ReminderConfig
