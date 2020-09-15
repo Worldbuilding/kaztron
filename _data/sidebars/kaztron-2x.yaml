@@ -1,0 +1,121 @@
+# This is your sidebar TOC. The sidebar code loops through sections here and provides the appropriate formatting.
+
+entries:
+- title: sidebar
+  product: KazTron
+  version: 2.3.1
+  head_image: kaztron.png
+  folders:
+
+  - title: Overview
+    output: web, pdf
+    folderitems:
+
+    - title: Home
+      url: /2x/
+      output: web, pdf
+      type: homepage
+
+    - title: How to read this manual
+      url: /2x/about-manual.html
+      output: web, pdf
+
+    - title: Known Issues
+      external_url: https://github.com/Worldbuilding/kaztron/issues
+      output: web, pdf
+
+    - title: Troubleshooting
+      url: /2x/troubleshooting.html
+      output: web, pdf
+
+  - title: Releases &amp; Development
+    output: web, pdf
+    folderitems:
+
+    - title: GitHub
+      external_url: https://github.com/worldbuilding/kaztron
+      output: web, pdf
+
+    - title: Roadmap
+      external_url: https://github.com/Worldbuilding/kaztron/milestones
+      output: web, pdf
+
+    - title: Manuals for previous releases
+      url: /versions.html
+      output: web, pdf
+
+    - title: Release Notes - v2.3.1
+      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.3.1
+      output: web, pdf
+
+    - title: Release Notes - v2.3.0
+      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.3.0
+      output: web, pdf
+
+    - title: Release Notes - v2.2.0
+      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.2.0
+      output: web, pdf
+
+    - title: All releases
+      external_url: https://github.com/Worldbuilding/kaztron/releases
+      output: web, pdf
+
+  - title: Commands Reference
+    output: web, pdf
+    folderitems:
+
+    - title: Core
+      url: /2x/cogs/core.html
+      output: web, pdf
+
+    - title: Dice
+      url: /2x/cogs/dice.html
+      output: web, pdf
+
+    - title: Spotlight
+      url: /2x/cogs/spotlight.html
+      output: web, pdf
+
+    - title: Quotes Database
+      url: /2x/cogs/quotedb.html
+      output: web, pdf
+
+    - title: Reminders
+      url: /2x/cogs/reminders.html
+      output: web, pdf
+
+    - title: Voice Log
+      url: /2x/cogs/voicelog.html
+      output: web, pdf
+
+    - title: Welcome
+      url: /2x/cogs/welcome.html
+      output: web, pdf
+
+    - title: Writing Sprints
+      url: /2x/cogs/sprint.html
+      output: web, pdf
+
+  - title: Moderator Tools Reference
+    output: web, pdf
+    folderitems:
+
+    - title: Mod Notes
+      url: /2x/cogs/modnotes.html
+      output: web, pdf
+
+    - title: Mod Tools
+      url: /2x/cogs/modtools.html
+      output: web, pdf
+
+    - title: Role Manager
+      url: /2x/cogs/role_man.html
+      output: web, pdf
+
+    - title: User Statistics
+      url: /2x/cogs/userstats.html
+      output: web, pdf
+
+    - title: Word Filter
+      url: /2x/cogs/wordfilter.html
+      output: web, pdf

@@ -110,6 +110,16 @@ defaults:
       topnav: topnav
   -
     scope:
+      path: "2x"
+      type: "pages"
+    values:
+      layout: "page"
+      comments: false
+      search: true
+      sidebar: kaztron-2x
+      topnav: topnav
+  -
+    scope:
       path: "dev"
       type: "pages"
     values:
@@ -145,6 +155,7 @@ sidebars:
 - kaztron-20
 - kaztron-21
 - kaztron-22
+- kaztron-2x
 - kaztron-dev
 - other
 
