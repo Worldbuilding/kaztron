@@ -10,7 +10,7 @@ from kaztron.driver.wordfilter import WordFilter as WordFilterEngine
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.discord import check_role, MSG_MAX_LEN, Limits, get_command_str, get_help_str, \
-    get_group_help
+    get_group_help, get_jump_url
 from kaztron.utils.logging import message_log_str
 from kaztron.utils.strings import format_list, split_code_chunks_on, natural_truncate
 
@@ -150,7 +150,7 @@ class WordFilter(KazCog):
         return {'warn_channel': '#' + self.channel_warning.name}
 
     @ready_only
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         """
         Message handler. Check all non-mod messages for filtered words.
         """
@@ -188,6 +188,9 @@ class WordFilter(KazCog):
                 em.add_field(name="Channel", value=message.channel.mention, inline=True)
                 em.add_field(name="Timestamp", value=format_timestamp(message), inline=True)
                 em.add_field(name="Match Text", value=match_text, inline=True)
+                em.add_field(name="Message Link",
+                             value='[Message link]({})'.format(get_jump_url(message)),
+                             inline=True)
                 em.add_field(name="Content",
                              value=natural_truncate(message_string, Limits.EMBED_FIELD_VALUE),
                              inline=False)
