@@ -73,7 +73,7 @@ KazTron is developed and operated by:
                 <div><a class="icon-link" href="https://github.com/{{ author.github | downcase }}"><i class="fab fa-github"></i> {{author.github}}</a></div>
                 {% endif %}
                 {% if author.reddit != null %}
-                <div><a class="icon-link" href="https://reddit.com/u/{{ author.github | downcase }}"><i class="fab fa-reddit-alien"></i> /u/{{author.reddit}}</a></div>
+                <div><a class="icon-link" href="https://reddit.com/u/{{ author.reddit | downcase }}"><i class="fab fa-reddit-alien"></i> /u/{{author.reddit}}</a></div>
                 {% endif %}
                 {% if author.discord != null %}
                 <div><i class="fab fa-discord"></i> {{author.discord}}</div>
