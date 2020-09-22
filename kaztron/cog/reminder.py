@@ -134,7 +134,7 @@ class ReminderParser:
                          r'(\s+'
                             r'every\s+(?P<renew_interval>.*?)'
                             r'(\s+limit\s+(?P<limit>\d+)|\s+until\s+(?P<limit_time>.*?))?'
-                         r')?\s*:\s+(?P<msg>.*)$')
+                         r')?\s*:\s+(?P<msg>.*)$', flags=re.DOTALL)
 
     @classmethod
     def parse(cls, args: str, now: datetime) -> Tuple[datetime, Tuple[timedelta, int, datetime], str]:
@@ -144,7 +144,7 @@ class ReminderParser:
         """
         args = cls.RE_ARGS.match(args)  # type: re.Match
         if args is None:
-            raise commands.BadArgument("message")
+            raise commands.BadArgument("message", "ReminderParser regex match failed")
 
         timespec = cls._parse_timespec(args.group('timespec'), now)
 
