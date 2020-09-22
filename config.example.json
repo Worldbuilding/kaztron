@@ -148,6 +148,14 @@
     "renew_limit": 25,
     "renew_interval_min": 600
   },
+  "resource_channel": {
+    "channel": "Channel ID",
+    "reactions": ["\uD83D\uDC4D", "\uD83D\uDC4E"],
+    "allow_strings": ["https://", "http://"],
+    "allow_re_strings": [],
+    "deny_strings": [],
+    "deny_re_strings": []
+  },
   "spotlight": {
     "name": "World Spotlight",
     "channel": "Channel ID",

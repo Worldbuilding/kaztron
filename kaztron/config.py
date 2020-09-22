@@ -307,9 +307,11 @@ class SectionView:
         :param get_converter: The converter to be used when retrieving data.
         :param set_converter: The converter to be used when setting data.
         """
-        if not callable(get_converter) or not callable(set_converter):
-            raise ValueError("Converters must be callable")
-        if key in self.__cache: # clear converted cache
+        if get_converter is not None and not callable(get_converter):
+            raise ValueError("Get converter must be callable")
+        if set_converter is not None and not callable(set_converter):
+            raise ValueError("Set converter must be callable")
+        if key in self.__cache:  # clear converted cache
             del self.__cache[key]
         self.__converters[key] = (get_converter, set_converter)
 
