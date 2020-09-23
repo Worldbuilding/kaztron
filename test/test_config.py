@@ -270,3 +270,43 @@ class TestConfigObjectApi:
         # set method
         section_view.section.set('flamingo', 'asdf')
         section_view.mock_config.set.assert_called_with('section', 'flamingo', 'asd')
+
+    def test_converter_caching(self, section_view: SectionFixture):
+        class Dummy:  # just for identity checking
+            pass
+
+        def get_converter(x):
+            return Dummy()
+
+        def get_converter2(x):
+            return Dummy()
+
+        def set_converter(x):
+            return 0
+
+        section_view.section.set_converters('test', get_converter, set_converter)
+
+        def get(section, key, default=None, converter=None):
+            if converter is None:
+                def identity_converter(x):
+                    return x
+                converter = identity_converter
+            return converter('value')
+        section_view.mock_config.get.side_effect = get
+
+        assert get_converter('') is not get_converter('')  # check test fixture gives diff objects
+        val1 = section_view.section.test
+        assert val1 is section_view.section.test  # same cached value
+        assert val1 is section_view.section.get('test')  # same cached value (via get call)
+
+        # not cached if we write
+        section_view.section.test = ''
+        val2 = section_view.section.test
+        assert val1 is not val2  # cache cleared after a write
+        assert val2 is section_view.section.test  # but cached on subsequent access
+
+        # not cached if we switch converter
+        section_view.section.set_converters('test', get_converter2, set_converter)
+        val3 = section_view.section.test
+        assert val2 is not val3
+        assert val3 is section_view.section.test

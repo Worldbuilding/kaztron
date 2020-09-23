@@ -439,7 +439,7 @@ class DiscordHelpFormatter(commands.HelpFormatter):
             try:
                 data = self.parser.parse(command, bot)
             except NotKazhelpError:
-                logger.debug("Non-!kazhelp for command '{!s}'".format(command))
+                logger.info("Non-!kazhelp for command '{!s}'".format(command))
             else:
                 logger.debug("Parsed !kazhelp for command '{!s}'".format(command))
                 if isinstance(command, commands.Command):
