@@ -371,9 +371,9 @@ class Reminders(KazCog):
             build_str = []
 
             if reminder.channel_id:
-                build_str.append("In {channel} at {timestamp} UTC (in {delta})")
+                build_str.append("In {channel} at {remind_time} UTC (in {delta})")
             else:
-                build_str.append("At {timestamp} UTC (in {delta})")
+                build_str.append("At {remind_time} UTC (in {delta})")
 
             if reminder.renew_data:
                 renew_data = reminder.renew_data
@@ -465,16 +465,16 @@ class Reminders(KazCog):
 
         # set message
         if not reminder.renew_data:
-            reply = "Got it! I'll remind you by PM at {timestamp} UTC (in {delta}).".format(
+            reply = "Got it! I'll remind you by PM at {remind_time} UTC (in {delta}).".format(
                 delta=format_timedelta(reminder.remind_time - reminder.timestamp),
                 **reminder.str_dict()
             )
         else:
             if not reminder.renew_data.limit_time:
-                replyf = "Got it! I'll remind you by PM at {timestamp} UTC (in {delta}), " \
+                replyf = "Got it! I'll remind you by PM at {remind_time} UTC (in {delta}), " \
                          "then every {interval} up to {limit} times."
             else:
-                replyf = "Got it! I'll remind you by PM at {timestamp} UTC (in {delta}), " \
+                replyf = "Got it! I'll remind you by PM at {remind_time} UTC (in {delta}), " \
                          "then every {interval} until {limit_time} or up to {limit} times."
             reply = replyf.format(
                 delta=format_timedelta(reminder.remind_time - reminder.timestamp),
@@ -520,16 +520,16 @@ class Reminders(KazCog):
 
         # set message
         if not reminder.renew_data:
-            reply = "Got it! I'll post that in {channel} at {timestamp} UTC (in {delta}).".format(
+            reply = "Got it! I'll post that in {channel} at {remind_time} UTC (in {delta}).".format(
                 delta=format_timedelta(reminder.remind_time - reminder.timestamp),
                 **reminder.str_dict()
             )
         else:
             if not reminder.renew_data.limit_time:
-                replyf = "Got it! I'll post that in {channel} at {timestamp} UTC (in {delta}), " \
+                replyf = "Got it! I'll post that in {channel} at {remind_time} UTC (in {delta}), " \
                          "then every {interval} up to {limit} times."
             else:
-                replyf = "Got it! I'll post that in {channel} at {timestamp} UTC (in {delta}), " \
+                replyf = "Got it! I'll post that in {channel} at {remind_time} UTC (in {delta}), " \
                          "then every {interval} until {limit_time} or up to {limit} times."
             reply = replyf.format(
                 delta=format_timedelta(reminder.remind_time - reminder.timestamp),
