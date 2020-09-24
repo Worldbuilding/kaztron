@@ -1,7 +1,7 @@
 import functools
 import logging
 from asyncio import iscoroutinefunction
-from typing import Type, Dict, Union
+from typing import Type, Dict, Union, Sequence
 
 import discord
 from discord.ext import commands
@@ -202,7 +202,7 @@ class KazCog:
 
     async def send_message(self, destination, contents=None, *, tts=False,
                            embed: Union[discord.Embed, EmbedSplitter]=None,
-                           auto_split=True, split='word'):
+                           auto_split=True, split='word') -> Sequence[discord.Message]:
         """
         Send a message. This method wraps the :meth:`discord.Client.send_message` method and adds
         automatic message splitting if a message is too long for one line.
@@ -255,31 +255,33 @@ class KazCog:
 
         await self.bot.send_message(destination, content_chunks[-1], tts=tts, embed=embed_list[0])
 
+        msg_list = []
         for embed_chunk in embed_list[1:]:
-            await self.bot.send_message(destination, tts=tts, embed=embed_chunk)
+            msg_list.append(await self.bot.send_message(destination, tts=tts, embed=embed_chunk))
+        return tuple(msg_list)
 
     async def send_output(self, contents, *,
                           tts=False, embed: Union[discord.Embed, EmbedSplitter]=None,
-                          auto_split=True, split='word'):
+                          auto_split=True, split='word') -> Sequence[discord.Message]:
         """
         Send a message to the bot output channel.
 
         Convenience function equivalent to ``self.send_message(self.channel_out, ...)``. See also
         :meth:`.send_message`.
         """
-        await self.send_message(self.channel_out, contents, tts=tts, embed=embed,
+        return await self.send_message(self.channel_out, contents, tts=tts, embed=embed,
             auto_split=auto_split, split=split)
 
     async def send_public(self, contents, *,
                           tts=False, embed: Union[discord.Embed, EmbedSplitter]=None,
-                          auto_split=True, split='word'):
+                          auto_split=True, split='word') -> Sequence[discord.Message]:
         """
         Send a message to the bot public output channel.
 
         Convenience function equivalent to ``self.send_message(self.channel_public, ...)``. See also
         :meth:`.send_message`.
         """
-        await self.send_message(self.channel_public, contents, tts=tts, embed=embed,
+        return await self.send_message(self.channel_public, contents, tts=tts, embed=embed,
             auto_split=auto_split, split=split)
 
     @property
