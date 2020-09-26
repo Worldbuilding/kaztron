@@ -250,12 +250,14 @@ class KazCog:
         # so the last text chunk will have the first embed chunk attached
         # this is because non-split messages usually have the embed appear after the msg -
         # should be fairly rare for both msg and embed to be split
-        for content_chunk in content_chunks[:-1]:
-            await self.bot.send_message(destination, content_chunk, tts=tts)
-
-        await self.bot.send_message(destination, content_chunks[-1], tts=tts, embed=embed_list[0])
-
         msg_list = []
+        for content_chunk in content_chunks[:-1]:
+            msg_list.append(await self.bot.send_message(destination, content_chunk, tts=tts))
+
+        msg_list.append(await self.bot.send_message(
+            destination, content_chunks[-1], tts=tts, embed=embed_list[0]
+        ))
+
         for embed_chunk in embed_list[1:]:
             msg_list.append(await self.bot.send_message(destination, tts=tts, embed=embed_chunk))
         return tuple(msg_list)
