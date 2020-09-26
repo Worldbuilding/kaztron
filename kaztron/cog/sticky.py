@@ -1,5 +1,5 @@
 import logging
-from typing import Union, List, Dict
+from typing import List, Dict
 
 import asyncio
 from datetime import timedelta
@@ -10,10 +10,12 @@ from discord.ext import commands
 from kaztron import KazCog, task, TaskInstance
 from kaztron.config import SectionView
 from kaztron.kazcog import ready_only
-from kaztron.utils.checks import mod_only, mod_channels
+from kaztron.utils.checks import mod_only
 from kaztron.utils.datetime import format_timedelta
-from kaztron.utils.discord import get_group_help
+from kaztron.utils.discord import get_group_help, get_jump_url
+from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import tb_log_str, exc_log_str
+from kaztron.utils.strings import natural_truncate, format_list
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ class StickyData:
         return {
             'channel': self.channel.id,
             'message': self.message,
-            'delay': self.delay.total_seconds() if self.delay else None,
+            'delay': self.delay.total_seconds() if self.delay is not None else None,
             'posted_message': self.posted_message_id
         }
 
@@ -56,7 +58,7 @@ class StickyData:
         return StickyData(
             channel=client.get_channel(data['channel']) or discord.Object(id=data['channel']),
             message=data['message'],
-            delay=timedelta(seconds=data['delay']) if 'delay' in data else None,
+            delay=timedelta(seconds=data['delay']) if data.get('delay', None) is not None else None,
             posted_message_id=data.get('posted_message', None)
         )
 
@@ -85,15 +87,21 @@ class StickyState(SectionView):
 
 class Sticky(KazCog):
     """!kazhelp
-    category: Moderator
-    brief: "Maintain a sticky message at the bottom of a channel."
-    description: "Maintain a sticky message at the end of a channel."
-    jekyll_description: |
-        This module allows a moderator to set a "sticky" message to be maintained at the end
-        of a channel. This can be used for special-purpose or static channels, such as a resource-
-        sharing or feedback-sharing channel, to ensure that critical information about the
-        channel's purpose or rules are always visible to users.
-    contents: []
+        category: Moderator
+        brief: "Maintain a sticky message at the bottom of a channel."
+        description: "Maintain a sticky message at the end of a channel."
+        jekyll_description: |
+            This module allows a moderator to set a "sticky" message to be maintained at the end
+            of a channel. This can be used for special-purpose or static channels, such as a
+            resource-sharing or feedback-sharing channel, to ensure that critical information about
+            the channel's purpose or rules are always visible to users.
+        contents:
+            - sticky:
+                - add
+                - delay
+                - rem
+                - list
+                - refresh
     """
     cog_config: StickyConfig
     cog_state: StickyState
@@ -103,18 +111,19 @@ class Sticky(KazCog):
     ####
 
     def __init__(self, bot):
-        super().__init__(bot, 'resource_channel', StickyConfig, StickyState)
+        super().__init__(bot, 'sticky', StickyConfig, StickyState)
         self.cog_config.set_defaults(delay=0)
         self.cog_state.set_defaults(messages=[])
         self.cog_state.set_converters('messages',
                                       self.state_converter,
-                                      lambda d: [data.to_dict() for data in d])
+                                      lambda d: [data.to_dict() for data in d.values()])
 
     def state_converter(self, config_list: List[Dict[str, str]]):
         conv = {}
         for data in config_list:
             conv_el = StickyData.from_dict(self.bot, data)
             conv[conv_el.channel.id] = conv_el
+        return conv
 
     async def on_ready(self):
         await super().on_ready()
@@ -213,7 +222,7 @@ class Sticky(KazCog):
         else:
             self.cancel_channel_task(message.channel)  # in case already scheduled
             delay = data.delay if data.delay is not None else self.cog_config.delay
-            if delay == 0:
+            if delay.total_seconds() <= 0:
                 await self.update_sticky(message.channel)
             else:
                 self.scheduler.schedule_task_in(self.task_update_sticky, delay, args=(data,))
@@ -258,9 +267,9 @@ class Sticky(KazCog):
                   type: str
                   description: The message contents.
             examples:
-                - command: `.sticky add #meta To contact the moderators, [...]`
-                  description: Add or update the #meta sticky with a message about how to contact
-                    moderators.
+                - command: ".sticky add #meta To contact the moderators, [...]"
+                  description: "Add or update the #meta sticky with a message about how to contact
+                    moderators."
         """
         sticky_config = self.cog_state.messages
         try:
@@ -292,15 +301,18 @@ class Sticky(KazCog):
                   type: int
                   description: Delay before updating the sticky message (seconds)
             examples:
-                - command: `.sticky delay #meta 300`
+                - command: ".sticky delay #meta 300"
                   description: Set the sticky to update after 300 seconds in #meta.
         """
         sticky_config = self.cog_state.messages
         try:
             sticky_config[channel.id].delay = timedelta(seconds=delay)
         except KeyError:
-            raise commands.BadArgument("channel")
+            raise commands.BadArgument("channel", channel)
         self.cog_state.set('messages', sticky_config)
+        await self.send_message(ctx.message.channel, "Set delay for sticky in #{} to {}".format(
+            channel, format_timedelta(sticky_config[channel.id].delay)
+        ))
 
     @sticky.command(pass_context=True, aliases=['rem'])
     @mod_only()
@@ -315,14 +327,14 @@ class Sticky(KazCog):
                   type: channel
                   description: Channel to change
             examples:
-                - command: `.sticky rem #resources`
-                  description: Disables the sticky message in the #resources channel and removes any
-                      existing messages.
+                - command: ".sticky rem #resources"
+                  description: "Disables the sticky message in the #resources channel and removes
+                      any existing messages."
         """
         try:
             data = self.cog_state.messages[channel.id]
         except KeyError:
-            raise commands.BadArgument("channel")
+            raise commands.BadArgument("channel", channel)
 
         if data.posted_message_id:
             try:
@@ -342,22 +354,82 @@ class Sticky(KazCog):
         sticky_config = self.cog_state.messages
         del sticky_config[channel.id]
         self.cog_state.set('messages', sticky_config)
+        await self.send_message(ctx.message.channel, "Removed sticky in #{}".format(data.channel))
 
     @sticky.command(pass_context=True)
     @mod_only()
-    async def list(self):
-        pass
+    async def list(self, ctx: commands.Context):
+        """!kazhelp
+            brief: List all configured sticky messages.
+            description: |
+                List all configured sticky messages.
+        """
+        sorted_data = sorted(self.cog_state.messages.values(), key=lambda v: v.channel.name)
+        es = EmbedSplitter(title="Channel Sticky Messages")
+        for data in sorted_data:
+            try:
+                jump_url = ' *([link]({}))*'.format(
+                    get_jump_url(await data.get_posted_message(self.bot))
+                )
+            except ValueError:
+                jump_url = ''
+            delay_string = ' (delay: {})'.format(format_timedelta(data.delay)) if data.delay else ''
+
+            es.add_field(
+                name="#{}{}".format(data.channel.name, delay_string),
+                value="{}{}".format(natural_truncate(data.message, 512), jump_url),
+                inline=False
+            )
+        await self.send_message(ctx.message.channel, embed=es)
 
     @sticky.command(pass_context=True)
     @mod_only()
-    async def refresh(self):
-        pass
+    async def refresh(self, ctx: commands.Context):
+        """!kazhelp
+            brief: Refresh all sticky messages.
+            description: |
+                Immediately refresh all sticky messages in all channels.
+        """
+        for data in self.cog_state.messages.values():
+            await self.update_sticky(data.channel)
+        await self.send_message(ctx.message.channel, 'Done.')
 
     @task_update_sticky.error
     async def on_task_update_sticky_error(self, e: Exception, t: TaskInstance):
-        pass  # TODO
+        data = t.args[0]  # type: StickyData
+        await self._on_error(e, data)
 
-    # TODO: error handling - commands.BadArgument("channel"), Forbidden/NotFound/HTTP exceptions
+    @sticky.error
+    @delay.error
+    @add.error
+    @remove.error
+    @list.error
+    @refresh.error
+    async def _command_error(self, e: Exception, ctx: commands.Context):
+        if isinstance(e, commands.BadArgument) and e.args[0] == 'channel':
+            logger.error("No sticky for channel #{}".format(e.args[1].name))
+            await self.send_message(ctx.message.channel, ctx.message.author.mention +
+                " Error: No sticky configured for channel #{}".format(e.args[1].name))
+        else:
+            if isinstance(ctx.args[0], discord.Channel):
+                await self._on_error(e, self.cog_state.get(ctx.args[0].id))
+            else:
+                await self._on_error(e)
+
+    async def _on_error(self, e: Exception, data: StickyData = None):
+        if data is None:
+            data = ''  # because on_command_error doesn't easily provide this context...
+        logger.error("Error updating sticky {!r}: {}".format(data, tb_log_str(e)))
+        if isinstance(e, discord.Forbidden):
+            await self.send_output("Error updating sticky {!r}. Permission error: {}"
+                                   .format(data, exc_log_str(e)))
+        elif isinstance(e, discord.HTTPException):
+            await self.send_output("Error updating sticky {!r}. Will retry. HTTP error: {}"
+                                   .format(data, exc_log_str(e)))
+            self.scheduler.schedule_task_in(self.task_update_sticky, 60, args=(data,))
+        else:
+            await self.send_output("Error updating sticky {!r}. Non-HTTP error occurred: {}"
+                                   .format(data, exc_log_str(e)))
 
 
 def setup(bot):
