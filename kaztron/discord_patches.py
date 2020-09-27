@@ -16,6 +16,7 @@ class Patches(Enum):
     smart_quotes = 0
     command_logging = 1
     everyone_filter = 2
+    mobile_embeds = 3
 
 
 def apply_patches(client: commands.Bot, excl=tuple()):
@@ -32,6 +33,8 @@ def apply_patches(client: commands.Bot, excl=tuple()):
         patch_command_logging()
     if Patches.everyone_filter not in excl:
         patch_everyone_filter(client)
+    if Patches.mobile_embeds not in excl:
+        patch_mobile_embeds(client)
 
 
 def patch_command_logging():
@@ -123,3 +126,51 @@ def patch_smart_quotes(client: commands.Bot):
         return await old_process_commands(message, *args, **kwargs)
     # noinspection PyArgumentList
     client.process_commands = MethodType(new_process_commands, client)
+
+
+def patch_mobile_embeds(client: commands.Bot):
+    """
+    Patch to fix a stupid, stupid Android!Discord bug where it doesn't consider Embed fields when
+    calculating the width of the embed. Yup. Sigh.
+
+    It results in a minimum-width embed that looks like a grey and coloured vertical line, which
+    scrolls forever because all of the field contents are wrapping like hell.
+    """
+    from discord.embeds import Embed
+    from kaztron.utils.embeds import EmbedSplitter
+    old_send_message = client.send_message
+
+    @functools.wraps(client.send_message)
+    async def new_send_message(self, dest, content=None, *args, **kwargs):
+        if 'embed' in kwargs and kwargs['embed'] is not None:
+            if kwargs['embed'].footer is None or kwargs['embed'].footer.text == Embed.Empty:
+                kwargs['embed'].set_footer(text=(r'_'*80))
+            elif r'_'*80 not in kwargs['embed'].footer.text:
+                kwargs['embed'].set_footer(
+                    text=(r'_'*80) + '\n' + kwargs['embed'].footer.text
+                )
+        return await old_send_message(dest, content, *args, **kwargs)
+    # noinspection PyArgumentList
+    client.send_message = MethodType(new_send_message, client)
+
+    old_set_footer = EmbedSplitter.set_footer
+
+    @functools.wraps(EmbedSplitter.set_footer)
+    def new_set_footer(self, *, text: str, **kwargs):
+        if text == Embed.Empty:
+            text = '_'*80
+        else:
+            text = (r'_'*80) + '\n' + text
+        old_set_footer(self, text=text, **kwargs)
+
+    old_es_init = EmbedSplitter.__init__
+
+    @functools.wraps(EmbedSplitter.__init__)
+    def new_es_init(self, *args, **kwargs):
+        old_es_init(self, *args, **kwargs)
+        self.set_footer(text='')
+
+    EmbedSplitter.__init__ = new_es_init
+    EmbedSplitter.set_footer = new_set_footer
+
+
