@@ -216,35 +216,19 @@ class RoleManager(KazCog):
 
     async def on_ready(self):
         await super().on_ready()
-        if not self.is_ready:  # first time this is called - not a reconnect
-            self.setup_all_config_roles()
+        # unload all managed roles to reconfigure them
+        for mr in self.managed_roles.values():
+            self.remove_managed_role(mr)
+        self.managed_roles = {}
+
+        self.setup_all_config_roles()
 
     def unload_kazcog(self):
         """ Unload managed roles. """
         logger.debug("Unloading managed roles...")
         for role_name, mr in self.managed_roles.items():
-            for cmd in mr.commands:  # type: commands.Command
-                if cmd.parent is not None:
-                    parent = cmd.parent  # type: commands.GroupMixin
-                else:
-                    parent = self.bot
-                rmret = parent.remove_command(cmd.name)
-
-                if rmret is not None:
-                    logger.debug("Unloaded command {} for role {}".format(cmd.name, role_name))
-                else:
-                    logger.warning("Failed to unload command {} for role {}"
-                        .format(cmd.name, role_name))
+            self.remove_managed_role(mr)
         self.managed_roles = {}
-
-    # @commands.command(pass_context=True)
-    # @admin_only()
-    # async def rolemanager_test_unload(self, ctx: commands.Context):
-    #     self.unload_kazcog()
-    #     await self.bot.send_message(ctx.message.channel,
-    #         "Attempting to unload all RoleManager commands... (requires restart to reload)")
-    #     await self.send_output(
-    #     "[WARNING] RoleManager roles unloaded (requires restart to reload)")
 
     def add_managed_role(
             self,
@@ -324,6 +308,19 @@ class RoleManager(KazCog):
 
         self.managed_roles[role_name] = mr
 
+    def remove_managed_role(self, mr: ManagedRole):
+        for cmd in mr.commands:  # type: commands.Command
+            if cmd.parent is not None:
+                parent = cmd.parent  # type: commands.GroupMixin
+            else:
+                parent = self.bot
+            rmret = parent.remove_command(cmd.name)
+
+            if rmret is not None:
+                logger.debug("Unloaded command {} for role {}".format(cmd.name, mr.name))
+            else:
+                logger.warning("Failed to unload command {} for role {}".format(cmd.name, mr.name))
+
     def setup_all_config_roles(self):
         logger.info("Setting up managed roles from configuration")
         user_role_map = self.cog_config.user_roles
@@ -342,7 +339,7 @@ class RoleManager(KazCog):
         kwargs = copy.deepcopy(role_map)
 
         # Recursively get the groups
-        logger.debug("Finding group.")
+        logger.debug("Finding command group.")
         current_group = self.bot  # type: commands.GroupMixin
         for command_name in group:
             try:
