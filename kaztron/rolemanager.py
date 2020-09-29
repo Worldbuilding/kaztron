@@ -339,7 +339,7 @@ class RoleManager(KazCog):
         kwargs = copy.deepcopy(role_map)
 
         # Recursively get the groups
-        logger.debug("Finding group.")
+        logger.debug("Finding command group.")
         current_group = self.bot  # type: commands.GroupMixin
         for command_name in group:
             try:
