@@ -400,7 +400,17 @@ class Sticky(KazCog):
     @task_update_sticky.error
     async def on_task_update_sticky_error(self, e: Exception, t: TaskInstance):
         data = t.args[0]  # type: StickyData
-        await self._on_error(e, data)
+        if isinstance(e, discord.Forbidden):
+            await self.send_output("Error updating sticky {!r}. Permission error: {}"
+                .format(data, exc_log_str(e)))
+        elif isinstance(e, discord.HTTPException):
+            await self.send_output("Error updating sticky {!r}. Will retry. HTTP error: {}"
+                .format(data, exc_log_str(e)))
+            self.scheduler.schedule_task_in(self.task_update_sticky, 60, args=(data,))
+        else:
+            logger.error("Error updating sticky {!r}: {}".format(data, tb_log_str(e)))
+            await self.send_output("Error updating sticky {!r}: {}"
+                .format(data, exc_log_str(e)))
 
     @sticky.error
     @delay.error
@@ -413,26 +423,18 @@ class Sticky(KazCog):
             logger.error("No sticky for channel #{}".format(e.args[1].name))
             await self.send_message(ctx.message.channel, ctx.message.author.mention +
                 " Error: No sticky configured for channel #{}".format(e.args[1].name))
-        else:
-            if isinstance(ctx.args[0], discord.Channel):
-                await self._on_error(e, self.cog_state.get(ctx.args[0].id))
-            else:
-                await self._on_error(e)
-
-    async def _on_error(self, e: Exception, data: StickyData = None):
-        if data is None:
-            data = ''  # because on_command_error doesn't easily provide this context...
-        logger.error("Error updating sticky {!r}: {}".format(data, tb_log_str(e)))
         if isinstance(e, discord.Forbidden):
-            await self.send_output("Error updating sticky {!r}. Permission error: {}"
-                                   .format(data, exc_log_str(e)))
+            data = self.cog_state.get(ctx.args[0].id)
+            await self.send_message(ctx.message.channel, ctx.message.author.mention +
+                "Error updating sticky {!r}. Permission error: {}"
+                .format(data, exc_log_str(e)))
         elif isinstance(e, discord.HTTPException):
-            await self.send_output("Error updating sticky {!r}. Will retry. HTTP error: {}"
-                                   .format(data, exc_log_str(e)))
-            self.scheduler.schedule_task_in(self.task_update_sticky, 60, args=(data,))
+            data = self.cog_state.get(ctx.args[0].id)
+            await self.send_message(ctx.message.channel, ctx.message.author.mention +
+                "Error updating sticky {!r}. HTTP error: {}"
+                .format(data, exc_log_str(e)))
         else:
-            await self.send_output("Error updating sticky {!r}. Non-HTTP error occurred: {}"
-                                   .format(data, exc_log_str(e)))
+            await self.core.on_command_error(e, ctx, force=True)  # Other errors can bubble up
 
 
 def setup(bot):
