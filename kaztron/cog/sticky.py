@@ -365,7 +365,10 @@ class Sticky(KazCog):
                 List all configured sticky messages.
         """
         sorted_data = sorted(self.cog_state.messages.values(), key=lambda v: v.channel.name)
-        es = EmbedSplitter(title="Channel Sticky Messages")
+        if sorted_data:
+            es = EmbedSplitter(title="Channel Sticky Messages")
+        else:
+            es = EmbedSplitter(title="Channel Sticky Messages", description="None.")
         for data in sorted_data:
             try:
                 jump_url = ' *([link]({}))*'.format(

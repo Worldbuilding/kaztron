@@ -34,6 +34,7 @@ class EmbedSplitter:
         self.repeat_header = repeat_header
         self.repeat_footer = repeat_footer
         self.repeat_image = repeat_image
+        self.cur_num_fields = 0
 
         if title is not EmptyEmbed and len(title) > Limits.EMBED_TITLE:
             if not self.auto_truncate:
