@@ -81,10 +81,8 @@ class CoreCog(kaztron.KazCog):
         """
         logger.info("Cog ready: {}".format(type(cog).__name__))
         self.ready_cogs.add(cog)
-        registered_cogs = {c for c in self.bot.cogs.values() if isinstance(c, kaztron.KazCog)}
-        if self.ready_cogs == registered_cogs:
-            logger.info("=== ALL COGS READY ===")
-            self.bot.loop.create_task(self.prepare_command_help())
+        if self.all_cogs_ready_or_error():
+            self._on_all_cogs_ready()
 
     def set_cog_error(self, cog):
         """
@@ -92,6 +90,8 @@ class CoreCog(kaztron.KazCog):
         """
         logger.error("Cog error: {}".format(type(cog).__name__))
         self.error_cogs.add(cog)
+        if self.all_cogs_ready_or_error():
+            self._on_all_cogs_ready()
 
     def set_cog_shutdown(self, cog):
         logger.info("Cog has been shutdown: {}".format(type(cog).__name__))
@@ -99,8 +99,24 @@ class CoreCog(kaztron.KazCog):
         if cog.state != self.state:  # not using global state (saving handled in runner)
             cog.state.write()
 
+    def all_cogs_ready(self):
+        registered_cogs = {c for c in self.bot.cogs.values() if isinstance(c, kaztron.KazCog)}
+        return self.ready_cogs == registered_cogs
+
+    def all_cogs_ready_or_error(self):
+        registered_cogs = {c for c in self.bot.cogs.values() if isinstance(c, kaztron.KazCog)}
+        return self.ready_cogs.union(self.error_cogs) == registered_cogs
+
+    def _on_all_cogs_ready(self):
+        logger.info("=== ALL COGS READY ===")
+        self.bot.loop.create_task(self.prepare_command_help())
+        self.bot.loop.create_task(self.send_startup_message())
+
     async def on_ready(self):
         logger.debug("on_ready")
+
+        self.ready_cogs = set()  # #316, #317: RECONNECT op code doesn't re-__init__ corecog,
+        self.error_cogs = set()  # so reset these lists (assumption: Core Cog first to be ready)
         await super().on_ready()
 
         # set global variables (don't use export_kazhelp_vars - these are cog-local)
@@ -112,7 +128,6 @@ class CoreCog(kaztron.KazCog):
             logger.warning("Help parser not found in bot")
 
         await self.set_status_message()
-        await self.send_startup_message()
 
     async def set_status_message(self):
         playing = self.config.discord.playing
