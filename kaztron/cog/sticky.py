@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 class StickyConfig(SectionView):
+    """
+    :ivar delay: Default value for all stickies. Amount of channel idle time before refreshing
+        (reposting) the sticky message.
+    """
     delay: timedelta  # default delay (s) between a channel message and refreshing the info message
 
     def __init__(self, *args, **kwargs):
@@ -29,13 +33,24 @@ class StickyConfig(SectionView):
 
 
 class StickyData:
+    """
+    Configuration for a sticky message to maintain in a specific channel.
+
+    :ivar str channel: Channel in which to maintain a sticky.
+    :ivar str message: Text of the message to post in the sticky. Max 2000 characters.
+    :ivar Optional[timedelta] delay: Amount of channel idle time before refreshing (reposting) the
+        sticky message. Optional; if None, uses the global delay value.
+    :ivar str Optional[str] posted_message_id: Discord ID for the current posted sticky. If not yet
+        posted, may be None.
+    """
     def __init__(self, channel: discord.Channel, message: str, delay: timedelta = None,
                  posted_message_id: str = None):
         self.channel = channel
         self.message = message
         self.delay = delay
         self.posted_message_id = posted_message_id
-        self._posted_message = None
+        # Lazy caching of the posted message
+        self._posted_message = None  # type: discord.Message
 
     def __repr__(self):
         return '<InfoMessageData channel=#{} message={} delay={}, posted_message={}>'.format(
@@ -82,7 +97,11 @@ class StickyData:
 
 
 class StickyState(SectionView):
-    messages: Dict[str, StickyData]  # id -> data; stored in JSON as a list
+    """
+    :ivar messages: Dictionary of channel ID -> data. See also :class:`StickyData`. This is stored
+        in JSON as a list, and converted at access time into a dict for efficiency of lookup.
+    """
+    messages: Dict[str, StickyData]
 
 
 class Sticky(KazCog):

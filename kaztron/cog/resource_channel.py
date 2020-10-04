@@ -12,18 +12,26 @@ logger = logging.getLogger(__name__)
 
 
 class ResourceChannelConfig(SectionView):
-    channel: discord.Channel                    # ID of the resources channel
-    reactions: List[Union[discord.Emoji, str]]  # list of reactions to add to identified resources
-    allow_strings: List[str]         # messages containing any of these strings are resources
-    allow_re_strings: List[Pattern]  # messages matching any of these regexes are resources
-    deny_strings: List[str]          # messages containing any of these strings are NOT resources
-    deny_re_strings: List[Pattern]   # messages matching any of these regexes are NOT resources
-
-    # Deny takes precedence over Allow.
-    # The "reactions" list should be either the :name:ID of the custom emoji, or the Unicode emoji
-    # for standard ones. To ensure the correct emoji strings are used, you can
-    # backslash-escape the emoji in Discord and copy the resulting string. (If it comes out as
-    # <:Name:123456789012345678>, then omit the <angle brackets>.)
+    """
+    :ivar channel: Resources channel ID
+    :ivar reactions: list of reactions to add to identified resources. Can be Unicode emoji or
+        custom server emoticon given in the form :name:123456789012345678. (You can backslash-escape
+        the emoticon in Discord to get this form.)
+    :ivar allow_strings: List of strings to search for. Any message containing one or more of these
+        strings is considered a resource message.
+    :ivar allow_re_strings: List of regular expressions to match against. Any message matching one
+        or more of these patterns is considered a resource message.
+    :ivar deny_strings: List of strings to search for to EXCLUDE a message as a resource. This takes
+        priority over the "allow" configurations.
+    :ivar deny_re_strings: List of regular expressions to match against to EXCLUDE a message as a
+        resource. This takes priority over the "allow" configurations.
+    """
+    channel: discord.Channel
+    reactions: List[Union[discord.Emoji, str]]
+    allow_strings: List[str]
+    allow_re_strings: List[Pattern]
+    deny_strings: List[str]
+    deny_re_strings: List[Pattern]
 
 
 class ResourceChannelManager(KazCog):
