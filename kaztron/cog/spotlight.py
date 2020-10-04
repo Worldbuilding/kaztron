@@ -518,7 +518,7 @@ class Spotlight(KazCog):
         """ Load information from the server. """
         await super().on_ready()
 
-        self.channel_spotlight = self.validate_channel(self.ch_id_spotlight)
+        self.channel_spotlight = self.get_channel(self.ch_id_spotlight)
 
         try:
             self.rolemanager.add_managed_role(

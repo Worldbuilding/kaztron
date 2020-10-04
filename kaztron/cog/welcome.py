@@ -39,7 +39,7 @@ class Welcome(KazCog):
 
     async def on_ready(self):
         await super().on_ready()
-        self.channel_welcome = self.validate_channel(self.cog_config.channel_welcome)
+        self.channel_welcome = self.get_channel(self.cog_config.channel_welcome)
 
     def export_kazhelp_vars(self):
         return {'welcome_channel': '#' + self.channel_welcome.name}

@@ -113,12 +113,16 @@
     "channel_warning": "channel ID for MODERATOR filter warning/delete notifications"
   },
   "modnotes": {
-    "channel_log": "channel ID - for channel to log all new records to (read-only ideally?)"
+    "channel_log": "channel ID - for channel to log all new records to (read-only ideally?)",
+    "channel_mod": "channel ID for notifications to mods (used by extensions)",
+    "ban_check_interval": 3600,
+    "ban_role": "role name for banned members",
+    "ban_temp_enforce": false,
+    "ban_perma_enforce": false,
+    "ban_temp_expires": "in 7 days"
   },
   "modtools": {
-    "tempban_role": "Role Name Here",
     "notif_role": "Name of role used to send notifications to all mods",
-    "channel_mod": "ID of channel for mod notifications (like timed unbans)",
     "distinguish_map": {
       "mod-role1": "distinguish-role1",
       "mod-role2": "distinguish-role2"
@@ -181,6 +185,9 @@
     "duration_max": 3600,
     "finalize_time": 300,
     "report_time": "time at which reports are generated weekly, default 17:00"
+  },
+  "sticky": {
+    "delay": 300
   },
   "userstats": {
     "ignore_users": ["user ID 1", "user ID 2", "etc"],

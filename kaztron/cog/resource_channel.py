@@ -61,7 +61,7 @@ class ResourceChannelManager(KazCog):
             deny_strings=tuple(),
             deny_re_strings=tuple()
         )
-        self.cog_config.set_converters('channel', lambda id_: self.validate_channel(id_), None)
+        self.cog_config.set_converters('channel', lambda id_: self.get_channel(id_), None)
         self.cog_config.set_converters('allow_re_strings',
                                        lambda l: list(re.compile(s) for s in l), None)
         self.cog_config.set_converters('deny_re_strings',

@@ -76,8 +76,8 @@ class VoiceLog(KazCog):
         self.channel_map = {}
         for voice_cid, text_cid in self.cog_config.voice_text_channel_map.items():
             try:
-                voice_ch = self.validate_channel(voice_cid)
-                text_ch = self.validate_channel(text_cid)
+                voice_ch = self.get_channel(voice_cid)
+                text_ch = self.get_channel(text_cid)
             except ValueError:
                 msg = "Failed to find one or both channels for voicelog: voice={!r} text={!r}"\
                     .format(voice_cid, text_cid)

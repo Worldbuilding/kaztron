@@ -1,4 +1,4 @@
-from .modnotes import ModNotes
+from .modnotes import ModNotes, ModNotesConfig
 from .controller import init_db
 
 

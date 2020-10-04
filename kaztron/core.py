@@ -52,15 +52,15 @@ class CoreCog(kaztron.KazCog):
     def __init__(self, bot):
         super().__init__(bot, 'core')
         self.cog_config = self.cog_config  # type: CoreConfig
-        self.cog_config.set_converters('channel_request', self.validate_channel, lambda c: c.id)
+        self.cog_config.set_converters('channel_request', self.get_channel, lambda c: c.id)
         self.name = self.cog_config.name
 
         self.bot.event(self.on_error)  # register this as a global event handler, not just local
-        self.bot.add_check(self.check_bot_ready)
+        self.bot.add_check(self._check_bot_ready)
         self.ready_cogs = set()
         self.error_cogs = set()
 
-    def check_bot_ready(self, ctx: commands.Context):
+    def _check_bot_ready(self, ctx: commands.Context):
         """ Check if bot is ready. Used as a global check. """
         if ctx.cog is not None:
             if ctx.cog in self.ready_cogs:
@@ -390,7 +390,7 @@ class CoreCog(kaztron.KazCog):
                 cog_name = exc.args[0]
             except IndexError:
                 cog_name = 'unknown'
-            logger.warning("Attempted to use command on cog in error state: {}".format(cmd_string))
+            logger.error("Attempted to use command on cog in error state: {}".format(cmd_string))
             await self.bot.send_message(
                 ctx.message.channel, author_mention +
                 "Sorry, an error occurred loading the {} module! Please let a mod/admin know."

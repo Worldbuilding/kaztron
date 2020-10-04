@@ -120,10 +120,10 @@ class WordFilter(KazCog):
             channel=self.cog_config.channel_warning
         )
         self.cog_config.set_converters('channel_warning',
-            lambda cid: self.validate_channel(cid),
+            lambda cid: self.get_channel(cid),
             lambda _: None)
         self.cog_state.set_converters('channel',
-            lambda cid: self.validate_channel(cid),
+            lambda cid: self.get_channel(cid),
             lambda c: str(c.id))
         self._load_filter_rules()
         self.channel_warning = None

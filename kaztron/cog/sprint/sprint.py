@@ -413,7 +413,7 @@ class WritingSprint(KazCog):
         await super().on_ready()
 
         logger.debug("Validating sprint channel...")
-        self.channel = self.validate_channel(self.channel_id)
+        self.channel = self.get_channel(self.channel_id)
 
         try:
             self.rolemanager.add_managed_role(

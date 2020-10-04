@@ -72,7 +72,7 @@ class BadgeManager(KazCog):
     async def on_ready(self):
         await super().on_ready()
         channel_id = self.config.get('blots', 'badge_channel')
-        self.channel = self.validate_channel(channel_id)
+        self.channel = self.get_channel(channel_id)
         self.c = BlotsBadgeController(self.server, self.config)
 
     def export_kazhelp_vars(self):

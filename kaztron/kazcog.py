@@ -8,7 +8,7 @@ from discord.ext import commands
 
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.config import KaztronConfig, SectionView
-from kaztron.errors import BotNotReady
+from kaztron.errors import BotNotReady, CogNotLoadedError
 from kaztron.utils.discord import Limits
 from kaztron.utils.strings import natural_split, split_chunks_on
 
@@ -124,9 +124,9 @@ class KazCog:
         """
         Can be overridden. `super().on_ready()` should be called at the beginning of the method.
         """
-        self._ch_out = self.validate_channel(self._ch_out_id)
-        self._ch_test = self.validate_channel(self._ch_test_id)
-        self._ch_pub = self.validate_channel(self._ch_pub_id)
+        self._ch_out = self.get_channel(self._ch_out_id)
+        self._ch_test = self.get_channel(self._ch_test_id)
+        self._ch_pub = self.get_channel(self._ch_pub_id)
 
     # noinspection PyBroadException
     def unload(self):
@@ -189,9 +189,9 @@ class KazCog:
         self.state = KaztronConfig('state-' + name + '.json', defaults)
         self.cog_state = None
 
-    def validate_channel(self, id_: str) -> discord.Channel:
+    def get_channel(self, id_: str) -> discord.Channel:
         """
-        Validate and return the :class:`discord.Channel`, or raise an exception if not found.
+        Find the :class:`discord.Channel`, or raise an exception if not found.
         Normally called in :meth:`~.on_ready`.
         :raise ValueError: channel not found
         """
@@ -199,6 +199,23 @@ class KazCog:
         if channel is None:
             raise ValueError("Channel {} not found".format(id_))
         return channel
+
+    def get_cog_dependency(self, cog_name: str) -> 'KazCog':
+        """
+        Validate that a cog, which is a dependency for the current cog, is loaded. This method
+        should generally be called in :meth:`~.on_ready` (in which case, if the dependency is not
+        optional, the exception need not be caught: the current cog will simply fail to load).
+
+        :param cog_name: Name of the cog. If the caller has access to the cog class object, then
+            it should use `cls.__name__` to pass this parameter.
+        :raise kaztron.errors.BotCogError: Cog not loaded
+        """
+        cog = self.bot.get_cog(cog_name)
+        if cog is None:
+            raise CogNotLoadedError("Cog {} not loaded (required by {})."
+                .format(cog_name, self.__class__.__name__))
+        logger.debug("Found cog dependency: {}".format(cog_name))
+        return cog
 
     async def send_message(self, destination, contents=None, *, tts=False,
                            embed: Union[discord.Embed, EmbedSplitter]=None,
