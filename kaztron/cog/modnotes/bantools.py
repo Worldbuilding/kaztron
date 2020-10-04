@@ -8,7 +8,7 @@ from discord.ext import commands
 from kaztron import KazCog, task
 from kaztron.cog.modnotes.model import RecordType
 from kaztron.cog.modnotes.modnotes import ModNotes
-from kaztron.cog.modnotes import controller, model, ModNotesConfig
+from kaztron.cog.modnotes import controller, ModNotesConfig
 from kaztron.errors import BotCogError
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
@@ -105,18 +105,19 @@ class BanTools(KazCog):
     #####
 
     @staticmethod
-    def _get_tempbanned_members_db(server: discord.Server, include_perma=False) \
-            -> List[model.Record]:
-        if include_perma:
-            types = (RecordType.temp, RecordType.perma)
-        else:
-            types = (RecordType.temp,)
-        records = controller.query_unexpired_records(types=types)
+    def _get_tempbanned_members_db(server: discord.Server) -> List[discord.Member]:
+        records = controller.query_unexpired_records(types=RecordType.temp)
         members_raw = (server.get_member(record.user.discord_id) for record in records)
         return [m for m in members_raw if m is not None]
 
     def _get_tempbanned_members_server(self, server: discord.Server) -> List[discord.Member]:
         return [m for m in server.members if self.cog_config.ban_role in m.roles]
+
+    @staticmethod
+    def _get_permabanned_members_db(server: discord.Server) -> List[discord.Member]:
+        records = controller.query_unexpired_records(types=RecordType.perma)
+        members_raw = (server.get_member(record.user.discord_id) for record in records)
+        return [m for m in members_raw if m is not None]
 
     async def _update_tempbans(self):
         """
@@ -140,7 +141,7 @@ class BanTools(KazCog):
         # check if any members who need to be banned
         for member in bans_db:
             if member not in bans_server:
-                logger.info("Applying tempban role '{role}' to {user!s}...".format(
+                logger.info("Applying ban role '{role}' to {user!s} (tempbanned)...".format(
                     role=self.cog_config.ban_role.name,
                     user=member
                 ))
@@ -151,13 +152,45 @@ class BanTools(KazCog):
         # check if any members who need to be unbanned
         for member in bans_server:
             if member not in bans_db:
-                logger.info("Removing tempban role '{role}' to {user!s}...".format(
+                logger.info("Removing ban role '{role}' from {user!s}...".format(
                     role=self.cog_config.ban_role.name,
                     user=member
                 ))
                 await self.bot.remove_roles(member, self.cog_config.ban_role)
                 await self.bot.send_message(self.cog_config.channel_mod,
                     "Unbanned {.mention}".format(member))
+
+    async def _check_permabans(self):
+        """
+        Check all current permabans in modnotes. Unexpired permabans will raise a notification to
+        mods.
+        """
+        if not self.cog_config.ban_perma_enforce:
+            return
+
+        logger.info("Checking all permabans.")
+        try:
+            server = self.cog_config.channel_mod.server  # type: discord.Server
+        except AttributeError:  # get_channel failed
+            logger.error("Can't find mod channel")
+            await self.send_output("**ERROR**: update_tempbans: can't find mod channel")
+            return
+
+        bans_db = self._get_permabanned_members_db(server)
+
+        # check if any members who need to be banned
+        for member in bans_db:
+            if self.cog_config.ban_temp_enforce:
+                logger.info("Applying ban role '{role}' to {user!s} (permabanned)...".format(
+                    role=self.cog_config.ban_role.name,
+                    user=member
+                ))
+                await self.bot.add_roles(member, self.cog_config.ban_role)
+                await self.bot.send_message(self.cog_config.channel_mod,
+                    "Tempbanned {.mention}".format(member))
+            await self.bot.send_message(self.cog_config.channel_mod,
+                "**BAN CHECK**: User {.mention} is permabanned but currently on the server!"
+                    .format(member))
 
     #####
     # Discord
@@ -166,10 +199,12 @@ class BanTools(KazCog):
     @ready_only
     async def on_member_join(self, _: discord.Member):
         await self._update_tempbans()
+        await self._check_permabans()
 
     @task(is_unique=True)
     async def task_update_tempbans(self):
         await self._update_tempbans()
+        await self._check_permabans()
 
     @commands.command(pass_context=True)
     @mod_only()
