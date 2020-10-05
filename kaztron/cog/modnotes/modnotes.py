@@ -48,12 +48,12 @@ class ModNotes(KazCog):
         community users.
     contents:
         - notes:
-            - finduser
             - add
             - expires
             - rem
             - watches
             - temps
+            - permas
             - name
             - alias
             - group:
@@ -62,6 +62,7 @@ class ModNotes(KazCog):
             - removed
             - restore
             - purge
+            - finduser
     """
     NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
@@ -282,6 +283,33 @@ class ModNotes(KazCog):
         await self.show_record_page(
             ctx.message.channel,
             records=records_pages, user=None, title='Active Temporary Bans (Mutes)'
+        )
+
+    @notes.command(aliases=['perma'], pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def permas(self, ctx, page: int=None):
+        """!kazhelp
+        description: Show all permanent bans currently in effect (i.e. non-expired `perma` records).
+        details: |
+            10 notes are shown per page. This is partly due to Discord message length limits, and
+            partly to avoid too large a data dump in a single request.
+        parameters:
+            - name: page
+              optional: true
+              default: last page (latest notes)
+              type: number
+              description: The page number to show, if there are more than 1 page of notes.
+        """
+        db_records = c.query_unexpired_records(types=RecordType.perma)
+
+        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
+        if page is not None:
+            records_pages.page = max(1, min(records_pages.total_pages, page)) - 1
+
+        await self.show_record_page(
+            ctx.message.channel,
+            records=records_pages, user=None, title='Active Permanent Bans'
         )
 
     @notes.command(pass_context=True, aliases=['a'])

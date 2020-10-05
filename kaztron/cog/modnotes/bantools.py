@@ -1,3 +1,4 @@
+import functools
 from datetime import timedelta
 import logging
 from typing import List
@@ -9,11 +10,12 @@ from kaztron import KazCog, task
 from kaztron.cog.modnotes.model import RecordType
 from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller, ModNotesConfig
+from kaztron.driver.pagination import Pagination
 from kaztron.errors import BotCogError
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.datetime import format_timedelta
-from kaztron.utils.discord import get_named_role
+from kaztron.utils.discord import get_named_role, get_group_help
 from kaztron.utils.strings import parse_keyword_args
 
 logger = logging.getLogger(__name__)
@@ -49,13 +51,9 @@ class BanTools(KazCog):
 
         This module can automatically enforce modnotes of type 'temp' and 'perma', at startup and
         every {{check_interval}} hence.
-
-        TODO: trigger an enforce on adding a note
     contents:
-        - ban
-            - enforce
-            - list
         - tempban
+            - enforce
     """
     cog_config: BanToolsConfig
 
@@ -72,14 +70,15 @@ class BanTools(KazCog):
             ban_perma_enforce=False
         )
         self.cog_config.set_converters('ban_check_interval', lambda s: timedelta(seconds=s), None)
-        self.cog_config.set_converters('ban_role',
-            lambda r: get_named_role(self.server, r), None)
+        self.cog_config.set_converters('ban_role', lambda r: get_named_role(self.server, r), None)
         self.cog_config.set_converters('channel_mod', self.get_channel, None)
         self.cog_modnotes: ModNotes = None
+        self.modnotes_patch_applied = False
 
     async def on_ready(self):
         await super().on_ready()
-        self.cog_modnotes = self.get_cog_dependency(ModNotes.__name__)
+        self.cog_modnotes = self.get_cog_dependency(ModNotes.__name__)  # type: ModNotes
+        self.tempban.on_error = ModNotes.on_error_query_user
         _ = self.cog_config.ban_role  # validate that it is set and exists
         _ = self.cog_config.channel_mod  # validate that it is set and exists
 
@@ -89,6 +88,24 @@ class BanTools(KazCog):
                 self.scheduler.schedule_task_in(
                     self.task_update_tempbans, 0, every=self.cog_config.ban_check_interval
                 )
+
+        # ensure modnote changes trigger a reevaluation of bans
+        # TODO: hacky, we should use cog_after_invoke after discord.py 1.0.0 transition
+        if not self.modnotes_patch_applied:  # only apply this once in the lifetime of these objects
+            def wrapper(old_coro):
+                @functools.wraps(old_coro)
+                async def inner(*args, **kwargs):
+                    await old_coro(*args, **kwargs)
+                    await self._update_tempbans()
+                    await self._check_permabans()
+                return inner
+
+            for cmd in (self.cog_modnotes.add, self.cog_modnotes.expires,
+                        self.cog_modnotes.rem, self.cog_modnotes.restore):
+                logger.info(repr(cmd.callback))
+                cmd.callback = wrapper(cmd.callback)
+                logger.info(repr(cmd.callback))
+            self.modnotes_patch_applied = True
 
     def export_kazhelp_vars(self):
         return {
@@ -206,7 +223,7 @@ class BanTools(KazCog):
         await self._update_tempbans()
         await self._check_permabans()
 
-    @commands.command(pass_context=True)
+    @commands.group(invoke_without_command=True, pass_context=True)
     @mod_only()
     @mod_channels()
     async def tempban(self, ctx: commands.Context, user: str, *, reason: str = ""):
@@ -267,6 +284,21 @@ class BanTools(KazCog):
 
         # Apply new mutes
         await self._update_tempbans()
+
+    @tempban.command(pass_context=True)
+    @mod_only()
+    @mod_channels()
+    async def enforce(self, ctx: commands.Context):
+        """!kazhelp
+        brief: "Check and update all bans."
+        description: |
+            Immediately re-check and update all tempbans and permabans (if enforcement is enabled),
+            without waiting for the timer.
+        """
+        await self._update_tempbans()
+        await self._check_permabans()
+        await self.send_message(ctx.message.channel, ctx.message.author.mention +
+                                                     " Updated all bans.")
 
 
 def setup(bot):
