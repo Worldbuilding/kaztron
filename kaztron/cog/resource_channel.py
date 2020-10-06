@@ -73,7 +73,13 @@ class ResourceChannelManager(KazCog):
     @ready_only
     async def on_message(self, message: discord.Message):
         """ Message handler. Auto-upvotes valid resource messages. """
-        if message.channel.id != self.cog_config.channel.id:
+
+        # resource channel only
+        if message.channel != self.cog_config.channel:
+            return
+
+        # don't react to self
+        if message.author == self.bot.user:
             return
 
         if not self.is_resource_post(message):
