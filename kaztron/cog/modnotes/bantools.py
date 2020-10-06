@@ -103,9 +103,7 @@ class BanTools(KazCog):
 
             for cmd in (self.cog_modnotes.add, self.cog_modnotes.expires,
                         self.cog_modnotes.rem, self.cog_modnotes.restore):
-                logger.info(repr(cmd.callback))
                 cmd.callback = wrapper(cmd.callback)
-                logger.info(repr(cmd.callback))
             self.modnotes_patch_applied = True
 
     def export_kazhelp_vars(self):
