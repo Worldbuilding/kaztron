@@ -199,12 +199,13 @@ class CoreCog(kaztron.KazCog):
             logger.warning("Event {} called before on_ready: ignoring".format(event))
             return
 
-        log_msg = "Error occurred in {}({}, {})".format(
+        log_msg = "{}({}, {})".format(
             event,
             ', '.join(repr(arg) for arg in args),
             ', '.join(key + '=' + repr(value) for key, value in kwargs.items()))
-        logger.exception(log_msg)
-        await self.send_output("[ERROR] {} - see logs for details".format(exc_log_str(exc_info[1])))
+        logger.exception("Error occurred in " + log_msg)
+        await self.send_output("[ERROR] In {}\n\n{}\n\nSee log for details".format(
+            log_msg, exc_log_str(exc_info[1])))
 
         try:
             message = args[0]
