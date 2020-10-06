@@ -32,6 +32,7 @@ class ResourceChannelConfig(SectionView):
     allow_re_strings: List[Pattern]
     deny_strings: List[str]
     deny_re_strings: List[Pattern]
+    allow_uploads: bool
 
 
 class ResourceChannelManager(KazCog):
@@ -59,7 +60,8 @@ class ResourceChannelManager(KazCog):
             allow_strings=('http://', 'https://'),
             allow_re_strings=tuple(),
             deny_strings=tuple(),
-            deny_re_strings=tuple()
+            deny_re_strings=tuple(),
+            allow_uploads=True
         )
         self.cog_config.set_converters('channel', lambda id_: self.get_channel(id_), None)
         self.cog_config.set_converters('allow_re_strings',
@@ -99,6 +101,8 @@ class ResourceChannelManager(KazCog):
             return False
         if any(p.search(message.content) is not None for p in self.cog_config.deny_re_strings):
             return False
+        if self.cog_config.allow_uploads and message.attachments:
+            return True
         if any(s in message.content for s in self.cog_config.allow_strings):
             return True
         if any(p.search(message.content) is not None for p in self.cog_config.allow_re_strings):

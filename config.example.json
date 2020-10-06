@@ -158,7 +158,8 @@
     "allow_strings": ["https://", "http://"],
     "allow_re_strings": [],
     "deny_strings": [],
-    "deny_re_strings": []
+    "deny_re_strings": [],
+    "allow_uploads": true
   },
   "spotlight": {
     "name": "World Spotlight",
