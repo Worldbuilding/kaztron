@@ -49,8 +49,6 @@ class StickyData:
         self.message = message
         self.delay = delay
         self.posted_message_id = posted_message_id
-        # Lazy caching of the posted message
-        self._posted_message = None  # type: discord.Message
 
     def __repr__(self):
         return '<InfoMessageData channel=#{} message={} delay={}, posted_message={}>'.format(
@@ -86,14 +84,10 @@ class StickyData:
         :raises discord.HTTPException: Other problems retrieving message
         :raises ValueError: no message posted
         """
-        if self._posted_message:
-            return self._posted_message  # cached
 
         if not self.posted_message_id:
-            raise ValueError('no posted_message')
-
-        self._posted_message = await client.get_message(self.channel, self.posted_message_id)
-        return self._posted_message
+            raise AttributeError('no posted_message')
+        return await client.get_message(self.channel, self.posted_message_id)
 
 
 class StickyState(SectionView):
@@ -179,8 +173,13 @@ class Sticky(KazCog):
             async for msg in _logs:
                 last_message = msg
                 break
-        except ValueError:
+        except AttributeError:
             await self.post_sticky(channel)  # no message posted, just go ahead and post it
+        except discord.NotFound:
+            await self.post_sticky(channel)
+            msg = "While updating sticky in #{.name}: old message not found.".format(channel)
+            logger.warning(msg)
+            await self.send_output("[WARNING] " + msg)
         else:
             if last_message and message.id == last_message.id:  # latest message is still the sticky
                 if message.content != data.message:
@@ -188,8 +187,8 @@ class Sticky(KazCog):
                     await self.bot.edit_message(message, data.message)
             else:  # latest message is not the sticky
                 logger.info("Deleting old sticky message in #{.name:s}".format(channel))
-                await self.bot.delete_message(message)
                 await self.post_sticky(channel)
+                await self.bot.delete_message(message)
 
     async def post_sticky(self, channel: discord.Channel):
         """
@@ -393,7 +392,7 @@ class Sticky(KazCog):
                 jump_url = ' *([link]({}))*'.format(
                     get_jump_url(await data.get_posted_message(self.bot))
                 )
-            except ValueError:
+            except (AttributeError, discord.NotFound):
                 jump_url = ''
             delay_string = ' (delay: {})'.format(format_timedelta(data.delay)) if data.delay else ''
 
@@ -444,9 +443,11 @@ class Sticky(KazCog):
                 " Error: No sticky configured for channel #{}".format(e.args[1].name))
         if isinstance(e, discord.Forbidden):
             data = self.cog_state.get(ctx.args[0].id)
+            logger.error("Error updating sticky {!r}: Permission error.\n\n{}".format(
+                data, tb_log_str(e)
+            ))
             await self.send_message(ctx.message.channel, ctx.message.author.mention +
-                "Error updating sticky {!r}. Permission error: {}"
-                .format(data, exc_log_str(e)))
+                "Error updating sticky {!r}. Discord permission error.".format(data))
         elif isinstance(e, discord.HTTPException):
             data = self.cog_state.get(ctx.args[0].id)
             await self.send_message(ctx.message.channel, ctx.message.author.mention +
