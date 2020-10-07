@@ -10,13 +10,11 @@ from kaztron import KazCog, task
 from kaztron.cog.modnotes.model import RecordType
 from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller, ModNotesConfig
-from kaztron.driver.pagination import Pagination
 from kaztron.errors import BotCogError
 from kaztron.kazcog import ready_only
 from kaztron.utils.checks import mod_only, mod_channels
 from kaztron.utils.datetime import format_timedelta
-from kaztron.utils.discord import get_named_role, get_group_help
-from kaztron.utils.logging import exc_log_str
+from kaztron.utils.discord import get_named_role
 from kaztron.utils.strings import parse_keyword_args
 
 logger = logging.getLogger(__name__)

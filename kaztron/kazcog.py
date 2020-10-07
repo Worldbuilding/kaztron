@@ -79,6 +79,10 @@ class KazCog:
             @functools.wraps(f)
             async def wrapper(cog):
                 try:
+                    if cog.cog_state:
+                        cog.cog_config.clear_cache()
+                    if cog.cog_state:
+                        cog.cog_state.clear_cache()
                     await f()
                 except Exception:
                     cog.core.set_cog_error(cog)

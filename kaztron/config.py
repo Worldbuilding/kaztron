@@ -343,6 +343,7 @@ class SectionView:
         """ Read a configuration value. Usage is similar to :meth:`KaztronConfig.get`. """
         converter = self.__converters.get(key, (None, None))[0]
         if key in self.__cache:
+            logger.debug("{!s}: Read key '{}' from converter cache.".format(self, key))
             return self.__cache[key]
         else:
             value = self.__config.get(self.__section, key, default=default, converter=converter)
@@ -359,6 +360,11 @@ class SectionView:
 
     def keys(self):
         return self.__config.get_section_data(self.__section).keys()
+
+    def clear_cache(self):
+        """ Clear the converted value cache. """
+        logger.debug("{!s}: Clearing converted value cache.".format(self))
+        self.__cache.clear()
 
     def __str__(self):
         return "{!s}:{}".format(self.__config, self.__section)
