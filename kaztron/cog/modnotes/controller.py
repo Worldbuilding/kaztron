@@ -84,12 +84,13 @@ async def query_user(bot: discord.Client, id_: str):
     """
     Find a user given an ID string passed by command, or create it if it does not exist.
 
-    id_ can be passed to a command in three formats:
+    id_ can be passed to a command in four formats:
     * Discord Mention: <@123456789012345678>
     * Discord ID: 123456789012345678
+    * Discord Name+Discriminator: Username#1234
     * Database ID: *134
 
-    For Discord Mention or Discord ID, if the user is not found but exists on Discord, a new
+    For Discord-based inputs, if the user is not found but exists on Discord, a new
     entry is created. In other cases, a :cls:`~.UserNotFound` error is raised.
 
     :raises UserNotFound: User was not found. Either the Discord user exists neither on Discord
@@ -98,13 +99,22 @@ async def query_user(bot: discord.Client, id_: str):
     :raises db.exc.MultipleResultsFound: Should never happen - database is buggered.
     """
     # Parse the passed ID
-    if id_.startswith('*'):
+    if id_.startswith('*'):  # KazTron database ID lookup
         try:
             db_id = int(id_[1:])
         except ValueError:
             raise ValueError('Invalid KazTron user ID: must be "*" followed by a number')
         db_user = await get_user_by_db_id(db_id, bot)
-    else:
+    elif id_[-5] == '#':   # name#discriminator lookup
+        id_ = id_.lstrip('@')  # stray @ from an attempted mention
+        for server in bot.servers:
+            member = server.get_member_named(id_)
+            if member:
+                db_user = await get_user_by_discord_id(member.id, bot)
+                break
+        else:
+            raise ValueError('Invalid Discord user ID format')
+    else:  # mention/ID lookup
         try:
             discord_id = extract_user_id(id_)
         except discord.InvalidArgument:
