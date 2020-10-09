@@ -12,7 +12,7 @@
   },
   "core": {
     "name": "KazTronExampleBot",
-    "extensions": ["welcome", "wordfilter", "dice", "modtools", "spotlight", "modnotes", "reminder", "sprint", "quotedb", "voicelog"],
+    "extensions": ["dice", "fuck", "modnotes", "modnotes.bantools", "modnotes.jointools","modtools", "quotedb", "reminder", "resource_channel", "spotlight", "sprint", "sticky", "test", "userstats", "voicelog", "welcome", "wordfilter"],
     "channel_request": "channel ID for requests",
     "info_links": {
       "link name 1": "http://potato.example/url/to/something",

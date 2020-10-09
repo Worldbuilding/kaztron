@@ -428,3 +428,66 @@ def update_record(record_id: int, **kwargs) -> Record:
         setattr(record, k, v)
     session.commit()
     return record
+
+
+@on_error_rollback
+def insert_join(*, user: User, direction: JoinDirection, timestamp: datetime=None) -> JoinRecord:
+    # Validation/defaults
+    if timestamp is None:
+        timestamp = datetime.utcnow()
+
+    logger.info("Inserting join record...")
+    logger.debug("join: user={!r} direction={.name} timestamp={}"
+        .format(user, direction, format_timestamp(timestamp))
+    )
+    rec = JoinRecord(user=user, direction=direction, timestamp=timestamp)
+    session.add(rec)
+    session.commit()
+    return rec
+
+
+def query_user_joins(user_group: Union[User, Sequence[User], None]) \
+        -> List[JoinRecord]:
+    """
+    :param user_group: User or user group as an iterable of users.
+    :return:
+    """
+    # Input validation
+    user_list = [user_group] if isinstance(user_group, User) else user_group
+
+    # Query
+    query = session.query(JoinRecord)
+    if user_list:
+        # noinspection PyUnresolvedReferences
+        query = query.filter(JoinRecord.user_id.in_(u.user_id for u in user_list))
+    results = query.order_by(JoinRecord.timestamp).all()
+    logger.info("query_user_joins: "
+                "Found {:d} records for user group: {!r}".format(len(results), user_group))
+    return results
+
+
+def purge_joins(before: datetime) -> Sequence[Tuple[str, int]]:
+    """
+    Purge all records that a) have no modnotes; b) user last seen LEAVING before this date
+    (and has not rejoined).
+    """
+    latest_joins = session.query(JoinRecord, db.func.max(JoinRecord.timestamp).label('latest')) \
+        .group_by(JoinRecord.user_id).subquery(name='latest_joins')  # type: db.Query
+
+    purge_users_q = session.query(User) \
+        .join(latest_joins, User.user_id == latest_joins.c.user_id) \
+        .outerjoin(Record, Record.user_id == User.user_id) \
+        .filter(Record.record_id == None) \
+        .filter(latest_joins.c.direction == JoinDirection.part) \
+        .filter(latest_joins.c.latest <= before)
+    purge_users = purge_users_q.all()
+    purge_user_pairs = tuple((u.name, u.user_id) for u in purge_users)
+
+    n = session.query(JoinRecord) \
+        .filter(JoinRecord.user_id.in_(u.user_id for u in purge_users)) \
+        .delete(synchronize_session='fetch')
+    session.commit()
+    logger.info("purge_joins: Purged {:d} records from {:d} users".format(n, len(purge_user_pairs)))
+    logger.debug("purge_joins: {}".format('; '.join(f'{u[0]} *{u[1]}' for u in purge_user_pairs)))
+    return purge_user_pairs
+

@@ -1,7 +1,8 @@
+import heapq
 from datetime import datetime
 import logging
 from collections import OrderedDict
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import discord
 from discord.ext import commands
@@ -22,7 +23,8 @@ from kaztron.utils.strings import parse_keyword_args
 
 from kaztron.utils.datetime import format_timestamp
 
-from kaztron.cog.modnotes.model import User, Record, RecordType
+from kaztron.cog.modnotes.model import User, Record, RecordType, JoinRecord, JoinDirection, \
+    DummyRecord
 from kaztron.cog.modnotes import controller as c
 
 logger = logging.getLogger(__name__)
@@ -181,16 +183,51 @@ class ModNotes(KazCog):
         es.add_field_no_break(name=sep_name, value=sep_value, inline=False)
 
         # records page
-        for record in records:
+        for record in records:  # type: Union[Record, JoinRecord]
+            # special case: join records without a normal record
+            if isinstance(record, DummyRecord):
+                es.add_field(name="First seen", value=record.display_append + self.EMBED_SEPARATOR,
+                    inline=False)
+                continue
+
+            # normal record
             record_fields, contents = self._get_record_fields(record, show_user=True)
 
             for field_name, field_value in record_fields.items():
                 es.add_field_no_break(name=field_name, value=field_value, inline=True)
 
             for field_name, field_value in contents.items():
+                # for JoinRecords
+                display_append = getattr(record, 'display_append', '')
+                if display_append:
+                    field_value += '\n' + display_append + self.EMBED_SEPARATOR
                 es.add_field(name=field_name, value=field_value, inline=False)
 
         await self.send_message(dest, embed=es)
+
+    def merge_records_joins(self, r: Sequence[Record], j: Sequence[JoinRecord]):
+        """ Merge display strings for joins into a record list ready for display. """
+
+        # we want to append records coming *after* the record into the record preceding it
+        # so let's iterate backwards
+        rr = reversed(tuple(heapq.merge(r, j, key=lambda x: x.timestamp)))
+        rmerged = []
+        join_strings = []
+        for record in rr:
+            if isinstance(record, JoinRecord):
+                dir_mark = r'\>\>\> JOIN' if record.direction == JoinDirection.join else r'<<< PART'
+                ts = format_timestamp(record.timestamp)
+                u = self.format_display_user(record.user)
+                join_strings.append("**{} {} {}**".format(dir_mark, ts, u))
+            elif isinstance(record, Record):
+                record.display_append = '\n'.join(reversed(join_strings))
+                rmerged.append(record)
+                join_strings.clear()
+            else:
+                raise TypeError(record)
+        if join_strings:  # still some join strings left w/o a record
+            rmerged.append(DummyRecord(text='\n'.join(reversed(join_strings))))
+        return reversed(rmerged)
 
     @commands.group(aliases=['note'], invoke_without_command=True, pass_context=True,
         ignore_extra=False)
@@ -219,6 +256,9 @@ class ModNotes(KazCog):
         db_user = await c.query_user(self.bot, user)
         db_group = c.query_user_group(db_user)
         db_records = c.query_user_records(db_group)
+        db_joins = c.query_user_joins(db_group)
+        if db_joins:
+            db_records = self.merge_records_joins(db_records, db_joins)
 
         records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, align_end=True)
         if page is not None:

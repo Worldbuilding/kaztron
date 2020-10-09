@@ -51,7 +51,7 @@ class BanTools(KazCog):
         This module can automatically enforce modnotes of type 'temp' and 'perma', at startup and
         every {{check_interval}} hence.
     contents:
-        - tempban
+        - tempban:
             - enforce
     """
     cog_config: BanToolsConfig
