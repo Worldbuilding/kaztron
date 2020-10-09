@@ -1,13 +1,13 @@
 import functools
 from datetime import timedelta
 import logging
-from typing import List
+from typing import List, Tuple
 
 import discord
 from discord.ext import commands
 
 from kaztron import KazCog, task
-from kaztron.cog.modnotes.model import RecordType
+from kaztron.cog.modnotes.model import RecordType, User
 from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller, ModNotesConfig
 from kaztron.errors import BotCogError
@@ -119,19 +119,19 @@ class BanTools(KazCog):
     #####
 
     @staticmethod
-    def _get_tempbanned_members_db(server: discord.Server) -> List[discord.Member]:
+    def _get_tempbanned_members_db(server: discord.Server) -> List[Tuple[User, discord.Member]]:
         records = controller.query_unexpired_records(types=RecordType.temp)
-        members_raw = (server.get_member(record.user.discord_id) for record in records)
-        return [m for m in members_raw if m is not None]
+        members_raw = ((r.user, server.get_member(r.user.discord_id)) for r in records)
+        return [m for m in members_raw if m[1] is not None]
 
     def _get_tempbanned_members_server(self, server: discord.Server) -> List[discord.Member]:
         return [m for m in server.members if self.cog_config.ban_role in m.roles]
 
     @staticmethod
-    def _get_permabanned_members_db(server: discord.Server) -> List[discord.Member]:
+    def _get_permabanned_members_db(server: discord.Server) -> List[Tuple[User, discord.Member]]:
         records = controller.query_unexpired_records(types=RecordType.perma)
-        members_raw = (server.get_member(record.user.discord_id) for record in records)
-        return [m for m in members_raw if m is not None]
+        members_raw = ((r.user, server.get_member(r.user.discord_id)) for r in records)
+        return [m for m in members_raw if m[1] is not None]
 
     async def _update_tempbans(self):
         """
@@ -153,26 +153,30 @@ class BanTools(KazCog):
         bans_server = self._get_tempbanned_members_server(server)
 
         # check if any members who need to be banned
-        for member in bans_db:
+        for user, member in bans_db:
+            user_formatted = self.cog_modnotes.format_display_user(user)
             if member not in bans_server:
                 logger.info("Applying ban role '{role}' to {user!s} (tempbanned)...".format(
                     role=self.cog_config.ban_role.name,
-                    user=member
+                    user=user_formatted
                 ))
                 await self.bot.add_roles(member, self.cog_config.ban_role)
                 await self.bot.send_message(self.cog_config.channel_mod,
-                    "Tempbanned {.mention}".format(member))
+                    "Tempbanned {}".format(user_formatted))
 
         # check if any members who need to be unbanned
+        bans_db_members = tuple(u[1] for u in bans_db)
         for member in bans_server:
-            if member not in bans_db:
+            if member not in bans_db_members:
+                user = await controller.get_user_by_discord_id(member.id, self.bot)
+                user_formatted = self.cog_modnotes.format_display_user(user)
                 logger.info("Removing ban role '{role}' from {user!s}...".format(
                     role=self.cog_config.ban_role.name,
-                    user=member
+                    user=user_formatted
                 ))
                 await self.bot.remove_roles(member, self.cog_config.ban_role)
                 await self.bot.send_message(self.cog_config.channel_mod,
-                    "Unbanned {.mention}".format(member))
+                    "Unbanned {}".format(user_formatted))
 
     async def _check_permabans(self):
         """
@@ -193,18 +197,19 @@ class BanTools(KazCog):
         bans_db = self._get_permabanned_members_db(server)
 
         # check if any members who need to be banned
-        for member in bans_db:
+        for user, member in bans_db:
+            user_formatted = self.cog_modnotes.format_display_user(user)
             if self.cog_config.ban_temp_enforce:
                 logger.info("Applying ban role '{role}' to {user!s} (permabanned)...".format(
                     role=self.cog_config.ban_role.name,
-                    user=member
+                    user=user_formatted
                 ))
                 await self.bot.add_roles(member, self.cog_config.ban_role)
                 await self.bot.send_message(self.cog_config.channel_mod,
-                    "Tempbanned {.mention}".format(member))
+                    "Tempbanned {}".format(user_formatted))
             await self.bot.send_message(self.cog_config.channel_mod,
-                "**BAN CHECK**: User {.mention} is permabanned but currently on the server!"
-                    .format(member))
+                "**BAN CHECK**: User {} is permabanned but currently on the server!"
+                    .format(user_formatted))
 
     #####
     # Discord
