@@ -596,6 +596,7 @@ class JekyllHelpFormatter:
             data = self.parser.parse(cog, self.bot)
         except NotKazhelpError as e:
             data = {
+                'category': '',
                 'brief': None,
                 'description': cog.__doc__ or '',
                 'jekyll_description': None,
