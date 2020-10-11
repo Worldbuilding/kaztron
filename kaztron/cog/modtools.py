@@ -118,8 +118,12 @@ class ModTools(KazCog):
     async def say(self, ctx: commands.Context, channel: discord.Channel, *, message: str):
         """!kazhelp
 
-        description: Make the bot say something in a channel. If the {{%reminders}} cog is enabled,
+        description: |
+            Make the bot say something in a channel. If the {{%reminders}} cog is enabled,
             you can also schedule a message at a later time with {{!saylater}}.
+
+            If the bot has pin permissions, prepending `pin:` to the beginning of the message will
+            allow it to auto-pin the message.
         parameters:
             - name: channel
               type: string
@@ -130,11 +134,24 @@ class ModTools(KazCog):
                 formatting, @mentions, commands that OTHER bots might react to, and @everyone/@here
                 (if the bot is allowed to use them)."
         examples:
-            - command: .say #meta HELLO, HUMANS. I HAVE GAINED SENTIENCE.
-              description: Says the message in the #meta channel.
+            - command: ".say #meta HELLO, HUMANS. I HAVE GAINED SENTIENCE."
+              description: "Says the message in the #meta channel."
+            - command: ".say #meta pin: REMEMBER TO KEEP HYDRATED."
+              description: "Says the message in the #meta channel and pin it."
         """
-        await self.send_message(channel, message)
+        pin = False
+        if message[:4].lower() == 'pin:':
+            pin = True
+            message = message[4:]
+
+        posted_messages = await self.send_message(channel, message)
         await self.send_output(f"Said in {channel} ({ctx.message.author.mention}): {message}")
+
+        if pin:
+            try:
+                await self.bot.pin_message(posted_messages[0])
+            except discord.Forbidden:
+                logger.warning("Can't pin: missing permissions.")
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
