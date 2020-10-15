@@ -275,20 +275,55 @@ class KaztronConfig:
 class SectionView:
     """
     Dynamic view for a configuration section. Configuration keys can be retrieved as attributes
-    (``view.config_key``) or via the get() method; similarly, they can be written by setting
-    attributes or via the set() method.
+    (``view.config_key``) or via the :meth:`get` method; similarly, they can be written by setting
+    attributes or via the :meth:`set` method.
 
-    Get/set provide additional functionality like defining a default value, if the config key is
-    not present, and specifying a converting function/callable.
+    :meth:`set_defaults` allows default values to be set for specific keys. Note that these defaults
+    may end up being written to file.
+
+    :meth:`set_converters` allows setting converter functions for getting and setting values. This
+    happens implicitly on any converter access, allowing transparent conversion between the JSON
+    file data and Python objects.
 
     Any changes to configuration values in the view will be reflected in the KaztronConfig parent
     object (and thus can be written to file, etc.).
+
+    Changes to configuration can be written in a few ways:
+
+    * Attribute assignment. Note that you have to access the attribute DIRECTLY: if you make deeper
+      modifications to the attribute's value (e.g. if it's a dict or list you modify), then it will
+      not be detected and the 'dirty' flag will not be set. This will cause the change not to be
+      written to file on the next :meth:`write()` call (or automatic write in a KazTron command).
+    * Calling :meth:`set`.
+    * Using `with section_view_instance:`. A write will be forced at the end of the `with` block,
+      allowing you to get around the attribute assignment problem mentioned above. This may be
+      less efficient if you are heavily using converters, as it will re-convert every key in the
+      configuration.
+
+    Get/set provide additional functionality like defining a default value, if the config key is
+    not present, and specifying a converting function/callable.
     """
     def __init__(self, config: KaztronConfig, section: str):
         self.__config = config
         self.__section = section
         self.__converters = {}  # type: Dict[str, Tuple[Callable[[Any], Any], Callable[[Any], Any]]]
         self.__cache = {}  # type: Dict[str, Any]
+
+    def __enter__(self):
+        if self.__config.read_only:
+            raise ReadOnlyError("Configuration {} is read-only".format(self.__config.filename))
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:  # exception happened - revert any changes
+            self.__config.read()
+            self.clear_cache()
+            return
+
+        # force detecting and converting data, in case changes were to converted data or structures
+        for key in self.keys():
+            self.set(key, self.get(key))  # forces dirty flag + conversion to happen
+        self.write()
 
     def set_converters(self, key: str, get_converter, set_converter):
         """
@@ -365,6 +400,10 @@ class SectionView:
         """ Clear the converted value cache. """
         logger.debug("{!s}: Clearing converted value cache.".format(self))
         self.__cache.clear()
+
+    def write(self):
+        """ If the in-memory cache of the config file is dirty, write to file. """
+        self.__config.write()
 
     def __str__(self):
         return "{!s}:{}".format(self.__config, self.__section)

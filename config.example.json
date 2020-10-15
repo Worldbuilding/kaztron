@@ -45,6 +45,11 @@
     "jekyll_version_field": "kaz-version",
     "jekyll_category_field": "kaz-cog-category"
   },
+  "reddit": {
+    "client_id": "from reddit",
+    "client_secret": "from reddit",
+    "user_agent": "custom user-agent string; follow reddit API guidelines for this"
+  },
   "rolemanager": {
     "user_roles": {
       "role_name1": {
