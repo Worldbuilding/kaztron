@@ -195,6 +195,12 @@
   "sticky": {
     "delay": 300
   },
+  "subwatch": {
+    "reddit_username": "reddit user to connect from (can be omitted to use the first logged-in user)",
+    "check_interval": 60,
+    "min_post_interval": 300,
+    "max_posts_per_interval": 2
+  },
   "userstats": {
     "ignore_users": ["user ID 1", "user ID 2", "etc"],
     "ignore_channels": ["channel ID 1", "channel ID 2", "etc"]

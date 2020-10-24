@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 from pathutils import *
+import asyncio
 
-if __name__ == '__main__':
+async def main():
     add_application_path()
 
     import sys
@@ -33,7 +34,7 @@ if __name__ == '__main__':
         response_parts = urlparse(response_url)
         query_vars = parse_qs(response_parts.query)
 
-        rlm.authorize(query_vars['state'][0], query_vars['code'][0])
+        await rlm.authorize(query_vars['state'][0], query_vars['code'][0])
 
         print("Done.")
         exit(0)
@@ -46,7 +47,7 @@ if __name__ == '__main__':
             print("Must specify a username to log out.")
             exit(2)
         try:
-            rlm.logout(user)
+            await rlm.logout(user)
         except KeyError:
             print(f"User '{user}' not logged in.")
             exit(3)
@@ -55,7 +56,7 @@ if __name__ == '__main__':
         exit(0)
 
     elif cmd == 'clear':
-        rlm.clear()
+        await rlm.clear()
         print(f"All user sessions cleared. Note that this app's authorization will remain "
               "on user accounts and must be removed via the Reddit website.")
         exit(0)
@@ -64,3 +65,7 @@ if __name__ == '__main__':
         print("Usage: ./reddit_auth.py <login|logout <username>|clear>\n")
         exit(0)
 
+
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
