@@ -17,6 +17,7 @@ class DiscordTools(KazCog):
     brief: Various tools to help with Discord.
     description:
     contents:
+        - kaztime
         - id
         - rchid
     """
