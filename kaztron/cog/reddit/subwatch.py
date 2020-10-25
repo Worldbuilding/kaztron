@@ -197,8 +197,10 @@ class RedditStreamManager:
             s = await self.reddit.submission(reddit_id)
             self.submission_cache[reddit_id] = (s, utctimestamp(datetime.utcnow()))
 
-        if s.author is None or (hasattr(s, 'selftext') and s.selftext in ('[deleted]', '[removed]')):
-            raise reddit.DeletedError(s)
+        if getattr(s, 'removed_by_category', None) is not None:
+            raise reddit.DeletedError(s, s.removed_by_category)
+        elif not getattr(s, 'is_robot_indexable', True):
+            raise reddit.DeletedError(s, 'unknown')
         return s
 
 

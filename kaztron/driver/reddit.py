@@ -17,9 +17,14 @@ class KazRedditError(Exception):
 
 
 class DeletedError(KazRedditError):
-    """ General error: object has been deleted or removed. """
-    def __init__(self, reddit_model, *args):
-        super().__init__(reddit_model, *args)
+    """
+    General error: object has been deleted or removed.
+
+    Args: (reddit_model, removed_by_category). removed_by_category is one of 'author', 'moderator'
+        'deleted', 'unknown'.
+    """
+    def __init__(self, reddit_model, removed_by_category, *args):
+        super().__init__(reddit_model, removed_by_category, *args)
 
 
 class RedditConfig(SectionView):
