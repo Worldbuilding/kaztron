@@ -171,4 +171,3 @@ class RedditLoginManager:
         with self._state as state:
             state.refresh_tokens = {}
         logger.info("Logged out all users")
-

@@ -35,8 +35,11 @@
     "gzip_backups": true,
     "tags": {
       "sqlalchemy.engine": "WARNING",
+      "asyncprawcore": "INFO",
       "websockets.protocol": "INFO",
-      "discord": "INFO"
+      "discord": "INFO",
+      "kaztron.config": "INFO",
+      "kaztron.help_formatter": "INFO"
     }
   },
   "help": {

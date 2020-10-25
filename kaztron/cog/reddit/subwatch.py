@@ -1,17 +1,16 @@
-from collections import OrderedDict
 from datetime import timedelta, datetime
 import logging
-from typing import List, Dict, Sequence, Set, AsyncGenerator
+from typing import List, Dict, Sequence, Set, Iterable, Iterator, Tuple, AsyncGenerator
 
 import discord
 from discord.ext import commands
 
-from kaztron import KazCog, task, scheduler
+from kaztron import KazCog, task, Scheduler
 from kaztron.config import SectionView
 from kaztron.driver import reddit
 from kaztron.utils.checks import mod_only
+from kaztron.utils.containers import FifoCache
 from kaztron.utils.datetime import format_timedelta, utctimestamp
-from asyncpraw.models.reddit.subreddit import SubredditStream
 
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.strings import format_list, natural_truncate
@@ -81,6 +80,7 @@ class SubwatchState(SectionView):
     """
     channels: Dict[discord.Channel, SubwatchChannel]
     last_checked: datetime
+    no_results_count: int
     cog: KazCog
 
     def __init__(self, *args, **kwargs):
@@ -101,19 +101,131 @@ class SubwatchState(SectionView):
         return {ch.id: sub.to_dict() for ch, sub in data.items()}
 
 
-class FifoCache(OrderedDict):
-    """ Fixed-size cache, evicting the oldest inserted item when full. """
+class RedditStreamManager:
+    """
+    Helps manage and cache the submissions stream. Also manages stream failures (e.g. when the
+    last retrieved post is deleted, the stream may return no results instead of the latest results
+    since the last query).
 
-    def __init__(self, maxsize=128, *args, **kwargs):
-        self.maxsize = maxsize
-        super().__init__(*args, **kwargs)
+    :param reddit: Reddit instance to use
+    :param subreddits: List of subreddit names to check
+    :param renewal_threshold: Number of times the stream is checked with no results before
+        automatically refreshing (i.e. assumed stream failure).
+    """
+    def __init__(self,
+                 reddit_: reddit.Reddit,
+                 subreddits: Iterable[str],
+                 renewal_threshold=5,
+                 cache_expiry=180):
+        self.reddit = reddit_
 
-    def __setitem__(self, key, value):
-        if key in self:
-            self.move_to_end(key)
-        super().__setitem__(key, value)
-        if len(self) > self.maxsize:
-            self.popitem(last=False)
+        self._subreddits = tuple(subreddits)
+        self._stream = None
+        self._is_fresh = True
+        self.no_result_count = 0
+        self.renewal_threshold = renewal_threshold
+
+        self.submission_cache = FifoCache()  # type: Dict[str, Tuple[reddit.models.Submission, int]]
+        self.cache_expiry_delta = cache_expiry
+
+    @property
+    def subreddits(self):
+        """
+        List of subreddit names for this stream. If this list is modified, the stream is refreshed.
+        """
+        return self._subreddits
+
+    @subreddits.setter
+    def subreddits(self, subreddits: Iterable[str]):
+        self._subreddits = tuple(subreddits)
+        self.refresh()
+
+    @property
+    def is_fresh(self):
+        """
+        True if the stream is fresh, i.e., will return a backlog. This property remains true until
+        the stream has iterated through the first set of responses from the API, i.e.,
+        :meth:`~.stream` has iterated through to its end.
+        """
+        return self._is_fresh
+
+    async def stream(self) -> AsyncGenerator[reddit.models.Submission, None]:
+        """
+        Generator of new reddit posts. Should be async iterated.
+
+        After a :meth:`~.refresh()`, setting :attr:`~.subreddits`, or hitting the
+        :attr:`~.renewal_threshold`, this will load a number of recent posts instead of restarting
+        from the latest post.
+        """
+        has_results = False
+        if self.is_fresh:
+            sr = await self.reddit.subreddit(display_name='+'.join(self.subreddits))
+            self._stream = sr.stream.submissions(pause_after=0)
+
+        async for submission in self._stream:
+            if submission is None:
+                if has_results:
+                    self.no_result_count = 0
+                else:
+                    self.no_result_count += 1
+                break
+            has_results = True
+            self.submission_cache[submission.id] = (submission, utctimestamp(datetime.utcnow()))
+            yield submission
+
+        self._is_fresh = False
+        if self.no_result_count >= self.renewal_threshold:
+            self.refresh()
+
+    def refresh(self):
+        self._stream = None
+        self._is_fresh = True
+
+    async def get_submission(self, reddit_id: str) -> reddit.models.Submission:
+        """
+        Get the submission from cache or from the reddit API (if not in cache or expired).
+        :param reddit_id:
+        :return:
+        :raise reddit.DeletedError: submission is removed/deleted
+        """
+        try:
+            s, load_time = self.submission_cache[reddit_id]
+            if utctimestamp(datetime.utcnow()) - load_time > self.cache_expiry_delta:
+                await s.load()
+                self.submission_cache[reddit_id] = (s, utctimestamp(datetime.utcnow()))
+        except KeyError:
+            s = await self.reddit.submission(reddit_id)
+            self.submission_cache[reddit_id] = (s, utctimestamp(datetime.utcnow()))
+
+        if s.author is None or (hasattr(s, 'selftext') and s.selftext in ('[deleted]', '[removed]')):
+            raise reddit.DeletedError(s)
+        return s
+
+
+class QueueManager:
+    """
+    Manage a queue of subreddit posts found and not yet posted.
+
+    Note: this class's methods will not mark dirty or write the state file. All mutating methods
+    should be called under `with self.cog_state:` contexts to ensure the file is properly updated.
+    """
+
+    def __init__(self, state: SubwatchState):
+        self.state = state
+
+    def add(self, submission: reddit.models.Submission):
+        """ Add a submission to the queue. """
+        for ch, ch_info in self.state.channels.items():
+            if submission.subreddit.display_name.lower() in ch_info.subreddits:
+                ch_info.queue.append(submission.id)
+
+    def pop(self, channel: discord.Channel) -> str:
+        """
+        Pop a reddit ID off the channel's queue.
+        :raise IndexError: Nothing in queue
+        :raise KeyError: Channel is not configured for SubWatch
+        """
+        return self.state.channels[channel].queue.pop(0)
 
 
 class Subwatch(KazCog):
@@ -132,8 +244,6 @@ class Subwatch(KazCog):
     cog_config: SubwatchConfig
     cog_state: SubwatchState
 
-    CACHE_SIZE = 32
-
     #####
     # Lifecycle
     #####
@@ -146,16 +256,22 @@ class Subwatch(KazCog):
             min_post_interval=300,
             max_posts_per_interval=2,
         )
-        self.cog_state.set_defaults(channels=dict(), last_checked=utctimestamp(datetime.utcnow()))
+        self.cog_state.set_defaults(
+            channels=dict(),
+            last_checked=utctimestamp(datetime.utcnow()),
+            no_results_count=0
+        )
         self.reddit = None  # type: reddit.Reddit
-        self.submission_stream = None  # type: AsyncGenerator
-        self.submission_cache = FifoCache(self.CACHE_SIZE)  # type: OrderedDict[str, reddit.models.Submission]
+        self.stream_manager = None  # type: RedditStreamManager
+        self.queue_manager = None  # type: QueueManager
 
     async def on_ready(self):
         await super().on_ready()
         self.cog_state.set_cog(self)
         _ = self.cog_state.channels  # convert and validate
         self.reddit = reddit.RedditLoginManager().get_reddit(self.cog_config.reddit_username)
+        self.stream_manager = RedditStreamManager(self.reddit, self._get_all_subreddits())
+        self.queue_manager = QueueManager(self.cog_state)
 
         logger.info("Using reddit account: {}".format((await self.reddit.user.me()).name))
 
@@ -193,58 +309,22 @@ class Subwatch(KazCog):
             subreddits.update(data.subreddits)
         return subreddits
 
-    def _add_to_queues(self, submission: reddit.models.Submission):
+    async def _post_all_channels(self):
+        for channel in self.cog_state.channels.keys():
+            await self._post_from_queue(channel)
+
+    def schedule_post_from_queue(self, channel: discord.Channel):
         """
-        Add a submission to queue in the cog state structure.
 
-        WARNING: This method does NOT write the state file. Do that when you're done (or use
-        `with` constructs).
+        :param channel:
+        :return: True if scheduled later, False if not (channel can post now)
         """
-        for ch, ch_info in self.cog_state.channels.items():
-            if submission.subreddit.display_name.lower() in ch_info.subreddits:
-                ch_info.queue.append(submission.id)
-            self.submission_cache[submission.id] = submission
-
-    async def _pop_queued_submission(self, channel: discord.Channel):
-        """
-        Pop a submission from the queue, and refresh it from Reddit if stale.
-
-        Note: This method directly modifies the cog_state structures and might not mark it as
-        dirty, nor will it write the file.
-        :return:
-        :raise DeletedError: post was removed or deleted
-        """
-        submission_id = self.cog_state.channels[channel].queue.pop(0)
-        try:
-            submission = self.submission_cache[submission_id]
-            # if the submission object isn't new enough, reload it
-            if utctimestamp(datetime.utcnow()) > submission.created_utc + 60:
-                await submission.load()
-        except KeyError:  # cache miss
-            submission = await self.reddit.submission(submission_id)
-
-        if submission.author is None or (hasattr(submission, 'selftext') and
-                                         submission.selftext in ('[deleted]', '[removed]')):
-            raise reddit.DeletedError(submission)
-
-        return submission
-
-    async def _post_from_queue(self, channel: discord.Channel=None):
-        """
-        Post any queued messages in the channel. This respects the minimum interval between discord
-        posts and maximum number of posts per interval configuration settings, and will schedule
-        the task_post_to_discord for later if there are too many queued posts.
-
-        :param channel: Optional, channel to post in. If not specified, check all channels.
-        """
-        if channel is None:
-            for cur_channel in self.cog_state.channels.keys():
-                await self._post_from_queue(cur_channel)
-            return
+        # check if already scheduled
+        for task_instance in self.scheduler.get_instances(self.task_process_queue):
+            if task_instance.args[0] == channel:
+                return True
 
         ch_info = self.cog_state.channels[channel]
-
-        # has a queue, but not time to post yet: let's schedule the next time
         next_post_time = ch_info.last_posted + self.cog_config.min_post_interval
         if ch_info.queue and datetime.utcnow() < next_post_time:
             logger.warning("Too early to post in #{}: scheduling for later.".format(channel.name))
@@ -253,14 +333,28 @@ class Subwatch(KazCog):
                 dt=next_post_time,
                 args=(channel,)
             )
+            return True
+        return False
+
+    async def _post_from_queue(self, channel: discord.Channel):
+        """
+        Post any queued messages in the channel. This respects the minimum interval between discord
+        posts and maximum number of posts per interval configuration settings, and will schedule
+        the :meth:`~.task_process_queue` for later if there are too many queued posts.
+
+        :param channel: Channel to post in.
+        """
+        if self.schedule_post_from_queue(channel):
             return
 
         logger.debug("Posting from queue for #{}".format(channel.name))
+        ch_info = self.cog_state.channels[channel]
         count = 0
         try:
             while count < self.cog_config.max_posts_per_interval:
                 try:
-                    submission = await self._pop_queued_submission(channel)
+                    submission_id = self.queue_manager.pop(channel)
+                    submission = await self.stream_manager.get_submission(submission_id)
                 except reddit.DeletedError as e:
                     logger.warning("Skipping deleted or removed post: {}"
                         .format(self.log_submission(e.args[0])))
@@ -273,8 +367,9 @@ class Subwatch(KazCog):
                         .format(self.log_submission(submission)))
                     await self.send_message(channel, "Subwatch: Error posting post: {}"
                         .format(submission.id))
-                    await self.send_message(channel, "Subwatch: Error posting post in #{}: {}"
+                    await self.send_output("[ERROR] Subwatch: Error posting post in #{}: {}"
                         .format(channel.name, submission.id))
+                    continue
                 count += 1
         except IndexError:  # we don't have enough in queue to post; that's fine
             pass
@@ -297,7 +392,7 @@ class Subwatch(KazCog):
         if submission.is_self:
             desc_parts.append(f'(self.{submission.subreddit.display_name})')
         else:
-            desc_parts.append(f'({submission.domain}')
+            desc_parts.append(f'({submission.domain})')
         desc_parts.append('on')
         desc_parts.append(subreddit)
 
@@ -328,26 +423,21 @@ class Subwatch(KazCog):
 
         logger.debug("Checking for new posts in subreddits: {}".format(', '.join(sub_set)))
 
-        subs = await self.reddit.subreddit(display_name='+'.join(sub_set))
-
-        if not self.submission_stream:
-            self.submission_stream = subs.stream.submissions(pause_after=0)
-
         with self.cog_state as state:
             count = 0
-            async for submission in self.submission_stream:  # type: reddit.models.Submission
-                if submission is None:
-                    break  # no more items
+            last_checked = utctimestamp(state.last_checked)
+            last_timestamp = last_checked  # last processed submission timestamp
+            async for submission in self.stream_manager.stream():
                 # if an old submission / already checked, skip it
-                if submission.created_utc <= utctimestamp(state.last_checked):
+                if self.stream_manager.is_fresh and submission.created_utc <= last_checked:
                     continue
-                self._add_to_queues(submission)
-                logger.debug("Found post: {0.subreddit.display_name} {0.id} {1}"
-                    .format(submission, submission.title[:50]))
+                self.queue_manager.add(submission)
+                last_timestamp = submission.created_utc
+                logger.debug("Found post: {}".format(self.log_submission(submission)))
                 count += 1
-            logger.info(f"Found {count} new posts in all subreddits watched.")
-            state.last_checked = datetime.utcnow()
-            await self._post_from_queue(None)  # update all channels
+            logger.info("Found {} new posts in subreddits: {}".format(count, ', '.join(sub_set)))
+            state.last_checked = datetime.utcfromtimestamp(last_timestamp)
+            await self._post_all_channels()
 
     @task(is_unique=False)
     async def task_process_queue(self, channel: discord.Channel):
@@ -412,7 +502,7 @@ class Subwatch(KazCog):
             subreddits=subreddits_list,
             last_posted=datetime.utcfromtimestamp(0)
         )
-        self.submission_stream = None  # change in subreddits
+        self.stream_manager.subreddits = self._get_all_subreddits()
         logger.info("Set channel #{} to subwatch: {}"
                 .format(channel.name, ', '.join('/r/' + s for s in subreddits_list)))
         await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
@@ -431,13 +521,10 @@ class Subwatch(KazCog):
             for task_instance in self.scheduler.get_instances(self.task_process_queue):
                 if task_instance.args[0] == channel:
                     task_instance.cancel()
-            self.submission_stream = None  # change in subreddits - renew the stream
+            self.stream_manager.subreddits = self._get_all_subreddits()
             logger.info(f'Removed subwatches in #{channel.name}.')
             await self.send_message(ctx.message.channel,
                 ctx.message.author.mention + ' ' + f'Removed subwatches in {channel.mention}.')
-
-
-
 
 
 def setup(bot):
