@@ -85,7 +85,7 @@ entries:
     folderitems:
 
     - title: Core
-      url: /2x/cogs/core.html
+      url: /2x/cogs/corecog.html
       output: web, pdf
 
     - title: Dice
