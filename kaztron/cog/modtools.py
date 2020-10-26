@@ -57,11 +57,13 @@ class ModTools(KazCog):
     def __init__(self, bot):
         super().__init__(bot, 'modtools', ModToolsConfig)
         self.cog_config.set_defaults(distinguish_map={}, wb_images=tuple())
+        self.cog_config.set_converters('channel_mod', self.get_channel, None)
         self.cog_modnotes: ModNotes = None
 
     async def on_ready(self):
         await super().on_ready()
         self.cog_modnotes = self.get_cog_dependency(ModNotes.__name__)
+        _ = self.cog_config.channel_mod  # validate this channel exists
 
     @commands.command(pass_context=True)
     @mod_only()
