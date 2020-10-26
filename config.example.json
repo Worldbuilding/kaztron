@@ -35,8 +35,11 @@
     "gzip_backups": true,
     "tags": {
       "sqlalchemy.engine": "WARNING",
+      "asyncprawcore": "INFO",
       "websockets.protocol": "INFO",
-      "discord": "INFO"
+      "discord": "INFO",
+      "kaztron.config": "INFO",
+      "kaztron.help_formatter": "INFO"
     }
   },
   "help": {
@@ -44,6 +47,11 @@
     "jekyll_manual_id_field": "kaz-manual-id",
     "jekyll_version_field": "kaz-version",
     "jekyll_category_field": "kaz-cog-category"
+  },
+  "reddit": {
+    "client_id": "from reddit",
+    "client_secret": "from reddit",
+    "user_agent": "custom user-agent string; follow reddit API guidelines for this"
   },
   "rolemanager": {
     "user_roles": {
@@ -189,6 +197,12 @@
   },
   "sticky": {
     "delay": 300
+  },
+  "subwatch": {
+    "reddit_username": "reddit user to connect from (can be omitted to use the first logged-in user)",
+    "check_interval": 60,
+    "min_post_interval": 300,
+    "max_posts_per_interval": 2
   },
   "userstats": {
     "ignore_users": ["user ID 1", "user ID 2", "etc"],
