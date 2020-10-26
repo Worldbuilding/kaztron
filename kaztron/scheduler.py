@@ -138,7 +138,6 @@ class TaskInstance:
         except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
-            logger.exception("Error in Task {!s}.".format(task_id))
             try:
                 await self.on_error(e)
             except Exception:

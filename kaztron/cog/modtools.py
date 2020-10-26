@@ -1,4 +1,3 @@
-from datetime import datetime
 import logging
 import random
 from typing import List, Dict, Optional
@@ -7,20 +6,16 @@ import discord
 from discord import Member
 from discord.ext import commands
 
-from kaztron import KazCog, task
-from kaztron.cog.modnotes.model import RecordType
+from kaztron import KazCog
 from kaztron.cog.modnotes.modnotes import ModNotes
 from kaztron.cog.modnotes import controller, model
 from kaztron.config import SectionView
-from kaztron.errors import BotCogError
-from kaztron.kazcog import ready_only
 from kaztron.theme import solarized
 from kaztron.utils.checks import mod_only, mod_channels, pm_only
 from kaztron.utils.converter import MemberConverter2
 from kaztron.utils.discord import get_named_role, Limits
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.utils.logging import message_log_str
-from kaztron.utils.strings import parse_keyword_args
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +33,7 @@ class ModToolsConfig(SectionView):
         element list ["url", "artist name/attribution"].
     """
     distinguish_map: Dict[str, str]
-    tempban_role: str
     notif_role: str
-    channel_mod: str
     wb_images: List[List[str]]
 
 
@@ -49,18 +42,13 @@ class ModTools(KazCog):
     category: Moderator
     brief: Miscellaneous tools for moderators.
     description: |
-        Various tools for moderators to help them in their day-to-day! Some commands are
-        dependent on the {{%ModNotes}} module.
-
-        This module will automatically enforce modnotes of type "temp", at startup and every hour
-        hence. Use {{!tempban}} in order to immediately apply and enforce a new tempban. (Using
-        {{!notes add}} to add a "temp" record will not enforce it until the next hourly check.)
+        Various tools for moderators to help them in their day-to-day! Some commands depend on the
+        {{%ModNotes}} module.
     contents:
         - report
         - up
         - down
         - say
-        - tempban
         - whois
         - wb
     """
@@ -69,42 +57,11 @@ class ModTools(KazCog):
     def __init__(self, bot):
         super().__init__(bot, 'modtools', ModToolsConfig)
         self.cog_config.set_defaults(distinguish_map={}, wb_images=tuple())
-        self.ch_mod = discord.Object(self.cog_config.channel_mod)
         self.cog_modnotes: ModNotes = None
-        self.notes = None
-        self.tempban_role: discord.Role = None
 
     async def on_ready(self):
         await super().on_ready()
-        try:
-            await self.check_for_modnotes()
-        except RuntimeError:
-            await self.send_output(
-                "**ERROR**: Can't find ModNotes cog. The `.tempban` command and automatic tempban "
-                "management will not work. `.whois` reverted to basic functionality."
-            )
-        self.tempban_role = get_named_role(self.server, self.cog_config.tempban_role)
-        self.ch_mod = self.validate_channel(self.ch_mod.id)
-
-        # schedule tempban update tick (unless already done i.e. reconnects)
-        if self.cog_modnotes and not self.scheduler.get_instances(self.task_update_tempbans):
-            self.scheduler.schedule_task_in(self.task_update_tempbans, 0, every=3600)
-
-    async def check_for_modnotes(self):
-        logger.debug("Getting modnotes cog")
-        self.cog_modnotes = self.bot.get_cog("ModNotes")
-        if self.cog_modnotes is None:
-            logger.error("Can't find ModNotes cog.")
-            raise RuntimeError("Can't find ModNotes cog")
-        else:
-            self.notes = controller
-
-    def unload_kazcog(self):
-        self.scheduler.cancel_all(self.task_update_tempbans)
-
-    @ready_only
-    async def on_member_join(self, member: discord.Member):
-        await self._update_tempbans()
+        self.cog_modnotes = self.get_cog_dependency(ModNotes.__name__)
 
     @commands.command(pass_context=True)
     @mod_only()
@@ -161,8 +118,12 @@ class ModTools(KazCog):
     async def say(self, ctx: commands.Context, channel: discord.Channel, *, message: str):
         """!kazhelp
 
-        description: Make the bot say something in a channel. If the {{%reminders}} cog is enabled,
+        description: |
+            Make the bot say something in a channel. If the {{%reminders}} cog is enabled,
             you can also schedule a message at a later time with {{!saylater}}.
+
+            If the bot has pin permissions, prepending `pin:` to the beginning of the message will
+            allow it to auto-pin the message.
         parameters:
             - name: channel
               type: string
@@ -173,124 +134,24 @@ class ModTools(KazCog):
                 formatting, @mentions, commands that OTHER bots might react to, and @everyone/@here
                 (if the bot is allowed to use them)."
         examples:
-            - command: .say #meta HELLO, HUMANS. I HAVE GAINED SENTIENCE.
-              description: Says the message in the #meta channel.
+            - command: ".say #meta HELLO, HUMANS. I HAVE GAINED SENTIENCE."
+              description: "Says the message in the #meta channel."
+            - command: ".say #meta pin: REMEMBER TO KEEP HYDRATED."
+              description: "Says the message in the #meta channel and pin it."
         """
-        await self.send_message(channel, message)
+        pin = False
+        if message[:4].lower() == 'pin:':
+            pin = True
+            message = message[4:]
+
+        posted_messages = await self.send_message(channel, message)
         await self.send_output(f"Said in {channel} ({ctx.message.author.mention}): {message}")
 
-    def _get_tempbanned_members_db(self, server: discord.Server) -> List[model.Record]:
-        if self.notes:
-            records = self.notes.query_unexpired_records(types=RecordType.temp)
-            members_raw = (server.get_member(record.user.discord_id) for record in records)
-            return [m for m in members_raw if m is not None]
-        else:
-            raise BotCogError("ModNotes cog not loaded. This command requires ModNotes to run.")
-
-    def _get_tempbanned_members_server(self, server: discord.Server) -> List[discord.Member]:
-        return [m for m in server.members if self.tempban_role in m.roles]
-
-    @task(is_unique=True)
-    async def task_update_tempbans(self):
-        await self._update_tempbans()
-
-    async def _update_tempbans(self):
-        """
-        Check and update all current tempbans in modnotes. Unexpired tempbans will be applied and
-        expired tempbans will be removed, when needed.
-        """
-        logger.info("Checking all tempbans.")
-        try:
-            server = self.bot.get_channel(self.ch_mod.id).server  # type: discord.Server
-        except AttributeError:  # get_channel failed
-            logger.error("Can't find mod channel")
-            await self.send_output("**ERROR**: update_tempbans: can't find mod channel")
-            return
-
-        bans_db = self._get_tempbanned_members_db(server)
-        bans_server = self._get_tempbanned_members_server(server)
-
-        # check if any members who need to be banned
-        for member in bans_db:
-            if member not in bans_server:
-                logger.info("Applying tempban role '{role}' to {user!s}...".format(
-                    role=self.tempban_role.name,
-                    user=member
-                ))
-                await self.bot.add_roles(member, self.tempban_role)
-                await self.bot.send_message(self.ch_mod, "Tempbanned {.mention}".format(member))
-
-        # check if any members who need to be unbanned
-        for member in bans_server:
-            if member not in bans_db:
-                logger.info("Removing tempban role '{role}' to {user!s}...".format(
-                    role=self.tempban_role.name,
-                    user=member
-                ))
-                await self.bot.remove_roles(member, self.tempban_role)
-                await self.bot.send_message(self.ch_mod, "Unbanned {.mention}".format(member))
-
-    @commands.command(pass_context=True)
-    @mod_only()
-    @mod_channels()
-    async def tempban(self, ctx: commands.Context, user: str, *, reason: str=""):
-        """!kazhelp
-
-        description: |
-            Tempban a user.
-
-            This command will immediately tempban (mute) the user, and create a modnote. It will not
-            communicate with the user.
-
-            The user will be unbanned (unmuted) when the tempban expires.
-
-            Note that the ModTools module automatically enforces all tempban modules. See the
-            {{%ModTools}} introduction or `.help ModTools` for more info.
-
-            This command is shorthand for `.notes add <user> temp expires="[expires]" [reason]`.
-        parameters:
-            - name: user
-              type: string
-              description: The user to ban. See {{!notes}} for more information.
-            - name: reason
-              type: string
-              optional: true
-              description: "Complex parameter of the format `[expires=[expires]] [reason]`. `reason`
-                is the reason for the tempban, to be recorded as a modnote (optional but highly
-                recommended)."
-            - name: expires
-              type: datespec
-              optional: true
-              description: "The datespec for the tempban's expiration. Use quotation marks if the
-                datespec has spaces in it. See {{!notes add}} for more information on accepted
-                syntaxes."
-              default: '"in 7 days"'
-        examples:
-            - command: .tempban @BlitheringIdiot#1234 Was being a blithering idiot.
-              description: Issues a 7-day ban.
-            - command: .tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight
-                blithering idiot only.
-              description: Issues a 3-day ban.
-        """
-        if not self.cog_modnotes:
-            raise BotCogError("ModNotes cog not loaded. This command requires ModNotes to run.")
-
-        # Parse and validate kwargs (we won't use this, just want to validate valid keywords)
-        try:
-            kwargs, rem = parse_keyword_args(self.cog_modnotes.KW_EXPIRE, reason)
-        except ValueError as e:
-            raise commands.BadArgument(e.args[0]) from e
-        else:
-            if not kwargs:
-                reason = 'expires="{}" {}'.format("in 7 days", reason)
-            if not rem:
-                reason += " No reason specified."
-
-        # Write the note
-        await ctx.invoke(self.cog_modnotes.add, user, 'temp', note_contents=reason)
-
-        # Apply new mutes
-        await self._update_tempbans()
+        if pin:
+            try:
+                await self.bot.pin_message(posted_messages[0])
+            except discord.Forbidden:
+                logger.warning("Can't pin: missing permissions.")
 
     @commands.command(pass_context=True, ignore_extra=False)
     @mod_only()
@@ -325,7 +186,7 @@ class ModTools(KazCog):
         search_users = self._whois_search(ctx, user)  # partial match
         st = user[:Limits.NAME]
         if self.cog_modnotes:  # search modnotes
-            notes_users = self.notes.search_users(st)
+            notes_users = controller.search_users(st)
             notes_map = {}
             notes_orphans = []
             for u in notes_users:
@@ -412,7 +273,7 @@ class ModTools(KazCog):
 
     async def _whois_find_notes_id(self, member: discord.Member):
         if self.cog_modnotes:
-            db_user = await self.notes.query_user(self.bot, member.id)
+            db_user = await controller.query_user(self.bot, member.id)
             return db_user.user_id
         else:
             return None
@@ -499,7 +360,7 @@ class ModTools(KazCog):
             author = image_data[1]
             logger.debug("wb: displaying image {:d}".format(index))
             await self.bot.say(image_url)
-            await self.bot.say("_Artist: {}_ (Image #{})".format(author.replace('_', '\_'), index))
+            await self.bot.say("_Artist: {}_ (Image #{})".format(author.replace('_', r'\_'), index))
             await self.bot.delete_message(ctx.message)
 
     @commands.command(pass_context=True, ignore_extra=False)
@@ -542,7 +403,7 @@ class ModTools(KazCog):
             logger.warning("Notification role not found: {}".format(self.cog_config.notif_role))
             await self.send_output('[WARNING] Notif role not found: {}'
                 .format(self.cog_config.notif_role))
-        await self.send_message(self.ch_mod, notif_role_mention, embed=es)
+        await self.send_message(self.cog_config.channel_mod, notif_role_mention, embed=es)
         await self.send_message(
             ctx.message.channel,
             "Thank you. I've forwarded your report to the mods, who will handle it shortly. You "

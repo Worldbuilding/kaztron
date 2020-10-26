@@ -1,14 +1,14 @@
 import functools
 import logging
 from asyncio import iscoroutinefunction
-from typing import Type, Dict, Union
+from typing import Type, Dict, Union, Sequence
 
 import discord
 from discord.ext import commands
 
 from kaztron.utils.embeds import EmbedSplitter
 from kaztron.config import KaztronConfig, SectionView
-from kaztron.errors import BotNotReady
+from kaztron.errors import BotNotReady, CogNotLoadedError
 from kaztron.utils.discord import Limits
 from kaztron.utils.strings import natural_split, split_chunks_on
 
@@ -79,6 +79,10 @@ class KazCog:
             @functools.wraps(f)
             async def wrapper(cog):
                 try:
+                    if cog.cog_state:
+                        cog.cog_config.clear_cache()
+                    if cog.cog_state:
+                        cog.cog_state.clear_cache()
                     await f()
                 except Exception:
                     cog.core.set_cog_error(cog)
@@ -124,9 +128,9 @@ class KazCog:
         """
         Can be overridden. `super().on_ready()` should be called at the beginning of the method.
         """
-        self._ch_out = self.validate_channel(self._ch_out_id)
-        self._ch_test = self.validate_channel(self._ch_test_id)
-        self._ch_pub = self.validate_channel(self._ch_pub_id)
+        self._ch_out = self.get_channel(self._ch_out_id)
+        self._ch_test = self.get_channel(self._ch_test_id)
+        self._ch_pub = self.get_channel(self._ch_pub_id)
 
     # noinspection PyBroadException
     def unload(self):
@@ -189,9 +193,9 @@ class KazCog:
         self.state = KaztronConfig('state-' + name + '.json', defaults)
         self.cog_state = None
 
-    def validate_channel(self, id_: str) -> discord.Channel:
+    def get_channel(self, id_: str) -> discord.Channel:
         """
-        Validate and return the :class:`discord.Channel`, or raise an exception if not found.
+        Find the :class:`discord.Channel`, or raise an exception if not found.
         Normally called in :meth:`~.on_ready`.
         :raise ValueError: channel not found
         """
@@ -200,9 +204,26 @@ class KazCog:
             raise ValueError("Channel {} not found".format(id_))
         return channel
 
+    def get_cog_dependency(self, cog_name: str) -> 'KazCog':
+        """
+        Validate that a cog, which is a dependency for the current cog, is loaded. This method
+        should generally be called in :meth:`~.on_ready` (in which case, if the dependency is not
+        optional, the exception need not be caught: the current cog will simply fail to load).
+
+        :param cog_name: Name of the cog. If the caller has access to the cog class object, then
+            it should use `cls.__name__` to pass this parameter.
+        :raise kaztron.errors.BotCogError: Cog not loaded
+        """
+        cog = self.bot.get_cog(cog_name)
+        if cog is None:
+            raise CogNotLoadedError("Cog {} not loaded (required by {})."
+                .format(cog_name, self.__class__.__name__))
+        logger.debug("Found cog dependency: {}".format(cog_name))
+        return cog
+
     async def send_message(self, destination, contents=None, *, tts=False,
                            embed: Union[discord.Embed, EmbedSplitter]=None,
-                           auto_split=True, split='word'):
+                           auto_split=True, split='word') -> Sequence[discord.Message]:
         """
         Send a message. This method wraps the :meth:`discord.Client.send_message` method and adds
         automatic message splitting if a message is too long for one line.
@@ -250,36 +271,40 @@ class KazCog:
         # so the last text chunk will have the first embed chunk attached
         # this is because non-split messages usually have the embed appear after the msg -
         # should be fairly rare for both msg and embed to be split
+        msg_list = []
         for content_chunk in content_chunks[:-1]:
-            await self.bot.send_message(destination, content_chunk, tts=tts)
+            msg_list.append(await self.bot.send_message(destination, content_chunk, tts=tts))
 
-        await self.bot.send_message(destination, content_chunks[-1], tts=tts, embed=embed_list[0])
+        msg_list.append(await self.bot.send_message(
+            destination, content_chunks[-1], tts=tts, embed=embed_list[0]
+        ))
 
         for embed_chunk in embed_list[1:]:
-            await self.bot.send_message(destination, tts=tts, embed=embed_chunk)
+            msg_list.append(await self.bot.send_message(destination, tts=tts, embed=embed_chunk))
+        return tuple(msg_list)
 
     async def send_output(self, contents, *,
                           tts=False, embed: Union[discord.Embed, EmbedSplitter]=None,
-                          auto_split=True, split='word'):
+                          auto_split=True, split='word') -> Sequence[discord.Message]:
         """
         Send a message to the bot output channel.
 
         Convenience function equivalent to ``self.send_message(self.channel_out, ...)``. See also
         :meth:`.send_message`.
         """
-        await self.send_message(self.channel_out, contents, tts=tts, embed=embed,
+        return await self.send_message(self.channel_out, contents, tts=tts, embed=embed,
             auto_split=auto_split, split=split)
 
     async def send_public(self, contents, *,
                           tts=False, embed: Union[discord.Embed, EmbedSplitter]=None,
-                          auto_split=True, split='word'):
+                          auto_split=True, split='word') -> Sequence[discord.Message]:
         """
         Send a message to the bot public output channel.
 
         Convenience function equivalent to ``self.send_message(self.channel_public, ...)``. See also
         :meth:`.send_message`.
         """
-        await self.send_message(self.channel_public, contents, tts=tts, embed=embed,
+        return await self.send_message(self.channel_public, contents, tts=tts, embed=embed,
             auto_split=auto_split, split=split)
 
     @property

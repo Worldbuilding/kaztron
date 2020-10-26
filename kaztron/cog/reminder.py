@@ -64,6 +64,7 @@ class ReminderData:
                  timestamp: datetime,
                  remind_time: datetime,
                  renew_data: RenewData,
+                 pin: bool,
                  msg: str
                  ):
         self.user_id = user_id
@@ -71,6 +72,7 @@ class ReminderData:
         self.timestamp = timestamp
         self.remind_time = remind_time
         self.renew_data = renew_data
+        self.pin = pin
         self.message = msg[:self.MSG_LIMIT]
         self.retries = 0
 
@@ -81,6 +83,7 @@ class ReminderData:
             'timestamp': utctimestamp(self.timestamp),
             'remind_time': utctimestamp(self.remind_time),
             'renew': self.renew_data.to_dict() if self.renew_data else None,
+            'pin': self.pin,
             'message': self.message
         }
         return data
@@ -93,16 +96,18 @@ class ReminderData:
             timestamp=datetime.utcfromtimestamp(data['timestamp']),
             remind_time=datetime.utcfromtimestamp(data['remind_time']),
             renew_data=RenewData.from_dict(data['renew']) if data.get('renew', None) else None,
+            pin=data.get('pin', False),
             msg=data['message']
         )
 
     def __repr__(self):
         return "<ReminderData(user_id={}, channel_id={}, " \
-               "timestamp={}, remind_time={}, renew={!r}, message={!r})>" \
+               "timestamp={}, remind_time={}, renew={!r}, {}message={!r})>" \
             .format(self.user_id, self.channel_id,
                     self.timestamp.isoformat(' '),
                     self.remind_time.isoformat(' '),
                     self.renew_data,
+                    'pin, ' if self.pin else '',
                     self.message)
 
     def str_dict(self) -> Dict[str, str]:
@@ -111,6 +116,7 @@ class ReminderData:
             'channel': channel_mention(self.channel_id) if self.channel_id else 'PM',
             'timestamp': format_datetime(self.timestamp),
             'remind_time': format_datetime(self.remind_time),
+            'pin': 'pinned' if self.pin else '',
             'message': self.message
         }
 
@@ -134,13 +140,14 @@ class ReminderParser:
                          r'(\s+'
                             r'every\s+(?P<renew_interval>.*?)'
                             r'(\s+limit\s+(?P<limit>\d+)|\s+until\s+(?P<limit_time>.*?))?'
-                         r')?\s*:\s+(?P<msg>.*)$', flags=re.DOTALL)
+                         r')?(\s+(?P<pin>pin))?\s*:\s+(?P<msg>.*)$', flags=re.DOTALL)
 
     @classmethod
-    def parse(cls, args: str, now: datetime) -> Tuple[datetime, Tuple[timedelta, int, datetime], str]:
+    def parse(cls, args: str, now: datetime) \
+            -> Tuple[datetime, Tuple[timedelta, int, datetime], str, bool]:
         """
         Parse reminder args.
-        :return: (timespec, (renew_interval, renew_limit, renew_limit_time), msg)
+        :return: (timespec, (renew_interval, renew_limit, renew_limit_time), msg, is_pin)
         """
         args = cls.RE_ARGS.match(args)  # type: re.Match
         if args is None:
@@ -155,7 +162,7 @@ class ReminderParser:
                                      now)
         else:
             renew = None
-        return timespec, renew, args.group('msg')
+        return timespec, renew, args.group('msg'), args.group('pin') is not None
 
     @classmethod
     def _parse_timespec(cls, timespec_s: str, now: datetime):
@@ -327,7 +334,7 @@ class Reminders(KazCog):
         renew_data = None
 
         # parse arguments
-        timespec, renew, msg = ReminderParser.parse(args, timestamp)
+        timespec, renew, msg, pin = ReminderParser.parse(args, timestamp)
         if renew:
             renew_data = RenewData(interval=renew[0], limit=renew[1], limit_time=renew[2])
             # enforce limits
@@ -340,7 +347,7 @@ class Reminders(KazCog):
 
         reminder = ReminderData(
             user_id=ctx.message.author.id, channel_id=channel.id if channel else None,
-            renew_data=renew_data, timestamp=timestamp, remind_time=timespec, msg=msg
+            renew_data=renew_data, timestamp=timestamp, remind_time=timespec, pin=pin, msg=msg
         )
         return reminder
 
@@ -461,6 +468,8 @@ class Reminders(KazCog):
             raise commands.UserInputError('max_per_user')
 
         reminder = self.make_reminder(ctx, args)
+        if reminder.pin:
+            raise commands.BadArgument("message", "Personal reminders cannot be pinned.")
         self.add_reminder(reminder)
 
         # set message
@@ -492,7 +501,7 @@ class Reminders(KazCog):
 
         description: |
             Schedule a message for the bot to send in-channel later. Can also set up recurring
-            messages (static messages only).
+            messages (static messages only). Messages can also be pinned.
 
             Recurring messages can repeat up to {{renew_limit}} times, and cannot repeat more often
             than every {{renew_interval_min}}s.
@@ -503,7 +512,8 @@ class Reminders(KazCog):
             - name: channel
               description: The channel to post the message in.
             - name: args
-              description: Same as {{!reminder}}.
+              description: "Same as {{!reminder}}. You can also include the word `pin` before the
+                    colon."
         examples:
             - command: ".saylater #community-programs at 12:00:
                 Welcome to our AMA with philosopher Aristotle!"
@@ -513,6 +523,9 @@ class Reminders(KazCog):
                 for crown-stealing gremlins. Any sightings or incidents must be reported to your
                 nearest moderator immediately."
               description: Recurring message every hour starting at noon UTC.
+            - command: ".saylater #general at 15:00 pin: Karaoke hour for the next hour! Check out
+                #karaoke for more info."
+              description: Single message at 15:00 UTC, auto-pinned.
         """
 
         reminder = self.make_reminder(ctx, args, channel)
@@ -520,17 +533,19 @@ class Reminders(KazCog):
 
         # set message
         if not reminder.renew_data:
-            reply = "Got it! I'll post that in {channel} at {remind_time} UTC (in {delta}).".format(
-                delta=format_timedelta(reminder.remind_time - reminder.timestamp),
-                **reminder.str_dict()
-            )
+            reply = "Got it! " \
+                "I'll post that in {channel} {pin} at {remind_time} UTC (in {delta}).".format(
+                    delta=format_timedelta(reminder.remind_time - reminder.timestamp),
+                    **reminder.str_dict()
+                )
         else:
             if not reminder.renew_data.limit_time:
-                replyf = "Got it! I'll post that in {channel} at {remind_time} UTC (in {delta}), " \
-                         "then every {interval} up to {limit} times."
+                replyf = "Got it! I'll post that in {channel} {pin} at {remind_time} UTC " \
+                         "(in {delta}), then every {interval} up to {limit} times."
             else:
-                replyf = "Got it! I'll post that in {channel} at {remind_time} UTC (in {delta}), " \
-                         "then every {interval} until {limit_time} or up to {limit} times."
+                replyf = "Got it! I'll post that in {channel} {pin} at {remind_time} UTC " \
+                         "(in {delta}), then every {interval} until {limit_time} " \
+                         "or up to {limit} times."
             reply = replyf.format(
                 delta=format_timedelta(reminder.remind_time - reminder.timestamp),
                 **reminder.str_dict(),
@@ -595,7 +610,15 @@ class Reminders(KazCog):
                 format_datetime(reminder.timestamp),
                 reminder.message)
 
-        await self.send_message(dest, message)
+        posted_messages = await self.send_message(dest, message)
+
+        if reminder.pin:
+            try:
+                await self.bot.pin_message(posted_messages[0])
+            except discord.HTTPException as e:
+                logger.exception("Error pinning message; skipping: {!r}".format(reminder))
+                await self.send_output("Error trying to pin reminder/saylater message: {!r}."
+                    .format(reminder))
 
         # stop scheduled retries and remove the reminder
         try:

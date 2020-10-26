@@ -1,7 +1,8 @@
+import heapq
 from datetime import datetime
 import logging
 from collections import OrderedDict
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import discord
 from discord.ext import commands
@@ -22,7 +23,8 @@ from kaztron.utils.strings import parse_keyword_args
 
 from kaztron.utils.datetime import format_timestamp
 
-from kaztron.cog.modnotes.model import User, Record, RecordType
+from kaztron.cog.modnotes.model import User, Record, RecordType, JoinRecord, JoinDirection, \
+    DummyRecord
 from kaztron.cog.modnotes import controller as c
 
 logger = logging.getLogger(__name__)
@@ -31,8 +33,10 @@ logger = logging.getLogger(__name__)
 class ModNotesConfig(SectionView):
     """
     :ivar channel_log: str. The channel ID number to which all new modnotes are logged.
+    :ivar channel_mod: str. The channel ID number for informational notifications to mods.
     """
     channel_log: discord.Channel
+    channel_mod: discord.Channel
 
 
 class ModNotes(KazCog):
@@ -46,12 +50,12 @@ class ModNotes(KazCog):
         community users.
     contents:
         - notes:
-            - finduser
             - add
             - expires
             - rem
             - watches
             - temps
+            - permas
             - name
             - alias
             - group:
@@ -60,6 +64,7 @@ class ModNotes(KazCog):
             - removed
             - restore
             - purge
+            - finduser
     """
     NOTES_PAGE_SIZE = 10
     USEARCH_PAGE_SIZE = 20
@@ -83,16 +88,22 @@ class ModNotes(KazCog):
     KW_EXPIRE = ('expires', 'expire', 'ends', 'end')
 
     def __init__(self, bot):
-        super().__init__(bot, 'modnotes')
-        self.channel_log = discord.Object(self.cog_config.channel_log)
+        super().__init__(bot, 'modnotes', ModNotesConfig)
+        self.cog_config.set_converters('channel_log', self.get_channel, None)
+        self.cog_config.set_converters('channel_mod', self.get_channel, None)
 
     async def on_ready(self):
         await super().on_ready()
-        self.channel_log = self.validate_channel(self.cog_config.channel_log)
+        _ = self.cog_config.channel_log  # validate set and exists
+        _ = self.cog_config.channel_mod  # validate set and exists
 
     @staticmethod
     def format_display_user(db_user: User):
-        return "{} (`*{}`)".format(user_mention(db_user.discord_id), db_user.user_id)
+        return "{} (`*{:04d}`)".format(user_mention(db_user.discord_id), db_user.user_id)
+
+    @staticmethod
+    def format_record_id(id_: int):
+        return "#{:05d}".format(id_)
 
     def _get_user_fields(self, user: User, group: Sequence[User]) -> OrderedDict:
         user_fields = OrderedDict()
@@ -107,7 +118,7 @@ class ModNotes(KazCog):
     def _get_record_fields(self, record: Record, show_user=False, show_grouped_user=False)\
             -> (OrderedDict, OrderedDict):
         record_fields = OrderedDict()
-        rec_title = "Record #{:04d}".format(record.record_id)
+        rec_title = "Record {}".format(self.format_record_id(record.record_id))
         record_fields[rec_title] = format_timestamp(record.timestamp)
         if record.expires:
             expire_str = format_timestamp(record.expires)
@@ -172,16 +183,51 @@ class ModNotes(KazCog):
         es.add_field_no_break(name=sep_name, value=sep_value, inline=False)
 
         # records page
-        for record in records:
+        for record in records:  # type: Union[Record, JoinRecord]
+            # special case: join records without a normal record
+            if isinstance(record, DummyRecord):
+                es.add_field(name="First seen", value=record.display_append + self.EMBED_SEPARATOR,
+                    inline=False)
+                continue
+
+            # normal record
             record_fields, contents = self._get_record_fields(record, show_user=True)
 
             for field_name, field_value in record_fields.items():
                 es.add_field_no_break(name=field_name, value=field_value, inline=True)
 
             for field_name, field_value in contents.items():
+                # for JoinRecords
+                display_append = getattr(record, 'display_append', '')
+                if display_append:
+                    field_value += '\n' + display_append + self.EMBED_SEPARATOR
                 es.add_field(name=field_name, value=field_value, inline=False)
 
         await self.send_message(dest, embed=es)
+
+    def merge_records_joins(self, r: Sequence[Record], j: Sequence[JoinRecord]):
+        """ Merge display strings for joins into a record list ready for display. """
+
+        # we want to append records coming *after* the record into the record preceding it
+        # so let's iterate backwards
+        rr = reversed(tuple(heapq.merge(r, j, key=lambda x: x.timestamp)))
+        rmerged = []
+        join_strings = []
+        for record in rr:
+            if isinstance(record, JoinRecord):
+                dir_mark = r'\>\>\> JOIN' if record.direction == JoinDirection.join else r'<<< PART'
+                ts = format_timestamp(record.timestamp)
+                u = self.format_display_user(record.user)
+                join_strings.append("**{} {} {}**".format(dir_mark, ts, u))
+            elif isinstance(record, Record):
+                record.display_append = '\n'.join(reversed(join_strings))
+                rmerged.append(record)
+                join_strings.clear()
+            else:
+                raise TypeError(record)
+        if join_strings:  # still some join strings left w/o a record
+            rmerged.append(DummyRecord(text='\n'.join(reversed(join_strings))))
+        return reversed(rmerged)
 
     @commands.group(aliases=['note'], invoke_without_command=True, pass_context=True,
         ignore_extra=False)
@@ -210,6 +256,9 @@ class ModNotes(KazCog):
         db_user = await c.query_user(self.bot, user)
         db_group = c.query_user_group(db_user)
         db_records = c.query_user_records(db_group)
+        db_joins = c.query_user_joins(db_group)
+        if db_joins:
+            db_records = self.merge_records_joins(db_records, db_joins)
 
         records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, align_end=True)
         if page is not None:
@@ -274,6 +323,33 @@ class ModNotes(KazCog):
         await self.show_record_page(
             ctx.message.channel,
             records=records_pages, user=None, title='Active Temporary Bans (Mutes)'
+        )
+
+    @notes.command(aliases=['perma'], pass_context=True, ignore_extra=False)
+    @mod_only()
+    @mod_channels()
+    async def permas(self, ctx, page: int=None):
+        """!kazhelp
+        description: Show all permanent bans currently in effect (i.e. non-expired `perma` records).
+        details: |
+            10 notes are shown per page. This is partly due to Discord message length limits, and
+            partly to avoid too large a data dump in a single request.
+        parameters:
+            - name: page
+              optional: true
+              default: last page (latest notes)
+              type: number
+              description: The page number to show, if there are more than 1 page of notes.
+        """
+        db_records = c.query_unexpired_records(types=RecordType.perma)
+
+        records_pages = Pagination(db_records, self.NOTES_PAGE_SIZE, True)
+        if page is not None:
+            records_pages.page = max(1, min(records_pages.total_pages, page)) - 1
+
+        await self.show_record_page(
+            ctx.message.channel,
+            records=records_pages, user=None, title='Active Permanent Bans'
         )
 
     @notes.command(pass_context=True, aliases=['a'])
@@ -394,9 +470,15 @@ class ModNotes(KazCog):
         record = c.insert_note(user=db_user, author=db_author, type_=record_type,
                       timestamp=timestamp, expires=expires, body=note_contents)
 
-        await self.show_record(self.channel_log, record=record, title='New Moderation Record')
-        await self.bot.say("Added note #{:04d} for {}."
-            .format(record.record_id, self.format_display_user(record.user)))
+        await self.show_record(
+            self.cog_config.channel_log,
+            record=record,
+            title='New Moderation Record'
+        )
+        await self.bot.say("Added note {} for {}.".format(
+            self.format_record_id(record.record_id),
+            self.format_display_user(record.user))
+        )
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['x', 'expire'])
     @mod_only()
@@ -429,11 +511,11 @@ class ModNotes(KazCog):
         try:
             record = c.update_record(note_id, expires=expires)
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
+            await self.bot.say("Note ID {} does not exist.".format(self.format_record_id(note_id)))
         else:
             await self.show_record(ctx.message.channel,
                 record=record, title='Note expiration updated')
-            await self.show_record(self.channel_log,
+            await self.show_record(self.cog_config.channel_log,
                 record=record, title='Note expiration updated')
 
     @notes.command(pass_context=True, ignore_extra=False, aliases=['r', 'remove'])
@@ -458,11 +540,11 @@ class ModNotes(KazCog):
             record = c.mark_removed_record(note_id)
             user = record.user
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note ID {:04d} does not exist.".format(note_id))
+            await self.bot.say("Note ID {} does not exist.".format(self.format_record_id(note_id)))
         else:
             await self.show_record(ctx.message.channel, record=record, title='Note removed')
-            await self.bot.send_message(self.channel_log, "Removed note #{:04d} for {}"
-                .format(note_id, self.format_display_user(user)))
+            await self.bot.send_message(self.cog_config.channel_log, "Removed note {} for {}"
+                .format(self.format_record_id(note_id), self.format_display_user(user)))
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
@@ -514,10 +596,12 @@ class ModNotes(KazCog):
         try:
             record = c.mark_removed_record(note_id, removed=False)
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
+            await self.bot.say("Note {} does not exist or is not removed.".format(
+                self.format_record_id(note_id)))
         else:
             await self.show_record(ctx.message.channel, record=record, title='Note restored')
-            await self.bot.send_message(self.channel_log, "Note #{:04d} restored".format(note_id))
+            await self.bot.send_message(self.cog_config.channel_log, "Note {} restored".format(
+                self.format_record_id(note_id)))
 
     @notes.command(pass_context=True, ignore_extra=False)
     @admin_only()
@@ -542,10 +626,11 @@ class ModNotes(KazCog):
             await self.show_record(ctx.message.channel, record=record, title='Purging...')
             c.delete_removed_record(note_id)
         except db.orm_exc.NoResultFound:
-            await self.bot.say("Note #{:04d} does not exist or is not removed.".format(note_id))
+            await self.bot.say("Note {} does not exist or is not removed.".format(
+                self.format_record_id(note_id)))
         else:
-            await self.bot.say("Record #{:04d} purged (user {})."
-                .format(note_id, self.format_display_user(user)))
+            await self.bot.say("Record {} purged (user {})."
+                .format(self.format_record_id(note_id), self.format_display_user(user)))
             # don't send to channel_log, this has no non-admin visibility
 
     @notes.command(pass_context=True, ignore_extra=True)

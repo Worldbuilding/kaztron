@@ -285,7 +285,7 @@ class ProjectsManager(KazCog):
 
     async def on_ready(self):
         await super().on_ready()
-        self.channel = self.validate_channel(self.channel_id)
+        self.channel = self.get_channel(self.channel_id)
         await self._update_unsent_projects()
         self.wizard_manager = self.cog_state.wizards
 

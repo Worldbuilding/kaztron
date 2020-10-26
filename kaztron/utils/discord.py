@@ -316,3 +316,17 @@ def get_group_help(ctx: commands.Context):
     return ('Invalid sub-command. Valid subcommands are `{0!s}`. '
             'Use `{1}` or `{1} <subcommand>` for instructions.') \
         .format(subcommand_list, get_help_str(ctx))
+
+
+def get_jump_url(message: discord.Message):
+    """
+    Gets the direct URL to a message.
+
+    Deprecate this once we upgrade to Discord 1.0.0, jump_url is an available attribute there
+    :param message:
+    :return:
+    """
+    message.channel: discord.Channel
+    return 'https://discordapp.com/channels/{}/{}/{}'.format(
+        message.channel.server.id, message.channel.id, message.id
+    )

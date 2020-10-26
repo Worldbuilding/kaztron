@@ -288,6 +288,7 @@ class SectionView:
         self.__config = config
         self.__section = section
         self.__converters = {}  # type: Dict[str, Tuple[Callable[[Any], Any], Callable[[Any], Any]]]
+        self.__cache = {}  # type: Dict[str, Any]
 
     def set_converters(self, key: str, get_converter, set_converter):
         """
@@ -306,8 +307,12 @@ class SectionView:
         :param get_converter: The converter to be used when retrieving data.
         :param set_converter: The converter to be used when setting data.
         """
-        if not callable(get_converter) or not callable(set_converter):
-            raise ValueError("Converters must be callable")
+        if get_converter is not None and not callable(get_converter):
+            raise ValueError("Get converter must be callable")
+        if set_converter is not None and not callable(set_converter):
+            raise ValueError("Set converter must be callable")
+        if key in self.__cache:  # clear converted cache
+            del self.__cache[key]
         self.__converters[key] = (get_converter, set_converter)
 
     def set_defaults(self, **kwargs):
@@ -337,15 +342,29 @@ class SectionView:
     def get(self, key: str, default=None):
         """ Read a configuration value. Usage is similar to :meth:`KaztronConfig.get`. """
         converter = self.__converters.get(key, (None, None))[0]
-        return self.__config.get(self.__section, key, default=default, converter=converter)
+        if key in self.__cache:
+            logger.debug("{!s}: Read key '{}' from converter cache.".format(self, key))
+            return self.__cache[key]
+        else:
+            value = self.__config.get(self.__section, key, default=default, converter=converter)
+            if converter is not None:  # cache converted value
+                self.__cache[key] = value
+            return value
 
     def set(self, key: str, value):
         """ Write a configuration value. Usage is similar to :meth:`KaztronConfig.set`. """
         converter = self.__converters.get(key, (None, lambda x: x))[1]
+        if key in self.__cache:  # clear cached converted value
+            del self.__cache[key]
         self.__config.set(self.__section, key, converter(value))
 
     def keys(self):
         return self.__config.get_section_data(self.__section).keys()
+
+    def clear_cache(self):
+        """ Clear the converted value cache. """
+        logger.debug("{!s}: Clearing converted value cache.".format(self))
+        self.__cache.clear()
 
     def __str__(self):
         return "{!s}:{}".format(self.__config, self.__section)

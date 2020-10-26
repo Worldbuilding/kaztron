@@ -85,7 +85,7 @@ class CheckInManager(KazCog):
 
     async def on_ready(self):
         await super().on_ready()
-        self.check_in_channel = self.validate_channel(self.check_in_channel_id)
+        self.check_in_channel = self.get_channel(self.check_in_channel_id)
         self.checkin_anytime_roles = tuple(get_named_role(self.server, n)
                                            for n in self.cog_config.check_in_window_exempt_roles)
         milestone_map = {}

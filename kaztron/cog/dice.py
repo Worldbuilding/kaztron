@@ -31,7 +31,7 @@ class Dice(KazCog):
     def __init__(self, bot):
         super().__init__(bot, 'dice', DiceConfig)
         self.cog_config.set_converters('channel_dice',
-            lambda cid: self.validate_channel(cid),
+            lambda cid: self.get_channel(cid),
             lambda _: None)
         self.ch_dice = None
 
