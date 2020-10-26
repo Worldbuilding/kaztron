@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Union, List, Pattern
+from typing import Union, List, Pattern, Iterable
 
 import discord
 
@@ -18,13 +18,13 @@ class ResourceChannelConfig(SectionView):
         custom server emoticon given in the form :name:123456789012345678. (You can backslash-escape
         the emoticon in Discord to get this form.)
     :ivar allow_strings: List of strings to search for. Any message containing one or more of these
-        strings is considered a resource message.
+        strings is considered a resource message. Case-insensitive.
     :ivar allow_re_strings: List of regular expressions to match against. Any message matching one
-        or more of these patterns is considered a resource message.
+        or more of these patterns is considered a resource message. Case-insensitive.
     :ivar deny_strings: List of strings to search for to EXCLUDE a message as a resource. This takes
-        priority over the "allow" configurations.
+        priority over the "allow" configurations. Case-insensitive.
     :ivar deny_re_strings: List of regular expressions to match against to EXCLUDE a message as a
-        resource. This takes priority over the "allow" configurations.
+        resource. This takes priority over the "allow" configurations. Case-insensitive.
     """
     channel: discord.Channel
     reactions: List[Union[discord.Emoji, str]]
@@ -53,6 +53,8 @@ class ResourceChannelManager(KazCog):
     """
     cog_config: ResourceChannelConfig
 
+    RE_FLAGS = re.I
+
     def __init__(self, bot):
         super().__init__(bot, 'resource_channel', ResourceChannelConfig)
         self.cog_config.set_defaults(
@@ -64,10 +66,13 @@ class ResourceChannelManager(KazCog):
             allow_uploads=True
         )
         self.cog_config.set_converters('channel', lambda id_: self.get_channel(id_), None)
-        self.cog_config.set_converters('allow_re_strings',
-                                       lambda l: list(re.compile(s) for s in l), None)
-        self.cog_config.set_converters('deny_re_strings',
-                                       lambda l: list(re.compile(s) for s in l), None)
+
+        # re strings
+        def re_compile(sl: Iterable[str]):
+            return list(re.compile(s, flags=self.RE_FLAGS) for s in sl)
+
+        self.cog_config.set_converters('allow_re_strings', re_compile, None)
+        self.cog_config.set_converters('deny_re_strings', re_compile, None)
 
     async def on_ready(self):
         await super().on_ready()
@@ -97,13 +102,14 @@ class ResourceChannelManager(KazCog):
             await self.bot.add_reaction(message, reaction)
 
     def is_resource_post(self, message: discord.Message):
-        if any(s in message.content for s in self.cog_config.deny_strings):
+        msg_content_lower = message.content.lower()
+        if any(s.lower() in msg_content_lower for s in self.cog_config.deny_strings):
             return False
         if any(p.search(message.content) is not None for p in self.cog_config.deny_re_strings):
             return False
         if self.cog_config.allow_uploads and message.attachments:
             return True
-        if any(s in message.content for s in self.cog_config.allow_strings):
+        if any(s.lower() in msg_content_lower for s in self.cog_config.allow_strings):
             return True
         if any(p.search(message.content) is not None for p in self.cog_config.allow_re_strings):
             return True
