@@ -20,6 +20,9 @@ authors:
   github: cxcfme
 
 contributors:
+- name: IcyNinji
+  role: "Quality assurance"
+  links: []
 - name: Grine_
   role: "Quality assurance, guinea pig"
   links:
@@ -38,6 +41,6 @@ contributors:
 - name: Yazuki
   role: "Quality assurance, guinea pig"
   links: []
-- name: B.W., IcyNinji, Izzy, Nyxlexica, Poison, ThiefOfHope, Zuberan
+- name: B.W., Izzy, Nyxlexica, Poison, ThiefOfHope, Zuberan
   role: Quality assurance
   links: []

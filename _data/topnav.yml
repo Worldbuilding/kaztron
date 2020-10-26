@@ -14,8 +14,8 @@ topnav_dropdowns:
   folders:
     - title: KazTron
       folderitems:
-        - title: Latest Manual (v2.2.x)
-          url: /22
+        - title: Latest Manual (v2.x.x)
+          url: /2x
         - title: Dev Manual
           url: /dev
         - title: All versions

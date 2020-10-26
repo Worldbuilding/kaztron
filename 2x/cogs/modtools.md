@@ -1,19 +1,15 @@
 ---
-wb-category: kaztron-2.3.1-manual
+wb-category: kaztron-2.4.0-manual
 kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+kaz-version: 2.4.0
 wb-subcategory: Moderator
 title: "ModTools"
-last_updated: 15 September 2020
+last_updated: 26 October 2020
 summary: "Miscellaneous tools for moderators."
 ---
 
-Various tools for moderators to help them in their day-to-day! Some commands are
-dependent on the <a href="./modnotes.html">ModNotes</a> module.
-
-This module will automatically enforce modnotes of type "temp", at startup and every hour
-hence. Use <a href="./modtools.html#tempban">tempban</a> in order to immediately apply and enforce a new tempban. (Using
-<a href="./modnotes.html#notes-add">notes add</a> to add a "temp" record will not enforce it until the next hourly check.)
+Various tools for moderators to help them in their day-to-day! Some commands depend on the
+<a href="./modnotes.html">ModNotes</a> module.
 
 ## 1. report
 {: #report }
@@ -81,7 +77,11 @@ Members
 ## 4. say
 {: #say }
 
-Make the bot say something in a channel. If the <a href="./reminders.html">reminders</a> cog is enabled, you can also schedule a message at a later time with <a href="./reminders.html#saylater">saylater</a>.
+Make the bot say something in a channel. If the <a href="./reminders.html">reminders</a> cog is enabled,
+you can also schedule a message at a later time with <a href="./reminders.html#saylater">saylater</a>.
+
+If the bot has pin permissions, prepending `pin:` to the beginning of the message will
+allow it to auto-pin the message.
 
 **Usage**: `.say <channel> <message>`
 
@@ -107,59 +107,12 @@ Channels
 : Mod channels.
 
 
-**Example**
-
-* `.say` - Says the message in the
-
-## 5. tempban
-{: #tempban }
-
-Tempban a user.
-
-This command will immediately tempban (mute) the user, and create a modnote. It will not
-communicate with the user.
-
-The user will be unbanned (unmuted) when the tempban expires.
-
-Note that the ModTools module automatically enforces all tempban modules. See the
-<a href="./modtools.html">ModTools</a> introduction or `.help ModTools` for more info.
-
-This command is shorthand for `.notes add <user> temp expires="[expires]" [reason]`.
-
-**Usage**: `.tempban <user> [reason]`
-
-**Parameters**
-
-&lt;user&gt;
-: string. The user to ban. See <a href="./modnotes.html#notes">notes</a> for more information.
-
-
-[reason]
-: string. Optional. Complex parameter of the format `[expires=[expires]] [reason]`. `reason` is the reason for the tempban, to be recorded as a modnote (optional but highly recommended).
-
-
-[expires]
-: datespec. Optional. The datespec for the tempban's expiration. Use quotation marks if the datespec has spaces in it. See <a href="./modnotes.html#notes-add">notes add</a> for more information on accepted syntaxes. Default: "in 7 days"
-
-
-
-
-**Details**
-
-Members
-: Moderators, Administrators.
-
-
-Channels
-: Mod channels.
-
-
 **Examples**
 
-* `.tempban @BlitheringIdiot#1234 Was being a blithering idiot.` - Issues a 7-day ban.
-* `.tempban @BlitheringIdiot#1234 expires="in 3 days" Was being a slight blithering idiot only.` - Issues a 3-day ban.
+* `.say #meta HELLO, HUMANS. I HAVE GAINED SENTIENCE.` - Says the message in the #meta channel.
+* `.say #meta pin: REMEMBER TO KEEP HYDRATED.` - Says the message in the #meta channel and pin it.
 
-## 6. whois
+## 5. whois
 {: #whois }
 
 Finds a Discord user from their ID, name, or name with discriminator. If modnotes is
@@ -194,7 +147,7 @@ Channels
 * `.whois JaneDoe#0921` - Find a user exactly matching @JaneDoe#0921.
 * `.whois JaneDoe` - Find a user whose name matches JaneDoe, or if not found, a user whose name or nickname contains JaneDoe.
 
-## 7. wb
+## 6. wb
 {: #wb }
 
 Show a "Please talk about worldbuilding" image.

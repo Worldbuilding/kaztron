@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
+wb-category: kaztron-2.4.0-manual
 kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+kaz-version: 2.4.0
 wb-subcategory: Moderator
 title: "UserStats"
-last_updated: 15 September 2020
+last_updated: 26 October 2020
 summary: "Collect and analyse activity statistics."
 ---
 

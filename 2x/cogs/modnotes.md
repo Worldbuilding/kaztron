@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
+wb-category: kaztron-2.4.0-manual
 kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+kaz-version: 2.4.0
 wb-subcategory: Moderator
 title: "ModNotes"
-last_updated: 15 September 2020
+last_updated: 26 October 2020
 summary: "Store moderation notes about users."
 ---
 
@@ -50,24 +50,7 @@ Channels
 * `.notes @User#1234`
 * `.notes 330178495568436157 3`
 
-### 1.1. notes finduser
-{: #notes-finduser }
-
-Deprecated as of version 2.2. Use <a href="./modtools.html#whois">whois</a>.
-
-**Usage**: `.notes finduser`
-
-**Details**
-
-Members
-: Moderators, Administrators.
-
-
-Channels
-: Mod channels.
-
-
-### 1.2. notes add (a)
+### 1.1. notes add (a)
 {: #notes-add }
 
 Add a new note.
@@ -128,7 +111,7 @@ Channels
 * `.notes add @BlitheringIdiot#1234 temp expires="in 7 days" Insulted @JaneDoe#0422` - Create a temp ban record that expires in 7 days.
 * `.notes add @CalmPerson#4187 good timestamp="2 hours ago" Helped keep an argument in check` - Create a record for an incident 2 hours ago.
 
-### 1.3. notes expires (x, expire)
+### 1.2. notes expires (x, expire)
 {: #notes-expires }
 
 Change the expiration time of an existing note.
@@ -162,7 +145,7 @@ Channels
 * `.notes expires 122 tomorrow` - Change the expiration time of note
 * `.notes expires 138 2018-01-24` - Change the expiration time of note
 
-### 1.4. notes rem (r, remove)
+### 1.3. notes rem (r, remove)
 {: #notes-rem }
 
 Remove an existing note.
@@ -193,7 +176,7 @@ Channels
 
 * `.notes rem 122` - Remove note number 122.
 
-### 1.5. notes watches (watch)
+### 1.4. notes watches (watch)
 {: #notes-watches }
 
 Show all watches currently in effect (i.e. all `watch`, `int` and `warn` records that are not expired).
@@ -221,12 +204,40 @@ Channels
 : Mod channels.
 
 
-### 1.6. notes temps (temp)
+### 1.5. notes temps (temp)
 {: #notes-temps }
 
 Show all tempbans currently in effect (i.e. non-expired `temp` records).
 
 **Usage**: `.notes [temps|temp] [page]`
+
+**Parameters**
+
+[page]
+: number. Optional. The page number to show, if there are more than 1 page of notes. Default: last page (latest notes)
+
+
+
+
+**Details**
+
+10 notes are shown per page. This is partly due to Discord message length limits, and
+partly to avoid too large a data dump in a single request.
+
+Members
+: Moderators, Administrators.
+
+
+Channels
+: Mod channels.
+
+
+### 1.6. notes permas (perma)
+{: #notes-permas }
+
+Show all permanent bans currently in effect (i.e. non-expired `perma` records).
+
+**Usage**: `.notes [permas|perma] [page]`
 
 **Parameters**
 
@@ -497,6 +508,23 @@ loss, accidental or malicious.' %}
 
 Members
 : Administrators.
+
+
+Channels
+: Mod channels.
+
+
+### 1.13. notes finduser
+{: #notes-finduser }
+
+Deprecated as of version 2.2. Use <a href="./modtools.html#whois">whois</a>.
+
+**Usage**: `.notes finduser`
+
+**Details**
+
+Members
+: Moderators, Administrators.
 
 
 Channels
