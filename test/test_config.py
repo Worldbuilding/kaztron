@@ -4,7 +4,8 @@ from unittest.mock import mock_open, Mock, MagicMock
 
 import pytest
 
-from kaztron.config import KaztronConfig, SectionView, ReadOnlyError
+from kaztron.config import KaztronConfig, SectionView, \
+    ReadOnlyError, ConfigKeyError, ConfigConverterError, ConfigNameError
 
 config_defaults = {
     'core': {
@@ -85,6 +86,13 @@ def section_view() -> SectionFixture:
     f.section = SectionView(f.mock_config, 'section')
     return f
 
+@pytest.fixture
+def section_view_with_config(config) -> SectionFixture:
+    f = SectionFixture()
+    f.mock_config = config.config
+    f.section = SectionView(f.mock_config, 'core')
+    return f
+
 
 # noinspection PyShadowingNames
 class TestConfig:
@@ -102,7 +110,7 @@ class TestConfig:
             '_illegal': {'d': 4, 'e': 5}
         }))
         mocker.patch('builtins.open', mock_open())
-        with pytest.raises(ValueError):
+        with pytest.raises(ConfigNameError):
             KaztronConfig(filename='test.json', defaults=config_defaults, read_only=False)
 
     def test_underscore_key_protection(self, mocker):
@@ -110,7 +118,7 @@ class TestConfig:
             'core': {'a': 1, 'b': 2, '_illegal': 1024, 'c': 3}
         }))
         mocker.patch('builtins.open', mock_open())
-        with pytest.raises(ValueError):
+        with pytest.raises(ConfigNameError):
             KaztronConfig(filename='test.json', defaults=config_defaults, read_only=False)
 
     def test_get_section_data(self, config: ConfigFixture):
@@ -139,11 +147,15 @@ class TestConfig:
         assert config.config.get('core', 'daemon_pidfile', 'giraffe') == 'hippo'
 
     def test_get_nonexistent_section(self, config: ConfigFixture):
-        with pytest.raises(KeyError):
+        with pytest.raises(ConfigKeyError):
+            assert config.config.get('asdf', 'jklx')
+        with pytest.raises(KeyError):  # backwards compatibility <2.5.0
             assert config.config.get('asdf', 'jklx')
 
     def test_get_nonexistent_key(self, config: ConfigFixture):
-        with pytest.raises(KeyError):
+        with pytest.raises(ConfigKeyError):  # backwards compatibility <2.5.0
+            assert config.config.get('core', 'jklx')
+        with pytest.raises(KeyError):  # backwards compatibility <2.5.0
             assert config.config.get('core', 'jklx')
 
     @write_test
@@ -203,6 +215,12 @@ class TestConfigObjectApi:
         assert isinstance(core1, SectionView)
         assert core1 == core2  # check both access methods equivalent
 
+    def test_get_section_not_exist(self, config: ConfigFixture):
+        with pytest.raises(ConfigKeyError):
+            config.config.get_section('asdf_jkl')
+        with pytest.raises(ConfigKeyError):
+            _ = config.config.asdf_jkl
+
     def test_set_section_view(self, config: ConfigFixture):
         class X(SectionView):
             pass
@@ -217,6 +235,12 @@ class TestConfigObjectApi:
         section_view.mock_config.get.assert_called_with('section', 'flamingo',
             converter=None, default=None)
 
+    def test_get_attribute_not_exist(self, section_view_with_config: SectionFixture):
+        with pytest.raises(ConfigKeyError):
+            _ = section_view_with_config.section.asdf_jkl
+        with pytest.raises(AttributeError):  # backwards compatibility
+            _ = section_view_with_config.section.asdf_jkl
+
     def test_get(self, section_view: SectionFixture):
         assert section_view.section.get('name') == 'value'
         section_view.mock_config.get.assert_called_once_with('section', 'name',
@@ -224,6 +248,12 @@ class TestConfigObjectApi:
         assert section_view.section.get('flamingo') == 'value'
         section_view.mock_config.get.assert_called_with('section', 'flamingo',
             converter=None, default=None)
+
+    def test_get_not_exist(self, section_view_with_config: SectionFixture):
+        with pytest.raises(ConfigKeyError):
+            section_view_with_config.section.get('asdf_jkl')
+        with pytest.raises(AttributeError):  # backwards compatibility
+            section_view_with_config.section.get('asdf_jkl')
 
     def test_set_defaults(self, section_view: SectionFixture):
         defaults = {'a': 1, 'b': 2, 'c': 3}
@@ -310,3 +340,26 @@ class TestConfigObjectApi:
         val3 = section_view.section.test
         assert val2 is not val3
         assert val3 is section_view.section.test
+
+    def _raise_error(self, *args):
+        raise ValueError(*args)
+
+    def test_converter_get_attribute_error(self, section_view_with_config: SectionFixture):
+        section_view_with_config.section.set_converters('name', self._raise_error, None)
+        with pytest.raises(ConfigConverterError):
+            _ = section_view_with_config.section.name
+
+    def test_converter_get_error(self, section_view_with_config: SectionFixture):
+        section_view_with_config.section.set_converters('name', self._raise_error, None)
+        with pytest.raises(ConfigConverterError):
+            section_view_with_config.section.get('name')
+
+    def test_converter_set_attribute_error(self, section_view_with_config: SectionFixture):
+        section_view_with_config.section.set_converters('name', lambda x: '_' + x, self._raise_error)
+        with pytest.raises(ConfigConverterError):
+            section_view_with_config.section.name = 'abcd'
+
+    def test_converter_set_error(self, section_view_with_config: SectionFixture):
+        section_view_with_config.section.set_converters('name', lambda x: '_' + x, self._raise_error)
+        with pytest.raises(ConfigConverterError):
+            section_view_with_config.section.set('name', 'abcd')

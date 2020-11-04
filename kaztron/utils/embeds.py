@@ -22,6 +22,8 @@ class EmbedSplitter:
         raise a ValueError if a value exceeds the limit.
     :raise ValueError: a text value is too long
     """
+    Empty = EmptyEmbed
+
     def __init__(self, *,
                  auto_truncate=False, repeat_header=True, repeat_footer=False, repeat_image=True,
                  title=EmptyEmbed, description=EmptyEmbed,
