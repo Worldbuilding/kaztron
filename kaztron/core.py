@@ -108,7 +108,10 @@ class CoreCog(kaztron.KazCog):
         return self.ready_cogs.union(self.error_cogs) == registered_cogs
 
     def _on_all_cogs_ready(self):
-        logger.info("=== ALL COGS READY ===")
+        if not self.error_cogs:
+            logger.info("=== ALL COGS READY ===")
+        else:
+            logger.info("=== COG READY ERRORS: {:d} ===".format(len(self.error_cogs)))
         self.bot.loop.create_task(self.prepare_command_help())
         self.bot.loop.create_task(self.send_startup_message())
 

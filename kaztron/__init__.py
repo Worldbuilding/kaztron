@@ -47,10 +47,13 @@ cfg_defaults = {
         "max_size_kb": 0,
         "max_backups": 0,
         "gzip_backups": True,
-        "sub_loggers": {
-            "sqlalchemy.engine": "WARN",
+        "tags": {
+            "discord": "INFO",
             "websockets.protocol": "INFO",
-            "discord": "INFO"
+            "kaztron.config": "INFO",
+            "kaztron.help_formatter": "INFO",
+            "sqlalchemy.engine": "WARNING",
+            "asyncprawcore": "INFO"
         }
     }
 }
