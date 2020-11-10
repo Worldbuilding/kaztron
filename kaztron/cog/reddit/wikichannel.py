@@ -4,6 +4,7 @@ from typing import List, Dict, Sequence, Set, Iterable, Tuple, Optional, Union
 
 import discord
 from discord.ext import commands
+from yarl import URL
 
 from kaztron import KazCog, task
 from kaztron.config import SectionView
@@ -14,9 +15,10 @@ from kaztron.utils.discord import get_group_help
 
 from kaztron.utils.embeds import EmbedSplitter, Limits
 from kaztron.utils.logging import exc_log_str, tb_log_str
-from kaztron.utils.strings import split_chunks_on
+from kaztron.utils.strings import split_chunks_on, natural_truncate
 
 logger = logging.getLogger(__name__)
+WikiPage = reddit.models.WikiPage
 
 
 def get_reddit_scopes():
@@ -39,10 +41,11 @@ class WikiChannelData:
     :ivar wikipage: URL to the Reddit wiki page to mirror in channel
     :ivar last_revision: The revision last posted to channel
     :ivar channel: The Discord channel to post to
-    :ivar messages: List of messages already posted
+    :ivar messages: List of IDs to messages already posted
     """
-    def __init__(self, *, wikipage: str, last_revision: str, channel: discord.Channel,
-                 messages: Iterable[discord.Message]):
+    def __init__(self, *, subreddit: str, wikipage: str, last_revision: int,
+                 channel: discord.Channel, messages: Iterable[str]):
+        self.subreddit = subreddit
         self.wikipage = wikipage
         self.last_revision = last_revision
         self.channel = channel
@@ -50,22 +53,24 @@ class WikiChannelData:
 
     def to_dict(self):
         return {
+            'subreddit': self.subreddit,
             'wikipage': self.wikipage,
             'last_revision': self.last_revision,
             'channel': self.channel.id,
-            'messages': [m.id for m in self.messages]
+            'messages': self.messages
         }
 
     @staticmethod
-    async def from_dict(bot: discord.Client, data: dict):
+    def from_dict(bot: discord.Client, data: dict):
         ch = bot.get_channel(data['channel'])
         if ch is None:
             raise ValueError("Invalid channel {!r}".format(data['channel']))
         return WikiChannelData(
+            subreddit=data['subreddit'],
             wikipage=data['wikipage'],
-            last_revision=data.get('last_revision', None),
+            last_revision=data.get('last_revision', 0),
             channel=ch,
-            messages=[await bot.get_message(ch, m_id) for m_id in data.get('messages', [])]
+            messages=data.get('messages', [])
         )
 
 
@@ -138,7 +143,7 @@ class WikiChannel(KazCog):
     brief: Maintain a wiki page in a Discord channel.
     description: |
         This module mirrors one or more wiki pages in a Discord channel. Pages are updated upon a
-        call to `.wikichannel update`.
+        call to `.wikichannel refresh`.
 
         The raw wiki contents are interpreted as Discord message input, including Markdown.
         Any Markdown supported by Discord is supported by this module.
@@ -157,8 +162,9 @@ class WikiChannel(KazCog):
 
     contents:
         - wikichannel
-            - update
+            - refresh
             - preview
+            - testfile
     """
     cog_config: WikiChannelConfig
     cog_state: WikiChannelState
@@ -187,14 +193,70 @@ class WikiChannel(KazCog):
         logger.info("Using reddit account: {}".format((await self.reddit.user.me()).name))
 
     #####
-    # Core
+    # Reddit
     #####
 
     async def _update_wiki(self, channel: discord.Channel):
-        """ Checks wiki pages configured for the specified channel and update them if needed. """
-        # TODO:
-        # - Check revision #S
-        # - Check all messages still exist
+        """
+        Checks wiki pages configured for the specified channel and update them if needed.
+        """
+        data = self.cog_state.channels[channel]
+        with self.cog_state as state:
+            data = state.channels[channel]
+            logger.info("Updating wiki page {} in channel #{}".format(data.wikipage, channel.name))
+            await self._delete_messages(data)
+            # end of this context so that the deletion is written/persisted in case of later errors
+        with self.cog_state as state:
+            await self._post_wikichannel(state.channels[channel])
+
+    async def _delete_messages(self, data: WikiChannelData):
+        """ Delete Discord messages for a WikiChannel. Modifies the :param:`data` structure. """
+        if data.messages:
+            logger.info("Deleting wikichannel messages for #{}...".format(data.channel.name))
+            del_msgs = []
+            for msg_id in data.messages:
+                try:
+                    del_msgs.append(await self.bot.get_message(data.channel, msg_id))
+                except discord.NotFound:
+                    logger.warning("Skipping message, not found: {}".format(msg_id))
+            if len(del_msgs) > 1:
+                await self.bot.delete_messages(del_msgs)
+            elif len(del_msgs) == 1:
+                await self.bot.delete_message(del_msgs[0])
+            else:
+                logger.warning("No valid messages to delete.")
+            data.messages.clear()
+
+    async def _post_wikichannel(self, data: WikiChannelData, channel: discord.Channel=None):
+        """
+        Post wikichannel messages to a channel. If channel isn't specified, defaults to the
+        channel configured by :param:`data`.
+
+        If channel is specified, posts to that channel and does not update the `data` structure's
+        message list (preview mode).
+        """
+        if channel is None:
+            channel = data.channel
+            is_preview = False
+        else:
+            is_preview = True
+
+        sr = await self.reddit.subreddit(data.subreddit)  # type: reddit.models.Subreddit
+        page = await sr.wiki.get_page(data.wikipage)  # type: reddit.models.WikiPage
+        page_parsed = self._parse_wiki(page.content_md)
+        page_embed = self._render_embed(page_parsed)
+        messages = []  # type: List[discord.Message]
+        for embed in page_embed:
+            if isinstance(embed, EmbedSplitter):
+                messages.extend(await self.send_message(channel, embed=embed))
+            else:
+                messages.extend(await self.send_message(channel, embed))
+        if not is_preview:
+            data.messages.extend(message.id for message in messages)
+
+    #####
+    # Parsing/rendering for Discord
+    #####
 
     @staticmethod
     def _parse_wiki(text: str) -> List[WikiStructure]:
@@ -257,7 +319,7 @@ class WikiChannel(KazCog):
             elif isinstance(i, WikiSection):
                 heading = i.heading or EmbedSplitter.Empty
                 desc = i.text.strip()
-                if msg_break or not isinstance(items[-1], EmbedSplitter):
+                if msg_break or not items or not isinstance(items[-1], EmbedSplitter):
                     if len(desc) <= Limits.EMBED_DESC:
                         items.append(EmbedSplitter(title=heading, description=desc))
                     else:
@@ -276,21 +338,95 @@ class WikiChannel(KazCog):
     # Discord
     #####
 
-    @commands.group(invoke_without_command=True, pass_context=True, ignore_extra=True)
-    async def wikichannel(self, ctx: commands.Context):
+    @commands.group(invoke_without_command=True, pass_context=True)
+    async def wikichannel(self, ctx: commands.Context,
+                          channel: discord.Channel, subreddit: str, page_name: str):
         """!kazhelp
-        brief: Commands for maintaining a wiki page in a Discord channel.
-        description: Commands for maintaining a wiki page in a Discord channel.
+        brief: Set or modify a wiki channel.
+        description: |
+            Set or change the wiki page that a channel mirrors.
+        parameters:
+            - name: channel
+              type: channel name
+              description: Discord channel to update.
+            - name: subreddit
+              type: string
+              description: Name of subreddit of wiki page.
+            - name: page_name
+              type: string
+              description: Name of wiki page.
+        examples:
+            - command: ".wikichannel #rules mysubreddit rules"
+              description: set #rules
         """
-        await self.bot.say(get_group_help(ctx))
+        logger.info("Configuring wikichannel for #{}...".format(channel.name))
+        sr = await self.reddit.subreddit(subreddit)  # type: reddit.models.Subreddit
+        page = await sr.wiki.get_page(page_name)  # type: reddit.models.WikiPage
+        page_preview = natural_truncate(page.content_md, 128)
+        try:
+            with self.cog_state as state:
+                state.channels[channel].subreddit = subreddit
+                state.channels[channel].wikipage = page_name
+                state.channels[channel].last_revision = 0
+                state.channels[channel].channel = channel
+                # don't overwrite messages - still want to delete discord messages on update
+            logger.debug("Updated channel data.")
+        except KeyError:
+            with self.cog_state as state:
+                state.channels[channel] = WikiChannelData(
+                    subreddit=subreddit,
+                    wikipage=page_name,
+                    last_revision=0,
+                    channel=channel,
+                    messages=tuple())
+            logger.debug("Channel not previously configured: added channel data.")
+        await self.send_message(ctx.message.channel, ctx.message.author.mention + " " +
+            ("Configured channel {} to mirror wiki page /r/{}/wiki/{}. Use `.wikichannel refresh` "
+            "to update the channel with the new page text. Contents preview:\n\n```{}```")
+            .format(channel.mention, subreddit, page_name, page_preview))
+
+    @wikichannel.command(pass_context=True, aliases=['rem'])
+    async def remove(self, ctx: commands.Context, channel: discord.Channel):
+        """!kazhelp
+        brief: Remove a wiki channel.
+        description: |
+            Disables wiki mirroring to a channel.
+        parameters:
+            - name: channel
+              type: channel name
+              description: Discord channel to update.
+        examples:
+            - command: ".wikichannel rem #rules"
+              description: disable in #rules
+        """
+        logger.info("Deleting channel #{} from wikichannel config...".format(channel.name))
+        with self.cog_state as state:
+            await self._delete_messages(state.channels[channel])
+            del state.channels[channel]
+        logger.debug("Done.")
+        await self.send_message(ctx.message.channel, ctx.message.author.mention + " " +
+            "Removed wiki mirroring from channel {}".format(channel.mention))
 
     @wikichannel.command(pass_context=True)
     @mod_only()
-    async def update(self, ctx: commands.Context, channel: discord.Channel=None):
+    async def refresh(self, ctx: commands.Context, channel: discord.Channel):
         """!kazhelp
-        description: "TODO: KazHelp"
+        brief: Update the specified channel with the latest wiki page.
+        description: |
+            Update the specified channel with the latest wiki page configured for this channel.
+        parameters:
+            - name: channel
+              type: channel name
+              description: Channel to update.
+        examples:
+            - command: ".wikichannel preview #rules"
+              description: Update the wiki page in #rules.
         """
-        pass
+        await self._update_wiki(channel)
+        data = self.cog_state.channels[channel]
+        await self.send_message(ctx.message.channel, ctx.message.author.mention + " " +
+            "Updated wiki page r/{}/{} in channel {}: sent {} messages"
+            .format(data.subreddit, data.wikipage, data.channel.mention, len(data.messages)))
 
     @wikichannel.command(pass_context=True)
     @mod_only()
@@ -298,20 +434,67 @@ class WikiChannel(KazCog):
         """!kazhelp
         brief: Preview the latest wiki page in-channel.
         description: |
-            Preview the latest wiki page in the current channel. Careful, this could be spammy!
+            Preview the latest wiki page that is normally configured for the given channel. The
+            preview is posted to the channel this command is issued in, not the specified channel.
+            Careful, this could be spammy!
         parameters:
             - name: channel
               type: channel name
               description: Channel the wiki page would usually show up in.
         examples:
             - command: ".wikichannel preview #rules"
-              description: Shows a preview of the wiki page in #rules.
+              description: "Shows a preview of the wiki page in #rules. This preview is shown in the
+                           same channel the command is issued in."
         """
-        pass
+        data = self.cog_state.channels[channel]
+        await self._post_wikichannel(data, ctx.message.channel)
+
+    @wikichannel.error
+    @remove.error
+    @refresh.error
+    @preview.error
+    async def wikichannel_error(self, exc: Exception, ctx: commands.Context):
+        if isinstance(exc, commands.CommandInvokeError):
+            root_exc = exc.__cause__ if exc.__cause__ is not None else exc
+            if isinstance(root_exc, KeyError):
+                ch = root_exc.args[0]
+                await self.send_message(ctx.message.channel,
+                    "Channel {} is not configured for wikichannel.".format(ch.mention))
+                logger.warning("Channel #{} not configured for wikichannel.".format(ch.name))
+            elif isinstance(root_exc, reddit.NotFound):
+                msg = "404 Not Found: {}".format(root_exc.response.url.path)
+                await self.send_message(ctx.message.channel, ctx.message.author.mention + " " + msg)
+                logger.warning(msg)
+            elif isinstance(root_exc, reddit.OAuthException):
+                msg = "An OAuth error occurred: {}".format(exc_log_str(root_exc))
+                await self.send_message(ctx.message.channel, ctx.message.author.mention + " " + msg)
+                logger.error(msg)
+            elif isinstance(root_exc, reddit.RequestException):
+                msg = "A reddit request error occurred: {}".format(exc_log_str(root_exc))
+                await self.send_message(ctx.message.channel, ctx.message.author.mention + " " + msg)
+                logger.error(msg)
+            elif isinstance(root_exc, reddit.ResponseException):
+                msg = "A reddit error occurred: {}".format(exc_log_str(root_exc))
+                await self.send_message(ctx.message.channel, ctx.message.author.mention + " " + msg)
+                logger.warning(msg)
+            else:
+                core_cog = self.bot.get_cog("CoreCog")
+                await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
+        else:
+            core_cog = self.bot.get_cog("CoreCog")
+            await core_cog.on_command_error(exc, ctx, force=True)  # Other errors can bubble up
 
     @wikichannel.command(pass_context=True)
     @mod_only()
     async def testfile(self, ctx: commands.Context):
+        """!kazhelp
+        brief: Preview the output of this module based on a text file.
+        description: |
+            Preview the output of this module based on a text file stored on the bot's server. The
+            bot administrator must be the one to install this file.
+
+            Primarily used for testing/demoing.
+        """
         with open('test/wikichannel.txt') as f:
             s = f.read()
         p = self._parse_wiki(s)

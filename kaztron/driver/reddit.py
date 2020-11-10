@@ -5,6 +5,10 @@ import logging
 import asyncpraw as apraw
 # noinspection PyUnresolvedReferences
 from asyncpraw import models
+# noinspection PyUnresolvedReferences
+from asyncpraw import *
+# noinspection PyUnresolvedReferences
+from asyncprawcore.exceptions import *
 
 from kaztron.config import SectionView, get_kaztron_config, get_runtime_config
 
