@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
-kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+wb-category: kaztest---deployed-2.4.0-manual
+kaz-manual-title: KazTest - Deployed Manual
+kaz-version: 2.4.0
 wb-subcategory: Commands
 title: "Reminders"
-last_updated: 15 September 2020
+last_updated: 10 November 2020
 summary: "Get reminders for later."
 ---
 
@@ -24,7 +24,7 @@ set up recurring reminders.
 
 Each user can have a maximum of 10 reminders. Recurring reminders can
 repeat up to 25 times, and cannot repeat more often than every
-5 minutes.
+10 seconds.
 
 {% include tip.html content='Make sure you&#x27;ve enabled &quot;Allow direct messages from server members&quot; for the server
 the bot is on.' %}
@@ -120,10 +120,10 @@ Remove all your future reminders.
 {: #saylater }
 
 Schedule a message for the bot to send in-channel later. Can also set up recurring
-messages (static messages only).
+messages (static messages only). Messages can also be pinned.
 
 Recurring messages can repeat up to 25 times, and cannot repeat more often
-than every 5 minutess.
+than every 10 secondss.
 
 {% include tip.html content='You should double-check the time in the response message to make sure your timespec
 was interpreted correctly.' %}
@@ -137,7 +137,7 @@ was interpreted correctly.' %}
 
 
 &lt;args&gt;
-: Same as <a href="./reminders.html#reminder">reminder</a>.
+: Same as <a href="./reminders.html#reminder">reminder</a>. You can also include the word `pin` before the colon.
 
 
 
@@ -156,6 +156,7 @@ Channels
 
 * `.saylater #community-programs at 12:00: Welcome to our AMA with philosopher Aristotle!` - Single message at noon UTC.
 * `.saylater #announcements at 12:00 every 1 hour limit 24: Attention, citizens. For the duration of gremlin season, all citizens must be on the lookout for crown-stealing gremlins. Any sightings or incidents must be reported to your nearest moderator immediately.` - Recurring message every hour starting at noon UTC.
+* `.saylater #general at 15:00 pin: Karaoke hour for the next hour! Check out #karaoke for more info.` - Single message at 15:00 UTC, auto-pinned.
 
 ### 2.1. saylater list
 {: #saylater-list }

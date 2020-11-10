@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
-kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+wb-category: kaztest---deployed-2.4.0-manual
+kaz-manual-title: KazTest - Deployed Manual
+kaz-version: 2.4.0
 wb-subcategory: Commands
 title: "RoleManager"
-last_updated: 15 September 2020
+last_updated: 10 November 2020
 summary: "Allows the creation of commands that allow users to join and leave specific roles on"
 ---
 
@@ -88,52 +88,14 @@ It is also possible to do this in the `config.json` file. In this case, the comm
 always appear in `.help` under RoleManager. Please see `config.example.json` for an example
 of the structure, and refer to section above for documentation on the parameters.
 
-## 1. et
-{: #et }
-
-**Usage**: `.et`
-
-### 1.1. et join
-{: #et-join }
-
-**Usage**: `.et join`
-
-<pre>Get notifications when Enthusiast Topics are happening.</pre>
-
-### 1.2. et leave
-{: #et-leave }
-
-**Usage**: `.et leave`
-
-<pre>Stop getting notifications when Enthusiast Topics are happening.</pre>
-
-## 2. news
-{: #news }
-
-**Usage**: `.news`
-
-### 2.1. news join
-{: #news-join }
-
-**Usage**: `.news join`
-
-<pre>Get notifications when the mods post an announcement or other server news.</pre>
-
-### 2.2. news leave
-{: #news-leave }
-
-**Usage**: `.news leave`
-
-<pre>Stop getting news notifications.</pre>
-
-## 3. checkin
+## 1. checkin
 {: #checkin }
 
 **Usage**: `.checkin`
 
 <pre>[MOD ONLY] Mark self as on-duty and willing to receive notifications about events needing moderator attention.</pre>
 
-## 4. checkout
+## 2. checkout
 {: #checkout }
 
 **Usage**: `.checkout`

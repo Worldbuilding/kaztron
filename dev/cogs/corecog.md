@@ -1,14 +1,14 @@
 ---
-wb-category: kaztron-2.3.1-manual
-kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+wb-category: kaztest---deployed-2.4.0-manual
+kaz-manual-title: KazTest - Deployed Manual
+kaz-version: 2.4.0
 wb-subcategory: Commands
 title: "CoreCog"
-last_updated: 15 September 2020
-summary: "Essential internal KazTron functionality, plus bot information and control commands."
+last_updated: 10 November 2020
+summary: "Essential internal KazTest - Deployed functionality, plus bot information and control commands."
 ---
 
-Essential KazTron functionality: core setup and configuration tasks, general-purpose error
+Essential KazTest - Deployed functionality: core setup and configuration tasks, general-purpose error
 handling for other cogs and commands, etc. It also includes commands for general bot
 information and control. The Core cog cannot be disabled.
 
@@ -17,11 +17,11 @@ information and control. The Core cog cannot be disabled.
 
 Provides bot info and useful links.
 
-This command provides the version of the KazTron instance currently running, the latest
+This command provides the version of the KazTest - Deployed instance currently running, the latest
 changelog summary, and links to documentation, the GitHub repository, and other
 resources for operators and moderators.
 
-{% include tip.html content='*For mods.* If KazTron ever seems unresponsive, try this command first.' %}
+{% include tip.html content='*For mods.* If KazTest - Deployed ever seems unresponsive, try this command first.' %}
 
 **Usage**: `.info`
 
@@ -34,7 +34,7 @@ Members
 ## 2. request (bug, issue)
 {: #request }
 
-Submit a bug report or feature request to the KazTron bot team.
+Submit a bug report or feature request to the KazTest - Deployed bot team.
 
 **Usage**: `.[request|bug|issue] <content>`
 

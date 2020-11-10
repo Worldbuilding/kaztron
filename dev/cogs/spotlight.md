@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
-kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+wb-category: kaztest---deployed-2.4.0-manual
+kaz-manual-title: KazTest - Deployed Manual
+kaz-version: 2.4.0
 wb-subcategory: Commands
 title: "Spotlight"
-last_updated: 15 September 2020
+last_updated: 10 November 2020
 summary: "Management of the World Spotlight community feature: applications, upcoming, reminders and timing."
 ---
 
@@ -52,7 +52,7 @@ To join the World Spotlight Audience, use `.spotlight join`.</pre>
 
 Start the World Spotlight. For use by the Spotlight Host.
 
-KazTron will announce the start of your World Spotlight and start counting down
+KazTest - Deployed will announce the start of your World Spotlight and start counting down
 your remaining time. You will get periodic reminders about the time remaining, as well
 as an announcement about the end of your World Spotlight.
 
@@ -67,7 +67,7 @@ Members
 
 
 Channels
-: #community-programs.
+: #specific.
 
 
 ### 1.4. spotlight stop
@@ -84,7 +84,7 @@ Members
 
 
 Channels
-: #community-programs.
+: #specific.
 
 
 ### 1.5. spotlight time
@@ -97,7 +97,7 @@ Check the remaining time for the current World Spotlight.
 **Details**
 
 Channels
-: #community-programs.
+: #specific.
 
 
 ### 1.6. spotlight list (l)
@@ -263,7 +263,7 @@ The currently selected application will be added. Use <a href="./spotlight.html#
 
 **Details**
 
-{% include note.html content='KazTron will not take any action on the scheduled date. The date is used to order
+{% include note.html content='KazTest - Deployed will not take any action on the scheduled date. The date is used to order
 the queue and as an informational tool to the moderators responsible for the
 World Spotlight.' %}
 
@@ -302,7 +302,7 @@ Change the scheduled date of a World Spotlight in the queue.
 
 **Details**
 
-{% include note.html content='KazTron will not take any action on the scheduled date. The date is used to order
+{% include note.html content='KazTest - Deployed will not take any action on the scheduled date. The date is used to order
 the queue and as an informational tool to the moderators responsible for the
 World Spotlight.' %}
 

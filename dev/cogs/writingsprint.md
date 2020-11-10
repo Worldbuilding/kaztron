@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
-kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+wb-category: kaztest---deployed-2.4.0-manual
+kaz-manual-title: KazTest - Deployed Manual
+kaz-version: 2.4.0
 wb-subcategory: Commands
 title: "WritingSprint"
-last_updated: 15 September 2020
+last_updated: 10 November 2020
 summary: "Hold writing sprints, where a group of writers get together to work on their writing projects for a fixed amount of time and compete on word count."
 ---
 
@@ -34,7 +34,7 @@ command&#x27;s Usage section for more information.' %}
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 ### 1.1. sprint status (?)
@@ -47,7 +47,7 @@ Get the current status of the sprint.
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 ### 1.2. sprint start (s)
@@ -78,7 +78,7 @@ ongoing sprint or wait until it&#x27;s over.' %}
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 **Examples**
@@ -98,7 +98,7 @@ This can only be done by the creator of the sprint or moderators.
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 ### 1.4. sprint join (j)
@@ -126,7 +126,7 @@ If no sprint is running, first start one with `.w s` (<a href="./writingsprint.h
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 **Example**
@@ -147,7 +147,7 @@ wordcount during the sprint.
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 ### 1.6. sprint wordcount (wc, c)
@@ -168,7 +168,7 @@ Report your wordcount at the end of a sprint.
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 **Example**
@@ -185,7 +185,7 @@ Finalize your wordcount. Use this when you're sure you're done and that you've c
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 ### 1.8. sprint follow
@@ -225,7 +225,7 @@ the leaderboard for the week that contains that date.
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 **Examples**
@@ -258,7 +258,7 @@ for the week that contains that date.
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 **Examples**
@@ -289,7 +289,7 @@ Resetting your own stats will not change your contribution to the global stats.
 **Details**
 
 Channels
-: #writing-and-music.
+: #specific.
 
 
 **Examples**

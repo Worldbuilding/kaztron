@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
-kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+wb-category: kaztest---deployed-2.4.0-manual
+kaz-manual-title: KazTest - Deployed Manual
+kaz-version: 2.4.0
 wb-subcategory: Automation
 title: "VoiceLog"
-last_updated: 15 September 2020
+last_updated: 10 November 2020
 summary: "Voice chat support features. No commands."
 ---
 
@@ -13,7 +13,7 @@ summary: "Voice chat support features. No commands."
 * Voice role management. Allows people in voice to be assigned a role, e.g. to let voice
   users see a voice-only text channel or change their colour while in voice.
 
-**Channels**: #voice, #voice3-dont-delete-for-kaztron, #voice-too-dont-delete-for-kaztron
+**Channels**: #voice, #General, #Patricians
 
 This cog has no commands. It is fully configured in the config.json file (see
 [config.example.json](https://github.com/Worldbuilding/KazTron/blob/master/config.example.json)).
@@ -22,7 +22,7 @@ This cog has no commands. It is fully configured in the config.json file (see
 
 This feature replicates the join/part logging available in TeamSpeak, mumble and similar,
 mainly to avoid the "wait, who joined?" and "who'd we lose?" conversations while in voice
-chat on Discord. KazTron will log voice join and parts in the associated text channel like
+chat on Discord. KazTest - Deployed will log voice join and parts in the associated text channel like
 this:
 
 ```

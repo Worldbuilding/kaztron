@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.3.1-manual
-kaz-manual-title: KazTron Manual
-kaz-version: 2.3.1
+wb-category: kaztest---deployed-2.4.0-manual
+kaz-manual-title: KazTest - Deployed Manual
+kaz-version: 2.4.0
 wb-subcategory: Moderator
 title: "WordFilter"
-last_updated: 15 September 2020
+last_updated: 10 November 2020
 summary: "Watch for words or expressions in user messages, and either warn moderators or auto-delete messages on detection."
 ---
 
@@ -15,7 +15,7 @@ strings, both fully configurable using bot commands:
 * `del` list: Any messages that match will be auto-deleted. Moderators are notified.
 * `warn` list: Moderators are notified of the matching message.
 
-Moderator notifications are output to either #bot-output or #mods; this
+Moderator notifications are output to either #bot_output or #mods; this
 can be switched using the <a href="./wordfilter.html#filter-switch">filter switch</a> command.
 
 ## Filter string syntax
@@ -209,7 +209,7 @@ Channels
 
 Change the bot output channel for WordFilter warnings.
 
-Switches between the #bot-output and #mods channels.
+Switches between the #bot_output and #mods channels.
 
 **Usage**: `.filter [switch|s|sw]`
 
