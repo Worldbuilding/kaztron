@@ -161,7 +161,8 @@ class WikiChannel(KazCog):
           functionality.)
 
     contents:
-        - wikichannel
+        - wikichannel:
+            - remove
             - refresh
             - preview
             - testfile
