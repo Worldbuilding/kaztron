@@ -1,11 +1,11 @@
 from datetime import timedelta, datetime
 import logging
-from typing import List, Dict, Sequence, Set, Iterable, Iterator, Tuple, AsyncGenerator
+from typing import List, Dict, Sequence, Set, Iterable, Tuple, AsyncGenerator
 
 import discord
 from discord.ext import commands
 
-from kaztron import KazCog, task, Scheduler
+from kaztron import KazCog, task
 from kaztron.config import SectionView
 from kaztron.driver import reddit
 from kaztron.utils.checks import mod_only

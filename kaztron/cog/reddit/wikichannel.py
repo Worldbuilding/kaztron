@@ -1,17 +1,15 @@
-from datetime import timedelta, datetime
+from datetime import datetime
 import logging
-from typing import List, Dict, Sequence, Set, Iterable, Tuple, Optional, Union
+from typing import List, Dict, Iterable, Optional, Union
 
 import discord
 from discord.ext import commands
-from yarl import URL
 
-from kaztron import KazCog, task
+from kaztron import KazCog
 from kaztron.config import SectionView
 from kaztron.driver import reddit
 from kaztron.utils.checks import mod_only
-from kaztron.utils.datetime import format_timedelta, utctimestamp
-from kaztron.utils.discord import get_group_help
+from kaztron.utils.datetime import utctimestamp
 
 from kaztron.utils.embeds import EmbedSplitter, Limits
 from kaztron.utils.logging import exc_log_str, tb_log_str
