@@ -1,17 +1,15 @@
-from datetime import timedelta, datetime
+from datetime import datetime
 import logging
-from typing import List, Dict, Sequence, Set, Iterable, Tuple, Optional, Union
+from typing import List, Dict, Iterable, Optional, Union
 
 import discord
 from discord.ext import commands
-from yarl import URL
 
-from kaztron import KazCog, task
+from kaztron import KazCog
 from kaztron.config import SectionView
 from kaztron.driver import reddit
 from kaztron.utils.checks import mod_only
-from kaztron.utils.datetime import format_timedelta, utctimestamp
-from kaztron.utils.discord import get_group_help
+from kaztron.utils.datetime import utctimestamp
 
 from kaztron.utils.embeds import EmbedSplitter, Limits
 from kaztron.utils.logging import exc_log_str, tb_log_str
@@ -38,6 +36,7 @@ class WikiChannelConfig(SectionView):
 
 class WikiChannelData:
     """
+    :ivar subreddit: Subreddit containing the wiki page
     :ivar wikipage: URL to the Reddit wiki page to mirror in channel
     :ivar last_revision: The revision last posted to channel
     :ivar channel: The Discord channel to post to
@@ -76,8 +75,8 @@ class WikiChannelData:
 
 class WikiChannelState(SectionView):
     """
-    :ivar queue: Queue of reddit submission IDs for each Discord channel.
-    :ivar watch: Discord channels and the subreddit(s) they subwatch.
+    :ivar channels: Map of channels to manage to the channel's settings
+    :ivar last_checked: Timestamp of last time the wiki pages were checked and updated in-channel
     """
     channels: Dict[discord.Channel, WikiChannelData]
     last_checked: datetime
@@ -161,7 +160,8 @@ class WikiChannel(KazCog):
           functionality.)
 
     contents:
-        - wikichannel
+        - wikichannel:
+            - remove
             - refresh
             - preview
             - testfile
@@ -339,6 +339,7 @@ class WikiChannel(KazCog):
     #####
 
     @commands.group(invoke_without_command=True, pass_context=True)
+    @mod_only()
     async def wikichannel(self, ctx: commands.Context,
                           channel: discord.Channel, subreddit: str, page_name: str):
         """!kazhelp
@@ -386,6 +387,7 @@ class WikiChannel(KazCog):
             .format(channel.mention, subreddit, page_name, page_preview))
 
     @wikichannel.command(pass_context=True, aliases=['rem'])
+    @mod_only()
     async def remove(self, ctx: commands.Context, channel: discord.Channel):
         """!kazhelp
         brief: Remove a wiki channel.

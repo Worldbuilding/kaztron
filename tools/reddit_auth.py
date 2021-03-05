@@ -10,6 +10,11 @@ async def main():
 
     import kaztron
     from kaztron.driver.reddit import RedditLoginManager
+    from kaztron.config import get_kaztron_config, get_runtime_config
+
+    config = get_kaztron_config()
+    state = get_runtime_config()
+    kaztron.KazCog.static_init(config, state)
 
     rlm = RedditLoginManager()
 

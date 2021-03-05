@@ -51,7 +51,7 @@
   "reddit": {
     "client_id": "from reddit",
     "client_secret": "from reddit",
-    "user_agent": "custom user-agent string; follow reddit API guidelines for this"
+    "user_agent": "custom user-agent string; follow reddit API guidelines for this, including your reddit username in it"
   },
   "rolemanager": {
     "user_roles": {
@@ -222,5 +222,8 @@
     "channel_rules": "channel ID for users to read rules (linked to in welcome msg)",
     "public_join": true,
     "public_quit": true
+  },
+  "wikichannel": {
+    "reddit_username": "reddit username (must be logged in/authorized in the app already)"
   }
 }
