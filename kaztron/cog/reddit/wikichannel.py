@@ -339,6 +339,7 @@ class WikiChannel(KazCog):
     #####
 
     @commands.group(invoke_without_command=True, pass_context=True)
+    @mod_only()
     async def wikichannel(self, ctx: commands.Context,
                           channel: discord.Channel, subreddit: str, page_name: str):
         """!kazhelp
@@ -386,6 +387,7 @@ class WikiChannel(KazCog):
             .format(channel.mention, subreddit, page_name, page_preview))
 
     @wikichannel.command(pass_context=True, aliases=['rem'])
+    @mod_only()
     async def remove(self, ctx: commands.Context, channel: discord.Channel):
         """!kazhelp
         brief: Remove a wiki channel.
