@@ -2,13 +2,8 @@
 from collections import OrderedDict
 import csv
 import discord
-from pathlib import Path
 
-
-def add_application_path():
-    app_path = Path(__file__).resolve().parents[1]
-    sys.path.append(str(app_path))
-    os.chdir(str(app_path))
+from pathutils import *
 
 
 def import_file(filename, dry_run, verbose, check_matches):

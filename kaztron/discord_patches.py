@@ -137,40 +137,47 @@ def patch_mobile_embeds(client: commands.Bot):
     scrolls forever because all of the field contents are wrapping like hell.
     """
     from discord.embeds import Embed
-    from kaztron.utils.embeds import EmbedSplitter
     old_send_message = client.send_message
 
     @functools.wraps(client.send_message)
     async def new_send_message(self, dest, content=None, *args, **kwargs):
-        if 'embed' in kwargs and kwargs['embed'] is not None:
-            if kwargs['embed'].footer is None or kwargs['embed'].footer.text == Embed.Empty:
-                kwargs['embed'].set_footer(text=(r'_'*80))
-            elif r'_'*80 not in kwargs['embed'].footer.text:
-                kwargs['embed'].set_footer(
-                    text=(r'_'*80) + '\n' + kwargs['embed'].footer.text
-                )
+        e = kwargs.get('embed', None)
+
+        def min_len(x):
+            return x and x is not Embed.Empty and len(x) >= 80
+        hr = r'_' * 80
+        hr_ts = r'_' * 60
+
+        if e is not None and e.fields and not (min_len(e.description) or min_len(e.author.name) or
+                                               min_len(e.title)):
+            if e.footer is None or e.footer.text == Embed.Empty:
+                e.set_footer(text=hr if e.timestamp is Embed.Empty else hr_ts)
+            elif hr not in e.footer.text:
+                e.set_footer(text=hr + '\n' + e.footer.text)
         return await old_send_message(dest, content, *args, **kwargs)
     # noinspection PyArgumentList
     client.send_message = MethodType(new_send_message, client)
 
-    old_set_footer = EmbedSplitter.set_footer
-
-    @functools.wraps(EmbedSplitter.set_footer)
-    def new_set_footer(self, *, text: str, **kwargs):
-        if text == Embed.Empty:
-            text = '_'*80
-        else:
-            text = (r'_'*80) + '\n' + text
-        old_set_footer(self, text=text, **kwargs)
-
-    old_es_init = EmbedSplitter.__init__
-
-    @functools.wraps(EmbedSplitter.__init__)
-    def new_es_init(self, *args, **kwargs):
-        old_es_init(self, *args, **kwargs)
-        self.set_footer(text='')
-
-    EmbedSplitter.__init__ = new_es_init
-    EmbedSplitter.set_footer = new_set_footer
+    # old_set_footer = EmbedSplitter.set_footer
+    #
+    # @functools.wraps(EmbedSplitter.set_footer)
+    # def new_set_footer(self, *, text: str, **kwargs):
+    #     if not self.suppress_patch_mobile:
+    #         if text == Embed.Empty:
+    #             text = '_'*80
+    #         else:
+    #             text = (r'_'*80) + '\n' + text
+    #     old_set_footer(self, text=text, **kwargs)
+    #
+    # old_es_init = EmbedSplitter.__init__
+    #
+    # @functools.wraps(EmbedSplitter.__init__)
+    # def new_es_init(self, *args, **kwargs):
+    #     old_es_init(self, *args, **kwargs)
+    #     self.suppress_patch_mobile = False
+    #     self.set_footer(text='')
+    #
+    # EmbedSplitter.__init__ = new_es_init
+    # EmbedSplitter.set_footer = new_set_footer
 
 

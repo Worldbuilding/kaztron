@@ -3,21 +3,62 @@ import logging
 import errno
 import copy
 from collections import OrderedDict
-from typing import Type, Dict, Tuple, Callable, Any
+from typing import Type, Dict, Tuple, Sequence, Callable, Any
 
 from kaztron.driver.atomic_write import atomic_write
 
 logger = logging.getLogger("kaztron.config")
 
 
-class ReadOnlyError(Exception):
-    pass
+class ConfigError(Exception):
+    def __init__(self, file, section, key, *args):
+        super().__init__(file, section, key, *args)
+        self.file = file
+        self.section = section
+        self.key = key
+
+    def __str__(self):
+        return "Error in configuration {}".format(self._get_config_info())
+
+    def _get_config_info(self):
+        s = [self.file]
+        if self.section:
+            s.append(self.section)
+        if self.key:
+            s.append(self.key)
+        return ':'.join(s)
+
+
+class ReadOnlyError(ConfigError):
+    def __init__(self, file, *args):
+        super().__init__(file, None, None, *args)
+
+    def __str__(self):
+        return "Configuration file {} is open read-only".format(self.file)
+
+
+class ConfigNameError(ConfigError):
+    def __str__(self):
+        return "Config sections cannot start with '_' in {}".format(self._get_config_info())
+
+
+class ConfigKeyError(ConfigError, AttributeError, KeyError):
+    def __str__(self):
+        return "Configuration key not found: {}".format(self._get_config_info())
+
+
+class ConfigConverterError(ConfigError):
+    def __str__(self):
+        return "Error in converter for configuration: {}".format(self._get_config_info())
 
 
 class KaztronConfig:
     """
     Simple interface for KazTron configuration files. This class uses JSON as
     the file backend, but this API could easily be adapted to other languages.
+
+    Sections can be accessed as attributes (as long as the name is a valid attribute name). If a
+    section doesn't exist,
 
     Expected structure is similar to:
 
@@ -67,6 +108,8 @@ class KaztronConfig:
         """
         Read the config file and update all values stored in the object.
         :raises OSError: Error opening file.
+        :raises JSONDecodeError:
+        :raises ConfigNameError: Invalid key name in file
         """
         logger.info("config({}) Reading file...".format(self.filename))
         self._data = {}
@@ -88,12 +131,10 @@ class KaztronConfig:
 
         for section, sdata in self._data.items():
             if section.startswith('_'):
-                raise ValueError("Config sections cannot start with '_' ('{}' in '{}')"
-                    .format(section, self.filename))
+                raise ConfigNameError(self.filename, section, None)
             for key in sdata.keys():
                 if key.startswith('_'):
-                    raise ValueError("Config keys cannot start with '_' ('{}' in '{}:{}')"
-                        .format(key, self.filename, section))
+                    raise ConfigNameError(self.filename, section, key)
 
     def write(self, log=True):
         """
@@ -102,7 +143,7 @@ class KaztronConfig:
         :raise ReadOnlyError: configuration is set as read-only
         """
         if self._read_only:
-            raise ReadOnlyError("Configuration {} is read-only".format(self.filename))
+            raise ReadOnlyError(self.filename)
 
         if self.is_dirty:
             if log:
@@ -121,26 +162,26 @@ class KaztronConfig:
         self._section_view_map[section] = cls
 
     def __getattr__(self, item):
-        try:
-            return self.get_section(item)
-        except KeyError as e:
-            raise AttributeError(e.args[0])
+        return self.get_section(item)
 
     def get_section(self, section: str) -> 'SectionView':
         """
         Retrieve a configuration section view. Modifications to this view
         will be reflected in this object's loaded config.
 
+        If section doesn't exist, a SectionView will be returned that can be used to write to a new
+        section (unless the configuration is read-only).
+
         :param section: Section name to retrieve
-        :raises KeyError: section doesn't exist
+        :raises ConfigKeyError: section doesn't exist in a read-only config
         """
-        logger.debug("config:get_section: file={!r} section={!r} "
-            .format(self.filename, section))
+        logger.debug("config:get_section: file={!r} section={!r} ".format(self.filename, section))
+
+        if self.read_only and section not in self._data:
+            raise ConfigKeyError(self.filename, section, None)
+
         cls = self._section_view_map.get(section, SectionView)
-        try:
-            return cls(self, section)
-        except KeyError as e:
-            raise KeyError("Can't find section {!r}".format(section)) from e
+        return cls(self, section)
 
     def get_section_data(self, section: str) -> dict:
         """
@@ -149,12 +190,12 @@ class KaztronConfig:
 
         This is a low-level method and should generally not be called by cogs.
         :param section: Section name to retrieve
-        :raises KeyError: section doesn't exist
+        :raises ConfigKeyError: section doesn't exist
         """
         try:
             return self._data[section]
         except KeyError as e:
-            raise KeyError("Can't find section {!r}".format(section)) from e
+            raise ConfigKeyError(self.filename, section, None) from e
 
     def get(self, section: str, key: str, default=None, converter=None):
         """
@@ -180,7 +221,7 @@ class KaztronConfig:
             the retrieved value as its single argument. Must not modify the
             original value (e.g. if that value is a collection).
 
-        :raises KeyError: Section/key not found and ``default`` param is ``None``
+        :raises ConfigKeyError: Section/key not found and ``default`` param is ``None``
         :raises TypeError: Section is not a dict
         """
         logger.debug("config:get: file={!r} section={!r} key={!r}"
@@ -188,20 +229,23 @@ class KaztronConfig:
 
         try:
             value = self._data[section][key]
-        except KeyError:
+        except KeyError as e:
             default = self._get_default(section, key, default)
             if default is not None:
                 logger.debug("config({}) {!r} -> {!r} not found: using default {!r}"
                     .format(self.filename, section, key, default))
                 value = default
             else:
-                raise
+                raise ConfigKeyError(self.filename, section, key) from e
         except TypeError:
             raise TypeError("config({}) Unexpected configuration file structure"
                 .format(self.filename))
 
         if converter is not None and callable(converter):
-            value = converter(value)
+            try:
+                value = converter(value)
+            except Exception as e:
+                raise ConfigConverterError(self.filename, section, key) from e
         return value
 
     def _get_default(self, section: str, key: str, default):
@@ -251,7 +295,7 @@ class KaztronConfig:
         :param section: The section to set. This method can only set one section at a time.
         :param kwargs: key=value pairs to set, if the key is not already in the config.
         :raises OSError: Error opening or writing file.
-        :raise RuntimeError: configuration is set as read-only
+        :raise ReadOnlyError: configuration is set as read-only
         """
         if not self.read_only:
             for key, value in kwargs.items():
@@ -275,20 +319,58 @@ class KaztronConfig:
 class SectionView:
     """
     Dynamic view for a configuration section. Configuration keys can be retrieved as attributes
-    (``view.config_key``) or via the get() method; similarly, they can be written by setting
-    attributes or via the set() method.
+    (``view.config_key``) or via the :meth:`get` method; similarly, they can be written by setting
+    attributes or via the :meth:`set` method.
+
+    :meth:`set_defaults` allows default values to be set for specific keys. Note that these defaults
+    may end up being written to file.
+
+    :meth:`set_converters` allows setting converter functions for getting and setting values. This
+    happens implicitly on any converter access, allowing transparent conversion between the JSON
+    file data and Python objects.
+
+    Any changes to configuration values in the view will be reflected in the KaztronConfig parent
+    object (and thus can be written to file, etc.).
+
+    Changes to configuration can be written in a few ways:
+
+    * Attribute assignment. Note that you have to access the attribute DIRECTLY: if you make deeper
+      modifications to the attribute's value (e.g. if it's a dict or list you modify), then it will
+      not be detected and the 'dirty' flag will not be set. This will cause the change not to be
+      written to file on the next :meth:`write()` call (or automatic write in a KazTron command).
+    * Calling :meth:`set`.
+    * Using `with section_view_instance:`. A write will be forced at the end of the `with` block,
+      allowing you to get around the attribute assignment problem mentioned above. This may be
+      less efficient if you are heavily using converters, as it will re-convert every key in the
+      configuration.
 
     Get/set provide additional functionality like defining a default value, if the config key is
     not present, and specifying a converting function/callable.
 
-    Any changes to configuration values in the view will be reflected in the KaztronConfig parent
-    object (and thus can be written to file, etc.).
+    Attempting to get a non-existent value, if no default is set, will raise a ConfigKeyError. If
+    a converter raises an error (either get or set), a ConfigConverterError is raised.
     """
     def __init__(self, config: KaztronConfig, section: str):
         self.__config = config
         self.__section = section
         self.__converters = {}  # type: Dict[str, Tuple[Callable[[Any], Any], Callable[[Any], Any]]]
         self.__cache = {}  # type: Dict[str, Any]
+
+    def __enter__(self):
+        if self.__config.read_only:
+            raise ReadOnlyError("Configuration {} is read-only".format(self.__config.filename))
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:  # exception happened - revert any changes
+            self.__config.read()
+            self.clear_cache()
+            return
+
+        # force detecting and converting data, in case changes were to converted data or structures
+        for key in self.keys():
+            self.set(key, self.get(key))  # forces dirty flag + conversion to happen
+        self.write()
 
     def set_converters(self, key: str, get_converter, set_converter):
         """
@@ -328,10 +410,7 @@ class SectionView:
         return self.__config.set_defaults(self.__section, **kwargs)
 
     def __getattr__(self, item):
-        try:
-            return self.get(item)
-        except KeyError as e:
-            raise AttributeError(e.args[0])
+        return self.get(item)
 
     def __setattr__(self, key: str, value):
         if not key.startswith('_'):  # for private and protected values
@@ -340,7 +419,12 @@ class SectionView:
             self.__dict__[key] = value
 
     def get(self, key: str, default=None):
-        """ Read a configuration value. Usage is similar to :meth:`KaztronConfig.get`. """
+        """
+        Read a configuration value. Usage is similar to :meth:`KaztronConfig.get`.
+        :raises ConfigKeyError: Key doesn't exist
+        :raises ConfigConverterError: A converter error happened (that error will be passed as the
+        cause of this one)
+        """
         converter = self.__converters.get(key, (None, None))[0]
         if key in self.__cache:
             logger.debug("{!s}: Read key '{}' from converter cache.".format(self, key))
@@ -352,11 +436,19 @@ class SectionView:
             return value
 
     def set(self, key: str, value):
-        """ Write a configuration value. Usage is similar to :meth:`KaztronConfig.set`. """
+        """
+        Write a configuration value. Usage is similar to :meth:`KaztronConfig.set`.
+        :raises ConfigConverterError: A converter error happened (that error will be passed as the
+        cause of this one)
+        """
         converter = self.__converters.get(key, (None, lambda x: x))[1]
         if key in self.__cache:  # clear cached converted value
             del self.__cache[key]
-        self.__config.set(self.__section, key, converter(value))
+        try:
+            value = converter(value)
+        except Exception as e:
+            raise ConfigConverterError(self.__config.filename, self.__section, key) from e
+        self.__config.set(self.__section, key, value)
 
     def keys(self):
         return self.__config.get_section_data(self.__section).keys()
@@ -365,6 +457,10 @@ class SectionView:
         """ Clear the converted value cache. """
         logger.debug("{!s}: Clearing converted value cache.".format(self))
         self.__cache.clear()
+
+    def write(self):
+        """ If the in-memory cache of the config file is dirty, write to file. """
+        self.__config.write()
 
     def __str__(self):
         return "{!s}:{}".format(self.__config, self.__section)

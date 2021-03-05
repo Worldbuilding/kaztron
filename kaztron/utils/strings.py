@@ -31,7 +31,8 @@ def split_chunks_on(str_: str, maxlen: int, split_char='\n') -> List[str]:
             this_part.append(line)
             running_len += len_line
         else:
-            parts.append(this_part)
+            if this_part:  # prevents empty part if the first line is a very long line
+                parts.append(this_part)
             this_part = [line]
             running_len = len_line
     parts.append(this_part)  # last one, not committed in loop
@@ -58,12 +59,20 @@ def natural_split(str_: str, maxlen: int, ellipsis_='[…]') -> List[str]:
     If the string is too long, split into chunks of up to maxlen along word boundaries, with
     ellipsis_ at the beginning and end of continued chunks.
     """
+    if ellipsis_:
+        ellipsis_start = ellipsis_ + ' '
+        ellipsis_end = ' ' + ellipsis_
+    else:
+        ellipsis_start = ellipsis_end = ''
+
     chunks = []
     remainder = str_
-    while remainder:
-        # add current field
-        chunks.append(natural_truncate(remainder, maxlen=maxlen, ellipsis_=ellipsis_))
-        remainder = remainder[len(chunks[-1]):]
+    j = get_natural_truncate_index(remainder, maxlen, ellipsis_)
+    while j != len(remainder):
+        chunks.append(remainder[:j].strip() + ellipsis_end)
+        remainder = ellipsis_start + remainder[j:].strip()
+        j = get_natural_truncate_index(remainder, maxlen, ellipsis_)
+    chunks.append(remainder)
     return chunks
 
 
@@ -72,16 +81,36 @@ def natural_truncate(str_: str, maxlen: int, ellipsis_='[…]') -> str:
     If the string is too long, truncate to up to maxlen along word boundaries, with ellipsis_
     appended to the end.
     """
-    maxlen_net = maxlen - len(ellipsis_)
-    if len(str_) > maxlen:
-            trunc_str = str_[:maxlen_net]
-            match = re.search(r'\W[^\W]*?$', trunc_str)
-            if match:
-                return str_[:match.start() + 1] + ellipsis_
-            else:
-                return trunc_str
-    else:
+    j = get_natural_truncate_index(str_, maxlen, ellipsis_)
+    ellipsis_end = (' ' + ellipsis_) if ellipsis_ else ''
+    if j == len(str_):
         return str_
+    else:
+        return str_[:j].strip() + ellipsis_end
+
+
+def get_natural_truncate_index(str_: str, maxlen: int, ellipsis_='[…]') -> int:
+    """
+    If the string is too long, truncate to up to maxlen along word boundaries. If ellipsis is
+    not empty, the truncated string should have enough space to append the ellipsis and a space.
+    Returns the index to truncate at.
+    """
+    if ellipsis_:
+        maxlen_net = maxlen - len(ellipsis_) - 1
+    else:
+        maxlen_net = maxlen
+
+    if len(str_) > maxlen:
+        if str_[maxlen_net].isspace():  # exactly on the end of a word
+            return maxlen_net
+
+        match = re.search(r'\W[^\W]*?$', str_[:maxlen_net])
+        if match:
+            return match.start() + 1
+        else:
+            return maxlen_net  # no word boundaries; just truncate it wherever
+    else:
+        return len(str_)
 
 
 def none_wrapper(value, default=""):
