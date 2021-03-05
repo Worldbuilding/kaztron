@@ -131,6 +131,7 @@
   },
   "modtools": {
     "notif_role": "Name of role used to send notifications to all mods",
+    "channel_mod": "channel ID for notifications to mods (for .report)",
     "distinguish_map": {
       "mod-role1": "distinguish-role1",
       "mod-role2": "distinguish-role2"
