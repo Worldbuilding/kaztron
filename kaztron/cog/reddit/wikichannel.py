@@ -36,6 +36,7 @@ class WikiChannelConfig(SectionView):
 
 class WikiChannelData:
     """
+    :ivar subreddit: Subreddit containing the wiki page
     :ivar wikipage: URL to the Reddit wiki page to mirror in channel
     :ivar last_revision: The revision last posted to channel
     :ivar channel: The Discord channel to post to
@@ -74,8 +75,8 @@ class WikiChannelData:
 
 class WikiChannelState(SectionView):
     """
-    :ivar queue: Queue of reddit submission IDs for each Discord channel.
-    :ivar watch: Discord channels and the subreddit(s) they subwatch.
+    :ivar channels: Map of channels to manage to the channel's settings
+    :ivar last_checked: Timestamp of last time the wiki pages were checked and updated in-channel
     """
     channels: Dict[discord.Channel, WikiChannelData]
     last_checked: datetime

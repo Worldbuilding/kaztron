@@ -447,46 +447,14 @@ class Subwatch(KazCog):
         with self.cog_state:
             await self._post_from_queue(channel)
 
-    @commands.command(pass_context=True, ignore_extra=False)
+    @commands.group(invoke_without_command=True, pass_context=True, ignore_extra=False)
     @mod_only()
-    async def subwatch(self, ctx: commands.Context, channel: discord.Channel=None, *,
-                       subreddits: str=None):
+    async def subwatch(self, ctx: commands.Context):
         """!kazhelp
 
-        brief: Configure Subwatch or show configuration.
-        description: Add or remove subreddits to watch and post into channels, or show the current
-            configuration.
-        parameters:
-            - name: channel
-              type: string
-              description: "Discord channel to output the watched subreddits into."
-            - name: subreddits
-              type: string
-              optional: True
-              description: "Subreddits to watch and post in the channel. Can be separated by commas,
-                spaces or `+`.If `off` or `none`, turns off Subwatch for that channel. If not
-                specified, lists current subreddits watched."
-        examples:
-            - command: ".subwatch #general askreddit askscience"
-              description: "Watch the subreddits AskReddit and AskScience and post new posts to
-                #general."
-            - command: ".subwatch #general off"
-              description: "Stop watching subreddits in #general."
-            - command: ".subwatch"
-              description: "Show what subreddits are being watched and what channels they're being
-                output to."
+        brief: Show Subwatch configuration.
+        description: Show the current subwatch configuration.
         """
-        if channel is None:
-            await self._subwatch_show(ctx)
-            return
-
-        with self.cog_state:
-            if subreddits == 'off' or subreddits == 'none':
-                await self._subwatch_rem(ctx, channel)
-            else:
-                await self._subwatch_add(ctx, channel, subreddits)
-
-    async def _subwatch_show(self, ctx: commands.Context):
         channel_strings = []
         for channel, ch_info in self.cog_state.channels.items():
             channel_strings.append("{}: {}".format(
@@ -495,7 +463,28 @@ class Subwatch(KazCog):
         await self.send_message(ctx.message.channel, ctx.message.author.mention + '\n' +
             (format_list(channel_strings) if channel_strings else 'No subwatch configured'))
 
-    async def _subwatch_add(self, ctx: commands.Context, channel: discord.Channel, subreddits: str):
+    @subwatch.command(pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def add(self, ctx: commands.Context, channel: discord.Channel=None, *,
+                       subreddits: str=None):
+        """!kazhelp
+
+        brief: Add or edit a channel's sub watches.
+        description: Add or change subreddits to watch and post into a channel.
+        parameters:
+            - name: channel
+              type: string
+              description: "Discord channel to output the watched subreddits into."
+            - name: subreddits
+              type: string
+              optional: True
+              description: "Subreddits to watch and post in the channel. Can be separated by commas,
+                spaces or `+`."
+        examples:
+            - command: ".subwatch #general askreddit askscience"
+              description: "Watch the subreddits AskReddit and AskScience and post new posts to
+                #general."
+        """
         # preprocess the list
         subs_list_raw = subreddits.replace(',', ' ').replace('+', ' ').split(' ')
         # strip elements, and filter empty elements due to extra whitespace
@@ -506,12 +495,26 @@ class Subwatch(KazCog):
         )
         self.stream_manager.subreddits = self._get_all_subreddits()
         logger.info("Set channel #{} to subwatch: {}"
-                .format(channel.name, ', '.join('/r/' + s for s in subreddits_list)))
+            .format(channel.name, ', '.join('/r/' + s for s in subreddits_list)))
         await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
             "Set channel {} to subwatch: {}"
             .format(channel.mention, ', '.join('/r/' + s for s in subreddits_list)))
 
-    async def _subwatch_rem(self, ctx: commands.Context, channel: discord.Channel):
+    @subwatch.command(pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def rem(self, ctx: commands.Context, channel: discord.Channel=None):
+        """!kazhelp
+
+        brief: Remove subwatches from a channel.
+        description: Stop watching subreddits in a channel.
+        parameters:
+            - name: channel
+              type: string
+              description: "Discord channel."
+        examples:
+            - command: ".subwatch rem #general"
+              description: "Stop watching subreddits in #general."
+        """
         try:
             del self.cog_state.channels[channel]
         except IndexError:
