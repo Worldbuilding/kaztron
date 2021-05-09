@@ -438,7 +438,10 @@ class Subwatch(KazCog):
                 logger.debug("Found post: {}".format(self.log_submission(submission)))
                 count += 1
             logger.info("Found {} new posts in subreddits: {}".format(count, ', '.join(sub_set)))
-            state.last_checked = datetime.utcfromtimestamp(last_timestamp)
+            # issue #339: if an older post is un-removed and detected, we want to avoid
+            # re-posting posts that came after that older post
+            if last_timestamp > last_checked:
+                state.last_checked = datetime.utcfromtimestamp(last_timestamp)
             await self._post_all_channels()
 
     @task(is_unique=False)
@@ -491,7 +494,7 @@ class Subwatch(KazCog):
         subreddits_list = tuple(filter(lambda s: s, (s.strip().lower() for s in subs_list_raw)))
         self.cog_state.channels[channel] = SubwatchChannel(
             subreddits=subreddits_list,
-            last_posted=datetime.utcfromtimestamp(0)
+            last_posted=datetime.utcnow()  # issue #340: don't process old posts on new config
         )
         self.stream_manager.subreddits = self._get_all_subreddits()
         logger.info("Set channel #{} to subwatch: {}"
