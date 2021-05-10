@@ -242,6 +242,9 @@ class Subwatch(KazCog):
         a Discord channel; otherwise, it will queue posts.
     contents:
         - subwatch
+            - add
+            - reset
+            - rem
     """
     cog_config: SubwatchConfig
     cog_state: SubwatchState
@@ -484,7 +487,7 @@ class Subwatch(KazCog):
               description: "Subreddits to watch and post in the channel. Can be separated by commas,
                 spaces or `+`."
         examples:
-            - command: ".subwatch #general askreddit askscience"
+            - command: ".subwatch add #general askreddit askscience"
               description: "Watch the subreddits AskReddit and AskScience and post new posts to
                 #general."
         """
@@ -502,6 +505,37 @@ class Subwatch(KazCog):
         await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
             "Set channel {} to subwatch: {}"
             .format(channel.mention, ', '.join('/r/' + s for s in subreddits_list)))
+
+    @subwatch.command(pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def reset(self, ctx: commands.Context, channel: discord.Channel):
+        """!kazhelp
+
+        brief: Reset a channel's subwatch queue , posting only new posts from now onwards.
+        description: |
+            Reset a channel's subwatch state, clearing the queue and "last checked" data.
+            This will cause subwatch to ignore older posts and only post new posts from the time
+            this command is issued onward.
+        parameters:
+            - name: channel
+              type: string
+              description: "Discord channel to output the watched subreddits into."
+        examples:
+            - command: ".subwatch reset #general"
+              description: ""
+        """
+        with self.cog_state as state:
+            current = state.channels[channel]
+            subreddits = current.subreddits
+            state.channels[channel] = SubwatchChannel(
+                subreddits=subreddits, last_posted=datetime.utcnow()
+            )
+        self.stream_manager.subreddits = self._get_all_subreddits()
+        logger.info("Reset channel #{} subwatch: {}"
+            .format(channel.name, ', '.join('/r/' + s for s in subreddits)))
+        await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
+            "Reset channel {} subwatch: {}"
+            .format(channel.mention, ', '.join('/r/' + s for s in subreddits)))
 
     @subwatch.command(pass_context=True, ignore_extra=False)
     @mod_only()
