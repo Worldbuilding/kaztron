@@ -229,6 +229,13 @@ class QueueManager:
         """
         return self.state.channels[channel].queue.pop(0)
 
+    def queue_length(self, channel: discord.Channel) -> int:
+        """
+        Get the length of the a given channel's queue.
+        :raise KeyError: Channel is not configured for SubWatch
+        """
+        return len(self.state.channels[channel].queue)
+
 
 class Subwatch(KazCog):
     """!kazhelp
@@ -320,7 +327,10 @@ class Subwatch(KazCog):
 
     def schedule_post_from_queue(self, channel: discord.Channel):
         """
+        If it's too early to post from the queue into this Discord channel, schedules it for later
+        and return True. Otherwise, does nothing and return False.
 
+        If a posting task for this channel is already scheduled for later, returns True.
         :param channel:
         :return: True if scheduled later, False if not (channel can post now)
         """
@@ -349,10 +359,10 @@ class Subwatch(KazCog):
 
         :param channel: Channel to post in.
         """
+        # too early to post - do it later
         if self.schedule_post_from_queue(channel):
             return
 
-        logger.debug("Posting from queue for #{}".format(channel.name))
         ch_info = self.cog_state.channels[channel]
         count = 0
         try:
@@ -426,8 +436,6 @@ class Subwatch(KazCog):
         if not sub_set:
             return  # none configured
 
-        logger.debug("Checking for new posts in subreddits: {}".format(', '.join(sub_set)))
-
         with self.cog_state as state:
             count = 0
             last_checked = utctimestamp(state.last_checked)
@@ -440,7 +448,10 @@ class Subwatch(KazCog):
                 last_timestamp = submission.created_utc
                 logger.debug("Found post: {}".format(self.log_submission(submission)))
                 count += 1
-            logger.info("Found {} new posts in subreddits: {}".format(count, ', '.join(sub_set)))
+            if count > 0:
+                logger.info("Found {} posts in subreddits: {}".format(count, ', '.join(sub_set)))
+            else:
+                logger.debug("Found 0 posts in subreddits: {}".format(', '.join(sub_set)))
             # issue #339: if an older post is un-removed and detected, we want to avoid
             # re-posting posts that came after that older post
             if last_timestamp > last_checked:
