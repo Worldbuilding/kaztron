@@ -495,15 +495,16 @@ class Subwatch(KazCog):
         subs_list_raw = subreddits.replace(',', ' ').replace('+', ' ').split(' ')
         # strip elements, and filter empty elements due to extra whitespace
         subreddits_list = tuple(filter(lambda s: s, (s.strip().lower() for s in subs_list_raw)))
-        self.cog_state.channels[channel] = SubwatchChannel(
-            subreddits=subreddits_list,
-            last_posted=datetime.utcnow()  # issue #340: don't process old posts on new config
-        )
+        with self.cog_state as state:
+            state.channels[channel] = SubwatchChannel(
+                subreddits=subreddits_list,
+                last_posted=datetime.utcnow()  # issue #340: don't process old posts on new config
+            )
         self.stream_manager.subreddits = self._get_all_subreddits()
-        logger.info("Set channel #{} to subwatch: {}"
+        logger.info("Set channel #{} for subwatch: {}"
             .format(channel.name, ', '.join('/r/' + s for s in subreddits_list)))
         await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
-            "Set channel {} to subwatch: {}"
+            "Set channel {} for subwatch: {}"
             .format(channel.mention, ', '.join('/r/' + s for s in subreddits_list)))
 
     @subwatch.command(pass_context=True, ignore_extra=False)
@@ -553,7 +554,8 @@ class Subwatch(KazCog):
               description: "Stop watching subreddits in #general."
         """
         try:
-            del self.cog_state.channels[channel]
+            with self.cog_state as state:
+                del state.channels[channel]
         except IndexError:
             logger.warning(f'Cannot remove channel #{channel.name}: no subwatch for channel')
             await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
