@@ -348,8 +348,7 @@ class Spotlight(KazCog):
         self.state.set('spotlight', 'queue', list(self.queue_data))
         self.state.set('spotlight', 'start_time',
             utctimestamp(self.start_time) if self.start_time is not None else None)
-        self.state.set('spotlight', 'reminders',
-            [utctimestamp(t) for t in self.reminders])
+        self.state.set('spotlight', 'reminders', [utctimestamp(t) for t in self.reminders])
         self.state.write()
 
     def _upgrade_queue_v21(self):
@@ -1330,6 +1329,7 @@ class Spotlight(KazCog):
         self.reminders = deque(self.start_time + timedelta(seconds=offset)
                                for offset in self.reminder_offsets)
         self._schedule_reminders()
+        self._write_db()
 
     def _schedule_reminders(self):
         """

@@ -229,6 +229,13 @@ class QueueManager:
         """
         return self.state.channels[channel].queue.pop(0)
 
+    def queue_length(self, channel: discord.Channel) -> int:
+        """
+        Get the length of the a given channel's queue.
+        :raise KeyError: Channel is not configured for SubWatch
+        """
+        return len(self.state.channels[channel].queue)
+
 
 class Subwatch(KazCog):
     """!kazhelp
@@ -242,6 +249,9 @@ class Subwatch(KazCog):
         a Discord channel; otherwise, it will queue posts.
     contents:
         - subwatch
+            - add
+            - reset
+            - rem
     """
     cog_config: SubwatchConfig
     cog_state: SubwatchState
@@ -317,7 +327,10 @@ class Subwatch(KazCog):
 
     def schedule_post_from_queue(self, channel: discord.Channel):
         """
+        If it's too early to post from the queue into this Discord channel, schedules it for later
+        and return True. Otherwise, does nothing and return False.
 
+        If a posting task for this channel is already scheduled for later, returns True.
         :param channel:
         :return: True if scheduled later, False if not (channel can post now)
         """
@@ -346,10 +359,10 @@ class Subwatch(KazCog):
 
         :param channel: Channel to post in.
         """
+        # too early to post - do it later
         if self.schedule_post_from_queue(channel):
             return
 
-        logger.debug("Posting from queue for #{}".format(channel.name))
         ch_info = self.cog_state.channels[channel]
         count = 0
         try:
@@ -423,8 +436,6 @@ class Subwatch(KazCog):
         if not sub_set:
             return  # none configured
 
-        logger.debug("Checking for new posts in subreddits: {}".format(', '.join(sub_set)))
-
         with self.cog_state as state:
             count = 0
             last_checked = utctimestamp(state.last_checked)
@@ -437,8 +448,14 @@ class Subwatch(KazCog):
                 last_timestamp = submission.created_utc
                 logger.debug("Found post: {}".format(self.log_submission(submission)))
                 count += 1
-            logger.info("Found {} new posts in subreddits: {}".format(count, ', '.join(sub_set)))
-            state.last_checked = datetime.utcfromtimestamp(last_timestamp)
+            if count > 0:
+                logger.info("Found {} posts in subreddits: {}".format(count, ', '.join(sub_set)))
+            else:
+                logger.debug("Found 0 posts in subreddits: {}".format(', '.join(sub_set)))
+            # issue #339: if an older post is un-removed and detected, we want to avoid
+            # re-posting posts that came after that older post
+            if last_timestamp > last_checked:
+                state.last_checked = datetime.utcfromtimestamp(last_timestamp)
             await self._post_all_channels()
 
     @task(is_unique=False)
@@ -481,7 +498,7 @@ class Subwatch(KazCog):
               description: "Subreddits to watch and post in the channel. Can be separated by commas,
                 spaces or `+`."
         examples:
-            - command: ".subwatch #general askreddit askscience"
+            - command: ".subwatch add #general askreddit askscience"
               description: "Watch the subreddits AskReddit and AskScience and post new posts to
                 #general."
         """
@@ -489,16 +506,48 @@ class Subwatch(KazCog):
         subs_list_raw = subreddits.replace(',', ' ').replace('+', ' ').split(' ')
         # strip elements, and filter empty elements due to extra whitespace
         subreddits_list = tuple(filter(lambda s: s, (s.strip().lower() for s in subs_list_raw)))
-        self.cog_state.channels[channel] = SubwatchChannel(
-            subreddits=subreddits_list,
-            last_posted=datetime.utcfromtimestamp(0)
-        )
+        with self.cog_state as state:
+            state.channels[channel] = SubwatchChannel(
+                subreddits=subreddits_list,
+                last_posted=datetime.utcnow()  # issue #340: don't process old posts on new config
+            )
         self.stream_manager.subreddits = self._get_all_subreddits()
-        logger.info("Set channel #{} to subwatch: {}"
+        logger.info("Set channel #{} for subwatch: {}"
             .format(channel.name, ', '.join('/r/' + s for s in subreddits_list)))
         await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
-            "Set channel {} to subwatch: {}"
+            "Set channel {} for subwatch: {}"
             .format(channel.mention, ', '.join('/r/' + s for s in subreddits_list)))
+
+    @subwatch.command(pass_context=True, ignore_extra=False)
+    @mod_only()
+    async def reset(self, ctx: commands.Context, channel: discord.Channel):
+        """!kazhelp
+
+        brief: Reset a channel's subwatch queue , posting only new posts from now onwards.
+        description: |
+            Reset a channel's subwatch state, clearing the queue and "last checked" data.
+            This will cause subwatch to ignore older posts and only post new posts from the time
+            this command is issued onward.
+        parameters:
+            - name: channel
+              type: string
+              description: "Discord channel to output the watched subreddits into."
+        examples:
+            - command: ".subwatch reset #general"
+              description: ""
+        """
+        with self.cog_state as state:
+            current = state.channels[channel]
+            subreddits = current.subreddits
+            state.channels[channel] = SubwatchChannel(
+                subreddits=subreddits, last_posted=datetime.utcnow()
+            )
+        self.stream_manager.subreddits = self._get_all_subreddits()
+        logger.info("Reset channel #{} subwatch: {}"
+            .format(channel.name, ', '.join('/r/' + s for s in subreddits)))
+        await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
+            "Reset channel {} subwatch: {}"
+            .format(channel.mention, ', '.join('/r/' + s for s in subreddits)))
 
     @subwatch.command(pass_context=True, ignore_extra=False)
     @mod_only()
@@ -516,7 +565,8 @@ class Subwatch(KazCog):
               description: "Stop watching subreddits in #general."
         """
         try:
-            del self.cog_state.channels[channel]
+            with self.cog_state as state:
+                del state.channels[channel]
         except IndexError:
             logger.warning(f'Cannot remove channel #{channel.name}: no subwatch for channel')
             await self.send_message(ctx.message.channel, ctx.message.author.mention + ' ' +
