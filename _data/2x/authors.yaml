@@ -10,21 +10,24 @@ authors:
   reddit: SanguineHaze
   discord: SanguineHaze
 
+- name: IcyNinji
+  role: Bugbadger (QA, 2020&ndash;)
+  github: IcyNinji
+  reddit: IcyNinji
+  discord: IcyNinji
+
+former:
+- name: cxcfme
+  role: Sysadmin (2017&ndash;2020)
+
 - name: Kazandaki
-  role: Founder, developer (&ndash;2017), namesake
+  role: Founder, developer (&ndash;2017)
   reddit: Kazandaki
   discord: Kazandaki
 
-- name: cxcfme
-  role: Sysadmin (2017&ndash;2020)
-  github: cxcfme
-
 contributors:
-- name: IcyNinji
-  role: "Quality assurance"
-  links: []
 - name: Grine_
-  role: "Quality assurance, guinea pig"
+  role: "Guinea pig (QA)"
   links:
     - title: GitHub
       icon: "fab fa-github"
@@ -39,8 +42,8 @@ contributors:
   role: "KazTron \"cat\" icon artwork"
   links: []
 - name: Yazuki
-  role: "Quality assurance, guinea pig"
+  role: "Guinea pig (QA)"
   links: []
 - name: B.W., Izzy, Nyxlexica, Poison, ThiefOfHope, Zuberan
-  role: Quality assurance
+  role: "QA"
   links: []
