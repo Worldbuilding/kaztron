@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.4.0-manual
+wb-category: kaztron-2.5.1-manual
 kaz-manual-title: KazTron Manual
-kaz-version: 2.4.0
+kaz-version: 2.5.1
 wb-subcategory: Moderator
 title: "Sticky"
-last_updated: 26 October 2020
+last_updated: 25 May 2021
 summary: "Maintain a sticky message at the bottom of a channel."
 ---
 
@@ -38,7 +38,7 @@ Add or update the sticky message for a channel.
 
 This will immediately update the sticky message.
 
-By default, the sticky message will be updated 0 seconds after a message is
+By default, the sticky message will be updated 5 seconds after a message is
 posted to the channel. If multiple messages are posted before the delay elapses,
 the timer is reset. Use <a href="./sticky.html#sticky-delay">sticky delay</a> to change the delay for this channel.
 

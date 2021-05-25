@@ -3,7 +3,7 @@
 entries:
 - title: sidebar
   product: KazTron
-  version: 2.4.1
+  version: 2.5.1
   head_image: kaztron.png
   folders:
 
@@ -44,39 +44,7 @@ entries:
       url: /versions.html
       output: web, pdf
 
-    - title: Release Notes - v2.4.1
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.4.1
-      output: web, pdf
-
-    - title: Release Notes - v2.4.0
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.4.0
-      output: web, pdf
-
-    - title: Release Notes - v2.3.4
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.3.4
-      output: web, pdf
-
-    - title: Release Notes - v2.3.3
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.3.3
-      output: web, pdf
-
-    - title: Release Notes - v2.3.2
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.3.2
-      output: web, pdf
-
-    - title: Release Notes - v2.3.1
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.3.1
-      output: web, pdf
-
-    - title: Release Notes - v2.3.0
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.3.0
-      output: web, pdf
-
-    - title: Release Notes - v2.2.0
-      external_url: https://github.com/Worldbuilding/kaztron/releases/tag/v2.2.0
-      output: web, pdf
-
-    - title: All releases
+    - title: All releases and release notes
       external_url: https://github.com/Worldbuilding/kaztron/releases
       output: web, pdf
 
@@ -142,6 +110,14 @@ entries:
 
     - title: Mod Tools - Join Tools
       url: /2x/cogs/jointools.html
+      output: web, pdf
+
+    - title: Reddit Subwatch
+      url: /2x/cogs/subwatch.html
+      output: web, pdf
+
+    - title: Reddit Wikichannel
+      url: /2x/cogs/wikichannel.html
       output: web, pdf
 
     - title: Resource Channel

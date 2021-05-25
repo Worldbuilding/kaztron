@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.4.0-manual
+wb-category: kaztron-2.5.1-manual
 kaz-manual-title: KazTron Manual
-kaz-version: 2.4.0
+kaz-version: 2.5.1
 wb-subcategory: Moderator
 title: "JoinTools"
-last_updated: 26 October 2020
+last_updated: 25 May 2021
 summary: "Mod notes tools to help keep track of when users join and leave the guild."
 ---
 

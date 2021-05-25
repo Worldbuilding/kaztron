@@ -1,10 +1,10 @@
 ---
-wb-category: kaztron-2.4.0-manual
+wb-category: kaztron-2.5.1-manual
 kaz-manual-title: KazTron Manual
-kaz-version: 2.4.0
+kaz-version: 2.5.1
 wb-subcategory: Automation
 title: "Welcome"
-last_updated: 26 October 2020
+last_updated: 25 May 2021
 summary: "Welcomes new users to the server and logs users joining/leaving."
 ---
 
