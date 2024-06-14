@@ -60,6 +60,9 @@ class CoreCog(kaztron.KazCog):
         self.ready_cogs = set()
         self.error_cogs = set()
 
+    async def on_disconnect(self):
+        logger.error("DISCONNECTED!!")
+
     def _check_bot_ready(self, ctx: commands.Context):
         """ Check if bot is ready. Used as a global check. """
         if ctx.cog is not None:
