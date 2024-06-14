@@ -183,51 +183,61 @@ class ModNotes(KazCog):
         es.add_field_no_break(name=sep_name, value=sep_value, inline=False)
 
         # records page
+        first_record = True
         for record in records:  # type: Union[Record, JoinRecord]
-            # special case: join records without a normal record
+            # special case: join records
             if isinstance(record, DummyRecord):
-                es.add_field(name="First seen", value=record.display_append + self.EMBED_SEPARATOR,
+                es.add_field(
+                    name="First seen" if first_record else r"Actions",
+                    value=record.display_append + self.EMBED_SEPARATOR,
                     inline=False)
-                continue
+            else:  # normal record
+                record_fields, contents = self._get_record_fields(record, show_user=True)
 
-            # normal record
-            record_fields, contents = self._get_record_fields(record, show_user=True)
+                for field_name, field_value in record_fields.items():
+                    es.add_field_no_break(name=field_name, value=field_value, inline=True)
 
-            for field_name, field_value in record_fields.items():
-                es.add_field_no_break(name=field_name, value=field_value, inline=True)
+                for field_name, field_value in contents.items():
+                    # for JoinRecords - WARNING: unused now, be careful about field_value length limits
+                    try:
+                        if record.display_append:
+                            field_value += '\n' + record.display_append + self.EMBED_SEPARATOR
+                    except AttributeError:
+                        pass
+                    es.add_field(name=field_name, value=field_value, inline=False)
 
-            for field_name, field_value in contents.items():
-                # for JoinRecords
-                display_append = getattr(record, 'display_append', '')
-                if display_append:
-                    field_value += '\n' + display_append + self.EMBED_SEPARATOR
-                es.add_field(name=field_name, value=field_value, inline=False)
+            first_record = False
 
         await self.send_message(dest, embed=es)
 
     def merge_records_joins(self, r: Sequence[Record], j: Sequence[JoinRecord]):
         """ Merge display strings for joins into a record list ready for display. """
-
-        # we want to append records coming *after* the record into the record preceding it
-        # so let's iterate backwards
-        rr = reversed(tuple(heapq.merge(r, j, key=lambda x: x.timestamp)))
+        rr = tuple(heapq.merge(r, j, key=lambda x: x.timestamp))
         rmerged = []
         join_strings = []
+        join_strings_len = len(self.EMBED_SEPARATOR)
         for record in rr:
             if isinstance(record, JoinRecord):
                 dir_mark = r'\>\>\> JOIN' if record.direction == JoinDirection.join else r'<<< PART'
                 ts = format_timestamp(record.timestamp)
                 u = self.format_display_user(record.user)
-                join_strings.append("**{} {} {}**".format(dir_mark, ts, u))
-            elif isinstance(record, Record):
-                record.display_append = '\n'.join(reversed(join_strings))
+                s = "**{} {} {}**".format(dir_mark, ts, u)
+                if join_strings_len + len(s) <= Limits.EMBED_FIELD_VALUE:
+                    join_strings.append(s)
+                    join_strings_len += len(s) + 1  # also consider \n
+                else:
+                    rmerged.append(DummyRecord(text='\n'.join(join_strings)))
+                    join_strings = [s]
+                    join_strings_len = len(self.EMBED_SEPARATOR) + len(s) + 1
+            else:  # normal modnote record - append join/parts so far AND the record
+                if join_strings:
+                    rmerged.append(DummyRecord(text='\n'.join(join_strings)))
                 rmerged.append(record)
                 join_strings.clear()
-            else:
-                raise TypeError(record)
+                join_strings_len = len(self.EMBED_SEPARATOR)
         if join_strings:  # still some join strings left w/o a record
-            rmerged.append(DummyRecord(text='\n'.join(reversed(join_strings))))
-        return reversed(rmerged)
+            rmerged.append(DummyRecord(text='\n'.join(join_strings)))
+        return rmerged
 
     @commands.group(aliases=['note'], invoke_without_command=True, pass_context=True,
         ignore_extra=False)
